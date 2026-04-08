@@ -1,0 +1,2973 @@
+<!DOCTYPE html>
+<!-- Capital Stacks Tracker v3.0 | Command Center Suite -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Capital Stacks Tracker</title>
+  <link rel="shortcut icon" href="/command-center/cs-tracker-icon.ico" type="image/x-icon">
+  <!-- <link rel="icon" href="/command-center/favicon.ico"> -->
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+  <!-- Google API callbacks defined before scripts load -->
+  <script>
+    function gapiLoaded(){
+      gapi.load('client',async()=>{
+        try{
+          await gapi.client.init({});
+          await gapi.client.load('https://www.googleapis.com/discovery/v1/apis/drive/v3/rest');
+          window._gapiReady=true;
+          console.log('[Drive] GAPI client ready');
+        }catch(e){console.error('[Drive] GAPI init failed:',e);}
+      });
+    }
+    function gisLoaded(){
+      try{
+        window._tokenClient=google.accounts.oauth2.initTokenClient({
+          client_id:"305146523481-1gucm4vggu2pmucqjgae0vhb1deavnqb.apps.googleusercontent.com",
+          scope:"https://www.googleapis.com/auth/drive.appdata",
+          callback:async r=>{
+            if(r.error){console.error('[Drive] GIS token error:',r.error);if(window._toast)window._toast('Auth failed: '+r.error,'error');return;}
+            window._accessToken=r.access_token;
+            window._driveConn=true;
+            if(window._updDot)window._updDot();
+            if(window._loadDrive)await window._loadDrive();
+          }
+        });
+        window._gisReady=true;
+        console.log('[Drive] GIS client ready');
+      }catch(e){console.error('[Drive] GIS init failed:',e);}
+    }
+    // Option B: show create-password on first run
+    window.addEventListener('load',()=>{
+      if(!localStorage.getItem('cst_pw_hash')){
+        document.getElementById('createPwMode').classList.remove('hidden');
+        document.getElementById('loginMode').classList.add('hidden');
+      }
+    });
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:       #080d1a; --bg2:     #0c1222; --surface: #0f1928;
+      --card:     #111e30; --card2:   #172540; --card3:   #1c2d4a;
+      --border:   #1e3358; --border2: #2a4a78;
+      --pri:      #3b82f6; --pri-dim: #1e40af; --pglow:   rgba(59,130,246,.14);
+      --acc:      #60a5fa; --acc2:    #93c5fd;
+      --gold:     #f59e0b; --gdim:    rgba(245,158,11,.13);
+      --green:    #10b981; --gndim:   rgba(16,185,129,.12);
+      --red:      #ef4444; --rdim:    rgba(239,68,68,.12);
+      --orange:   #f97316;
+      --text:     #e2e8f0; --text2:   #94a3b8; --text3:   #64748b; --text4:   #374151;
+      --mono:     'IBM Plex Mono', monospace; --sans: 'Barlow', sans-serif;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%}
+    body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;overflow-x:hidden}
+    .hidden{display:none!important}
+
+    /* ══ LOGIN ══ */
+    #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;
+      background:radial-gradient(ellipse at 50% 25%, #0a1f3c 0%, var(--bg) 65%)}
+    .lc{background:var(--card);border:1px solid var(--border2);border-radius:18px;
+      padding:50px 56px;width:430px;text-align:center;
+      box-shadow:0 0 80px rgba(59,130,246,.07),0 24px 64px rgba(0,0,0,.5)}
+    .lc-icon{width:66px;height:66px;background:linear-gradient(135deg,var(--pri-dim),var(--pri));
+      border-radius:17px;margin:0 auto 18px;display:flex;align-items:center;justify-content:center;
+      font-size:30px;box-shadow:0 8px 24px rgba(59,130,246,.3)}
+    .lc-title{font-size:22px;font-weight:700;margin-bottom:4px}
+    .lc-sub{color:var(--text3);font-size:12px;margin-bottom:6px}
+    .lc-ver{display:inline-block;background:var(--pglow);color:var(--acc);
+      border:1px solid var(--pri-dim);border-radius:20px;padding:2px 12px;
+      font-size:11px;font-family:var(--mono);margin-bottom:32px}
+    .btn-connect{width:100%;padding:14px;background:linear-gradient(135deg,#1d4ed8,var(--pri));
+      color:#fff;border:none;border-radius:10px;font-family:var(--sans);font-size:15px;
+      font-weight:600;cursor:pointer;transition:all .2s}
+    .btn-connect:hover{background:linear-gradient(135deg,#2563eb,var(--acc));
+      transform:translateY(-1px);box-shadow:0 8px 24px rgba(59,130,246,.35)}
+    .pw-wrap{position:relative;margin-bottom:12px}
+    .pw-inp{width:100%;padding:12px 42px 12px 14px;background:var(--bg2);border:1px solid var(--border2);
+      color:var(--text);border-radius:10px;font-family:var(--mono);font-size:15px;
+      letter-spacing:2px;transition:border-color .2s;outline:none}
+    .pw-inp:focus{border-color:var(--pri)}
+    .pw-inp.err{border-color:var(--red);animation:shake .3s ease}
+    .pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);
+      background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:2px}
+    .pw-toggle:hover{color:var(--text2)}
+    .pw-err{color:var(--red);font-size:12px;margin-bottom:10px;min-height:16px;font-family:var(--mono)}
+    @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
+    /* ══ LAYOUT ══ */
+    #mainApp{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+    /* ══ HEADER ══ */
+    .hdr{background:var(--surface);border-bottom:1px solid var(--border);
+      padding:0 18px;height:50px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+    .hdr-brand{display:flex;align-items:center;gap:8px;flex-shrink:0}
+    .hdr-logo{width:28px;height:28px;background:linear-gradient(135deg,var(--pri-dim),var(--pri));
+      border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px}
+    .hdr-title{font-size:14px;font-weight:700;white-space:nowrap}
+    .hdr-ver{background:var(--pglow);color:var(--acc);border:1px solid var(--pri-dim);
+      border-radius:20px;padding:2px 8px;font-size:10px;font-family:var(--mono)}
+    .hdr-meta{display:flex;align-items:center;gap:18px;flex:1;justify-content:center;flex-wrap:wrap}
+    .hdr-meta-item{display:flex;align-items:center;gap:4px;color:var(--text3);font-size:11px;
+      font-family:var(--mono);white-space:nowrap}
+    .hdr-meta-item .v{color:var(--acc)}
+    .hdr-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+    .btn-h{background:var(--card);border:1px solid var(--border);color:var(--text2);
+      padding:5px 10px;border-radius:6px;font-size:11px;font-family:var(--sans);
+      cursor:pointer;transition:all .15s;white-space:nowrap}
+    .btn-h:hover{background:var(--card2);color:var(--text);border-color:var(--border2)}
+    .ddot{width:8px;height:8px;border-radius:50%;background:var(--text4);
+      display:inline-block;transition:background .3s}
+    .ddot.on{background:var(--green);box-shadow:0 0 5px var(--green)}
+    .ddot.err{background:var(--red)}
+
+    /* ══ TABS ══ */
+    .tab-nav{background:var(--surface);border-bottom:1px solid var(--border);
+      padding:0 18px;display:flex;gap:2px;flex-shrink:0}
+    .tab-btn{background:none;border:none;border-bottom:2px solid transparent;color:var(--text3);
+      padding:9px 16px;font-family:var(--sans);font-size:13px;font-weight:500;
+      cursor:pointer;transition:all .2s;white-space:nowrap}
+    .tab-btn:hover{color:var(--text2)}
+    .tab-btn.active{color:var(--acc);border-bottom-color:var(--pri)}
+    .tab-body{flex:1;overflow-y:auto;padding:18px}
+    .tc{display:none}.tc.active{display:block}
+
+    /* ══ ETF CARDS ══ */
+    .etf-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+    .ec{background:var(--card);border:1px solid var(--border);border-radius:13px;
+      padding:16px;position:relative;transition:border-color .2s}
+    .ec:hover{border-color:var(--border2)}
+    .ec.hm{border-color:rgba(245,158,11,.45);background:linear-gradient(150deg,var(--card),rgba(245,158,11,.04))}
+    .ec-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+    .ec-sym{font-size:20px;font-weight:700;color:var(--acc);font-family:var(--mono)}
+    .hm-b{background:var(--gdim);color:var(--gold);border:1px solid rgba(245,158,11,.3);
+      border-radius:20px;padding:2px 8px;font-size:10px;font-weight:600}
+    .ec-name{font-size:10px;color:var(--text3);margin-bottom:9px;line-height:1.3;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ec-p-row{display:flex;align-items:baseline;gap:7px;margin-bottom:11px;flex-wrap:wrap}
+    .ec-price{font-size:22px;font-weight:700;font-family:var(--mono);
+      border-bottom:1px dashed var(--border2);outline:none;min-width:40px;cursor:text}
+    .ec-price:focus{border-bottom-color:var(--pri);color:var(--acc)}
+    .ec-chg{font-size:11px;font-family:var(--mono)}
+    .ec-stats{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:11px}
+    .es-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px}
+    .es-val{font-size:12px;font-family:var(--mono);font-weight:600;color:var(--text)}
+    .es-val.pos{color:var(--green)}.es-val.neg{color:var(--red)}.es-val.gld{color:var(--gold)}.es-val.acc{color:var(--acc)}
+    .pb-wrap{margin-top:8px}
+    .pb-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--text3);
+      margin-bottom:3px;text-transform:uppercase;letter-spacing:.4px}
+    .pb-labels span:last-child{color:var(--gold);font-family:var(--mono)}
+    .pb{height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+    .pb-fill{height:100%;border-radius:2px;transition:width .6s ease}
+    .pb-fill.n{background:linear-gradient(90deg,var(--pri-dim),var(--pri))}
+    .pb-fill.w{background:linear-gradient(90deg,#92400e,var(--gold))}
+    .pb-fill.ov{background:linear-gradient(90deg,var(--gold),#fcd34d)}
+
+    /* ══ PANELS ══ */
+    .pnl-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+    .pnl{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:18px}
+    .pnl-t{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;
+      color:var(--text3);margin-bottom:13px}
+    .sr{display:flex;justify-content:space-between;align-items:center;
+      padding:6px 0;border-bottom:1px solid var(--border)}
+    .sr:last-of-type{border-bottom:none}
+    .sr-l{font-size:12px;color:var(--text2)}.sr-r{font-size:13px;font-family:var(--mono);font-weight:600}
+    .sr-r.pos{color:var(--green)}.sr-r.neg{color:var(--red)}.sr-r.gld{color:var(--gold)}.sr-r.acc{color:var(--acc)}
+    .goal-wrap{margin-top:13px}
+    .goal-lbl{display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px}
+    .goal-bar{height:8px;background:var(--border);border-radius:4px;overflow:hidden;margin-bottom:4px}
+    .goal-fill{height:100%;border-radius:4px;transition:width .5s}
+    .goal-sub{font-size:10px;color:var(--text3);text-align:center}
+
+    /* ══ STOCK CARDS ══ */
+    .stk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:0}
+    .skc{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:16px;transition:border-color .2s}
+    .skc:hover{border-color:var(--border2)}
+    .skc.locked{opacity:0.75;border-color:var(--border)}
+    .skc-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:5px}
+    .skc-sym{font-size:20px;font-weight:700;color:var(--green);font-family:var(--mono)}
+    .skc-name{font-size:10px;color:var(--text3);margin-bottom:8px}
+    .skc-price{font-size:22px;font-weight:700;font-family:var(--mono);margin-bottom:10px}
+    .skc-lots{border-top:1px solid var(--border);padding-top:10px;margin-bottom:10px}
+    .skc-lots-hdr{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+    .skc-lot-row{display:flex;justify-content:space-between;font-size:11px;padding:2px 0;color:var(--text2)}
+    .skc-lot-row span:last-child{font-family:var(--mono);color:var(--text)}
+    .skc-avg{display:flex;justify-content:space-between;font-size:11px;padding:5px 0;
+      border-top:1px solid var(--border);margin-top:3px;color:var(--text2)}
+    .skc-avg span:last-child{font-family:var(--mono);color:var(--acc)}
+    .skc-stats{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px}
+    .btn-lock{background:var(--card2);border:1px solid var(--border);color:var(--text3);
+      padding:3px 9px;border-radius:5px;font-size:10px;cursor:pointer;transition:all .15s;white-space:nowrap}
+    .btn-lock:hover{border-color:var(--border2);color:var(--text)}
+    .btn-lock.unlocked{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3);color:var(--green)}
+    .btn-add-lot{width:100%;background:transparent;border:1px dashed var(--border2);color:var(--acc);
+      padding:6px;border-radius:6px;font-size:11px;cursor:pointer;transition:all .15s;font-family:var(--sans)}
+    .btn-add-lot:hover{background:var(--pglow);border-color:var(--pri)}
+    .btn-add-lot:disabled{color:var(--text4);border-color:var(--border);cursor:not-allowed;background:transparent}
+
+    /* ══ DASHBOARD SEPARATOR ══ */
+    .dash-sep{height:1px;background:var(--border2);margin:16px 0;opacity:0.6}
+
+    /* ══ STAT BOXES ══ */
+    .sb-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+    .sb{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:13px 15px}
+    .sb-l{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+    .sb-v{font-size:20px;font-weight:700;font-family:var(--mono);color:var(--text);margin-bottom:2px}
+    .sb-s{font-size:11px;color:var(--text3);font-family:var(--mono)}
+    .sb-v.pos{color:var(--green)}.sb-v.neg{color:var(--red)}.sb-v.gld{color:var(--gold)}.sb-v.acc{color:var(--acc)}
+
+    /* ══ TOOLBAR ══ */
+    .tb{display:flex;align-items:center;justify-content:space-between;
+      margin-bottom:12px;gap:8px;flex-wrap:wrap}
+    .tb-l,.tb-r{display:flex;align-items:center;gap:8px}
+    .sec-t{font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px}
+    .cnt{background:var(--pglow);color:var(--acc);border-radius:20px;
+      padding:1px 8px;font-size:11px;font-family:var(--mono)}
+
+    /* ══ TABLES ══ */
+    .tbl-card{background:var(--card);border:1px solid var(--border);border-radius:11px;overflow:hidden}
+    .dtbl{width:100%;border-collapse:collapse;font-size:12px}
+    .dtbl th{text-align:left;padding:7px 11px;font-size:9px;font-weight:600;
+      text-transform:uppercase;letter-spacing:.5px;color:var(--text3);
+      border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card2)}
+    .dtbl th.r{text-align:right}.dtbl td.r{text-align:right}
+    .dtbl td{padding:8px 11px;border-bottom:1px solid rgba(255,255,255,.025);
+      font-family:var(--mono);font-size:12px;vertical-align:middle;white-space:nowrap}
+    .dtbl tr:hover td{background:rgba(255,255,255,.02)}
+    .dtbl tr:last-child td{border-bottom:none}
+    .sym{font-weight:700;color:var(--acc);font-size:13px}
+    .pos{color:var(--green)}.neg{color:var(--red)}.muted{color:var(--text3)}.gld{color:var(--gold)}.acc{color:var(--acc)}
+    .tag{display:inline-block;padding:1px 7px;border-radius:20px;font-size:10px;font-weight:600}
+    .tg{background:var(--gndim);color:var(--green)}.tr{background:var(--rdim);color:var(--red)}
+    .tb2{background:var(--pglow);color:var(--acc)}.tgo{background:var(--gdim);color:var(--gold)}
+
+    /* ══ OPTIONS LAYOUT ══ */
+    .opt-layout{display:grid;grid-template-columns:1fr 320px;gap:14px}
+    .opt-l{display:flex;flex-direction:column;gap:14px}
+    .sub-tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:12px;gap:2px}
+    .st{background:none;border:none;border-bottom:2px solid transparent;color:var(--text3);
+      padding:6px 14px;font-size:12px;font-weight:500;font-family:var(--sans);cursor:pointer;transition:all .2s}
+    .st:hover{color:var(--text2)}.st.active{color:var(--acc);border-bottom-color:var(--pri)}
+    .stc.hidden{display:none}
+
+    /* ══ 52-WEEK GRID ══ */
+    .wg-wrap{overflow-x:auto;max-height:480px;overflow-y:auto}
+    .wg{border-collapse:collapse;font-size:11px;min-width:100%}
+    .wg th{padding:5px 9px;font-size:9px;text-transform:uppercase;letter-spacing:.5px;
+      color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap;
+      text-align:right;background:var(--card2);position:sticky;top:0;z-index:1}
+    .wg th:first-child,.wg th:nth-child(2){text-align:left}
+    .wg td{padding:4px 9px;border-bottom:1px solid rgba(255,255,255,.025);
+      font-family:var(--mono);font-size:11px;text-align:right;white-space:nowrap}
+    .wg td:first-child{text-align:left;color:var(--text3);font-size:10px}
+    .wg td:nth-child(2){text-align:left;color:var(--text2);font-size:10px}
+    .wg .mo-row td{background:rgba(59,130,246,.07);color:var(--acc);font-weight:600;font-size:11px;
+      border-top:1px solid var(--border);padding:5px 9px}
+    .wg .cur-row td{background:rgba(245,158,11,.04)}
+    .gc{color:var(--green)}.rc{color:var(--red)}.ec2{color:var(--text4)}
+
+    /* ══ CHART ══ */
+    .chart-card{background:var(--card);border:1px solid var(--border);border-radius:11px;overflow:hidden}
+    .chart-hdr{padding:9px 13px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+    .sel{background:var(--bg2);border:1px solid var(--border);color:var(--text);
+      border-radius:6px;padding:4px 8px;font-size:12px;font-family:var(--mono);cursor:pointer}
+
+    /* ══ RESEARCH ══ */
+    .res-layout{display:grid;grid-template-columns:1fr 300px;gap:0;flex:1;min-height:0;overflow:hidden}
+    .res-main{display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)}
+    .res-chart-wrap{flex:1;overflow:hidden;min-height:0;min-height:300px}
+    .res-notes-wrap{flex-shrink:0;border-top:1px solid var(--border);padding:12px 14px;background:var(--bg2)}
+    .res-sidebar{overflow-y:auto;padding:14px}
+    .res-search{display:flex;gap:8px;padding:10px 14px;background:var(--bg2);
+      border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;align-items:center}
+    .sym-inp{flex:1;background:var(--card);border:1px solid var(--border);color:var(--text);
+      padding:9px 13px;border-radius:8px;font-family:var(--mono);font-size:15px;
+      text-transform:uppercase;letter-spacing:1px}
+    .sym-inp::placeholder{text-transform:none;letter-spacing:0;font-size:13px;color:var(--text3)}
+    .sym-inp:focus{outline:none;border-color:var(--pri)}
+    .btn-pri{background:var(--pri);color:#fff;border:none;padding:9px 18px;border-radius:8px;
+      font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap}
+    .btn-pri:hover{background:var(--acc)}
+    .btn-sec{background:var(--card);color:var(--text2);border:1px solid var(--border);
+      padding:8px 13px;border-radius:7px;font-family:var(--sans);font-size:12px;
+      cursor:pointer;transition:all .2s;white-space:nowrap}
+    .btn-sec:hover{background:var(--card2);color:var(--text)}
+    .wl-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+    .wlc{background:var(--card);border:1px solid var(--border);color:var(--text2);
+      padding:3px 11px;border-radius:20px;font-size:12px;font-family:var(--mono);
+      cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:5px}
+    .wlc:hover{border-color:var(--pri);color:var(--acc)}
+    .wlc .del{color:var(--text4);font-size:11px;cursor:pointer}
+    .wlc .del:hover{color:var(--red)}
+    .sp{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:16px}
+    .sp-ticker{font-size:26px;font-weight:700;color:var(--acc);font-family:var(--mono);margin-bottom:2px}
+    .sp-name{font-size:10px;color:var(--text3);margin-bottom:12px;line-height:1.3}
+    .sp-price{font-size:32px;font-weight:700;font-family:var(--mono);margin-bottom:3px}
+    .sp-chg{font-size:12px;font-family:var(--mono);margin-bottom:14px}
+    .sp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+    .si-l{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px}
+    .si-v{font-size:12px;font-family:var(--mono);font-weight:600;color:var(--text)}
+    .put-box{padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:7px;margin-top:10px}
+    .put-t{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--gold);font-weight:600;margin-bottom:6px}
+    .put-row{display:flex;justify-content:space-between;font-size:11px;padding:3px 0}
+    .put-row span:last-child{font-family:var(--mono);font-weight:500}
+    .notes-ta{width:100%;background:var(--card);border:1px solid var(--border);color:var(--text);
+      padding:10px;border-radius:7px;font-family:var(--sans);font-size:13px;resize:vertical;
+      min-height:110px;margin-top:10px}
+    .notes-ta:focus{outline:none;border-color:var(--pri)}
+
+    /* ══ MODAL ══ */
+    .moverlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;
+      align-items:center;justify-content:center;z-index:1000}
+    .modal{background:var(--card);border:1px solid var(--border2);border-radius:14px;
+      padding:26px;width:500px;max-width:95vw;max-height:88vh;overflow-y:auto}
+    .modal-t{font-size:16px;font-weight:700;margin-bottom:18px}
+    .modal-sec{margin-bottom:18px}
+    .msec-t{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;
+      color:var(--text3);margin-bottom:9px;padding-bottom:5px;border-bottom:1px solid var(--border)}
+    .fr{display:flex;align-items:center;justify-content:space-between;padding:7px 0}
+    .fr-l{font-size:13px;color:var(--text2)}
+    .finp{background:var(--bg2);border:1px solid var(--border);color:var(--text);
+      padding:5px 9px;border-radius:6px;font-family:var(--mono);font-size:13px;width:145px;text-align:right}
+    .finp:focus{outline:none;border-color:var(--pri)}
+    .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+    .drop-z{border:2px dashed var(--border2);border-radius:9px;padding:28px;
+      text-align:center;cursor:pointer;transition:all .2s;margin-top:12px}
+    .drop-z:hover,.drop-z.drag{border-color:var(--pri);background:var(--pglow)}
+    .drop-icon{font-size:28px;margin-bottom:7px}
+    .drop-t{font-size:13px;font-weight:600;margin-bottom:3px}
+    .drop-s{font-size:11px;color:var(--text3)}
+    .import-info{background:var(--bg2);border:1px solid var(--border);border-radius:7px;
+      padding:9px 13px;font-size:12px;font-family:var(--mono);color:var(--text2)}
+    .import-info strong{color:var(--gold)}
+
+    /* ══ TOAST ══ */
+    #toastEl{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:7px}
+    .toast{background:var(--card2);border:1px solid var(--border2);border-radius:9px;
+      padding:10px 15px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.3);
+      animation:tIn .3s ease;display:flex;align-items:center;gap:8px;max-width:310px}
+    .toast.success{border-left:3px solid var(--green)}.toast.error{border-left:3px solid var(--red)}
+    .toast.info{border-left:3px solid var(--pri)}.toast.warning{border-left:3px solid var(--gold)}
+    @keyframes tIn{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:translateX(0)}}
+
+    /* ══ MISC ══ */
+    .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--border);
+      border-top-color:var(--pri);border-radius:50%;animation:sp .8s linear infinite}
+    .spin-lg{display:inline-block;width:32px;height:32px;border:3px solid var(--border);
+      border-top-color:var(--pri);border-radius:50%;animation:sp .8s linear infinite;margin-bottom:16px}
+    @keyframes sp{to{transform:rotate(360deg)}}
+    .empty{text-align:center;padding:40px 20px;color:var(--text3)}
+    .empty-i{font-size:32px;margin-bottom:8px}
+    .empty p{font-size:13px;line-height:1.6}
+    .divider{height:1px;background:var(--border);margin:14px 0}
+    /* ══ FIDELITY TAB ══ */
+    .fid-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:14px}
+    .fpc{background:var(--card);border:1px solid rgba(16,185,129,.2);border-radius:12px;padding:14px;transition:border-color .2s}
+    .fpc:hover{border-color:rgba(16,185,129,.4)}
+    .fpc-sym{font-size:18px;font-weight:700;color:var(--green);font-family:var(--mono)}
+    .fpc-name{font-size:10px;color:var(--text4);margin-bottom:10px}
+    .fpc-price{font-size:20px;font-weight:600;color:var(--text1);margin-bottom:10px}
+    .fpc-stats{display:grid;grid-template-columns:1fr 1fr;gap:3px 8px;margin-bottom:8px}
+    .fpc-bar{height:3px;border-radius:2px;background:var(--border);margin-top:8px}
+    .fpc-bar-fill{height:100%;border-radius:2px}
+    .fid-pnl-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+    .fid-div-wrap{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px}
+    .fid-import-btn{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.3);color:var(--green);
+      padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer}
+    .fid-import-btn:hover{background:rgba(16,185,129,.2)}
+    #tc-fid.active{display:block}
+
+    /* ══ OPTIONS MKT VAL INPUT ══ */
+    .btn-mktval{padding:4px 10px;border-radius:5px;font-size:11px;font-family:var(--mono);
+      font-weight:600;cursor:pointer;white-space:nowrap;border:1px solid}
+    .btn-mktval.set{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.35);color:var(--red)}
+    .btn-mktval.unset{background:rgba(100,116,139,.08);border-color:rgba(100,116,139,.25);color:var(--text3)}
+
+    #tc-res.active{display:flex!important;flex-direction:column;padding:0;overflow:hidden}
+    @media(max-width:1200px){.etf-grid{grid-template-columns:repeat(2,1fr)}
+      .stk-grid{grid-template-columns:repeat(2,1fr)}
+      .fid-grid{grid-template-columns:repeat(3,1fr)}
+      .opt-layout{grid-template-columns:1fr}.res-layout{grid-template-columns:1fr;height:auto}
+      .pnl-grid{grid-template-columns:1fr}.fid-pnl-grid{grid-template-columns:1fr}}
+    @media(max-width:700px){.etf-grid{grid-template-columns:1fr}
+      .stk-grid{grid-template-columns:1fr}.fid-grid{grid-template-columns:repeat(2,1fr)}
+      .sb-row{grid-template-columns:repeat(2,1fr)}}
+  </style>
+</head>
+<body>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="loginScreen">
+  <div class="lc">
+    <div class="lc-icon">📊</div>
+    <div class="lc-title">Capital Stacks</div>
+    <div class="lc-sub">Multi-Broker Portfolio Tracker</div>
+    <div class="lc-ver"><!-- APP_VERSION -->v3.0</div>
+    <div id="loginMode">
+      <div class="pw-wrap">
+        <input type="password" id="pwInp" class="pw-inp" placeholder="Password"
+               onkeydown="if(event.key==='Enter')doLogin()">
+        <button class="pw-toggle" onclick="togglePw()" title="Show/hide">👁</button>
+      </div>
+      <div class="pw-err" id="pwErr"></div>
+      <button class="btn-connect" onclick="doLogin()">🔓 Unlock</button>
+    </div>
+    <div id="createPwMode" class="hidden">
+      <div style="font-size:13px;color:var(--acc2);margin-bottom:12px">First time setup — create your password</div>
+      <div class="pw-wrap" style="margin-bottom:8px">
+        <input type="password" id="pwCreate1" class="pw-inp" placeholder="Create password"
+               onkeydown="if(event.key==='Enter')document.getElementById('pwCreate2').focus()">
+        <button class="pw-toggle" onclick="togglePwCreate()" title="Show/hide">👁</button>
+      </div>
+      <div class="pw-wrap" style="margin-bottom:8px">
+        <input type="password" id="pwCreate2" class="pw-inp" placeholder="Confirm password"
+               onkeydown="if(event.key==='Enter')createFirstPassword()">
+      </div>
+      <div class="pw-err" id="pwCreateErr"></div>
+      <button class="btn-connect" onclick="createFirstPassword()">🔐 Create Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ LOADING ═══ -->
+<div id="loadingScreen" class="hidden" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg)">
+  <div class="lc" style="text-align:center">
+    <div class="spin-lg"></div>
+    <div style="font-size:15px;font-weight:600;margin-bottom:6px">Connecting to Drive</div>
+    <div style="font-size:12px;color:var(--text3)">Loading your data...</div>
+  </div>
+</div>
+
+<!-- ═══ FIRST RUN ═══ -->
+<div id="firstRunScreen" class="hidden" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 25%, #0a1f3c 0%, var(--bg) 65%)">
+  <div class="lc">
+    <div class="lc-icon">📂</div>
+    <div class="lc-title">Import Your Data</div>
+    <div class="lc-sub">No existing data found in Google Drive.<br>Import your <strong style="color:var(--acc)">cs_tracker.json</strong> to get started.</div>
+    <div style="margin:24px 0">
+      <div class="drop-z" onclick="document.getElementById('jsonFileInp').click()"
+           ondragover="event.preventDefault();this.classList.add('drag')"
+           ondragleave="this.classList.remove('drag')"
+           ondrop="onJsonDrop(event)" style="margin-top:0">
+        <div class="drop-icon">📄</div>
+        <div class="drop-t">Drop cs_tracker.json here</div>
+        <div class="drop-s">or click to browse</div>
+      </div>
+      <input type="file" id="jsonFileInp" accept=".json" style="display:none" onchange="onJsonFileInp(event)">
+    </div>
+    <div id="firstRunMsg" style="font-size:12px;color:var(--text3);min-height:16px;margin-bottom:12px;font-family:var(--mono)"></div>
+    <button class="btn-sec" onclick="startFresh()" style="width:100%">Start fresh with empty data</button>
+  </div>
+  </div>
+</div>
+
+<!-- ═══ MAIN APP ═══ -->
+<div id="mainApp" class="hidden">
+
+  <header class="hdr">
+    <div class="hdr-brand">
+      <div class="hdr-logo">📊</div>
+      <span class="hdr-title">Capital Stacks</span>
+      <span class="hdr-ver" title="Capital Stacks Tracker v3.0">v3.0</span>
+    </div>
+    <div class="hdr-meta">
+      <div class="hdr-meta-item">📥 Last Import: <span class="v" id="hLastImport">—</span></div>
+      <div class="hdr-meta-item">💾 Saved: <span class="v" id="hLastSaved">—</span></div>
+      <div class="hdr-meta-item">💹 Prices: <span class="v" id="hPriceTime">—</span></div>
+    </div>
+    <div class="hdr-actions">
+      <button class="btn-h" onclick="refreshPrices()">⟳ Prices</button>
+      <button class="btn-h" id="importCsvBtn" onclick="openImport()" title="Connect to Drive first">📥 Import CSV</button>
+      <button class="btn-h" onclick="saveCloud()">💾 Save</button>
+      <button class="btn-h" onclick="openSettings()">⚙</button>
+      <span class="ddot" id="ddot"></span>
+    </div>
+  </header>
+
+  <nav class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('dash')">📊 Dashboard</button>
+    <button class="tab-btn" onclick="switchTab('etfs')">📈 ETFs</button>
+    <button class="tab-btn" onclick="switchTab('opts')">⚡ Options</button>
+    <button class="tab-btn" onclick="switchTab('stks')">🏦 Stocks</button>
+    <button class="tab-btn" onclick="switchTab('fid')" style="color:var(--green)">🌿 Fidelity</button>
+    <button class="tab-btn" onclick="switchTab('res')">🔍 Research</button>
+  </nav>
+
+  <div class="tab-body">
+
+    <!-- ═ DASHBOARD ═ -->
+    <div id="tc-dash" class="tc active">
+      <div id="dashCards" class="etf-grid"></div>
+      <div id="dashStkCards" class="stk-grid" style="margin-bottom:0"></div>
+      <div id="priceStamp" style="font-size:10px;color:var(--text3);font-family:var(--mono);text-align:right;margin:6px 0 0"></div>
+      <div class="dash-sep"></div>
+      <div class="pnl-grid">
+        <div class="pnl" id="dashOptPnl"></div>
+        <div class="pnl" id="dashPortPnl"></div>
+        <div class="pnl" id="dashStkPnl"></div>
+      </div>
+      <div style="margin-top:14px">
+        <div class="pnl" id="dashCashPnl"></div>
+      </div>
+    </div>
+
+    <!-- ═ ETFs ═ -->
+    <div id="tc-etfs" class="tc">
+      <div class="tb">
+        <div class="tb-l"><span class="sec-t">📈 Holdings</span></div>
+        <div class="tb-r">
+          <button class="btn-sec" onclick="refreshPrices()">⟳ Live Prices</button>
+        </div>
+      </div>
+      <div class="tbl-card" style="margin-bottom:16px">
+        <table class="dtbl">
+          <thead><tr>
+            <th>Symbol</th><th>Shares</th><th>Cost/Sh</th><th>Total Cost</th>
+            <th class="r">Curr Price</th><th class="r">Curr Value</th><th class="r">Unrlzd G/L</th><th class="r">G/L %</th>
+            <th class="r">Divs Recv'd</th>
+            <th class="r" title="Still to Recoup = Cost Basis − Divs Received. Green when fully recouped." style="cursor:help;border-bottom:1px dashed var(--border2)">Still to Recoup ⓘ</th>
+            <th class="r" title="Net if Liquidated = Current Value − Still to Recoup (i.e. Divs Received + Current Value − Cost Basis)" style="cursor:help;border-bottom:1px dashed var(--border2)">Net if Liquidated ⓘ</th>
+            <th class="r">HM%</th><th>Status</th>
+          </tr></thead>
+          <tbody id="etfTbody"></tbody>
+        </table>
+      </div>
+      <div class="tb">
+        <div class="tb-l">
+          <span class="sec-t">💰 Dividend Log <span class="cnt" id="divCnt">0</span></span>
+          <select id="divFilt" class="sel" onchange="renderDivLog()">
+            <option value="">All ETFs</option>
+            <option>TSLY</option><option>ULTY</option><option>AMDY</option><option>CONY</option>
+          </select>
+        </div>
+        <div class="tb-r">
+          <button class="btn-sec" style="font-size:11px;padding:4px 10px" onclick="toggleDivLog()">
+            <span id="divLogToggleLabel">▶ Show</span>
+          </button>
+        </div>
+      </div>
+      <div id="divLogWrap" style="display:none">
+        <div class="tbl-card">
+          <table class="dtbl">
+            <thead><tr><th>Date</th><th>Symbol</th><th class="r">Amount</th><th>Notes</th></tr></thead>
+            <tbody id="divTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═ OPTIONS ═ -->
+    <div id="tc-opts" class="tc">
+      <div class="sb-row" id="optStats"></div>
+      <!-- Underlying Scorecard -->
+      <div id="undScorecard" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:16px"></div>
+      <!-- Open Positions -->
+      <div style="margin-bottom:14px">
+        <div class="tb" style="margin-bottom:9px">
+          <span class="sec-t">🟢 Open Positions <span class="cnt" id="openCnt">0</span></span>
+        </div>
+        <div class="tbl-card">
+          <table class="dtbl">
+            <thead><tr>
+              <th>Under.</th><th>Symbol</th><th>STO Date</th><th class="r">Strike</th>
+              <th>Expiry</th><th class="r">Prem/sh</th><th class="r">Net Coll.</th><th>Days Left</th>
+              <th class="r" title="Enter current market value from Schwab positions page">Curr Mkt Val</th>
+            </tr></thead>
+            <tbody id="openTbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <!-- Sub-tabs: Trade Log / 52-Week / By Underlying -->
+      <div>
+        <div class="sub-tabs">
+          <button class="st active" onclick="switchSub('log')">Trade Log</button>
+          <button class="st" onclick="switchSub('wk52')">52-Week Grid</button>
+          <button class="st" onclick="switchSub('byund')">By Underlying</button>
+        </div>
+        <div id="stc-log" class="stc">
+          <div class="tbl-card">
+            <table class="dtbl">
+              <thead><tr>
+                <th>STO Date</th><th>Symbol</th><th class="r">Prem.</th><th class="r">Net Coll.</th>
+                <th>BTC Date</th><th class="r">BTC Cost</th><th class="r">Net P&amp;L</th><th>Status</th>
+              </tr></thead>
+              <tbody id="logTbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="stc-wk52" class="stc hidden">
+          <div class="wg-wrap">
+            <table class="wg" id="wg52"></table>
+          </div>
+        </div>
+        <div id="stc-byund" class="stc hidden">
+          <div id="byUndContent"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═ STOCKS ═ -->
+    <div id="tc-stks" class="tc">
+      <div class="tb" style="margin-bottom:14px">
+        <div class="tb-l">
+          <span class="sec-t">🏦 Stock Positions</span>
+          <span class="cnt" id="stkCnt">0</span>
+        </div>
+        <div class="tb-r">
+          <button class="btn-sec" onclick="refreshPrices()">⟳ Live Prices</button>
+          <button class="btn-sec" onclick="openAddStock()" style="color:var(--green);border-color:rgba(16,185,129,.3)">+ Add Stock</button>
+        </div>
+      </div>
+      <div id="stkCards" class="stk-grid"></div>
+    </div>
+
+    <!-- ═ FIDELITY ═ -->
+    <div id="tc-fid" class="tc">
+      <div class="tb" style="margin-bottom:14px">
+        <div class="tb-l">
+          <span class="sec-t" style="color:var(--green)">🌿 Fidelity DCA</span>
+          <span class="cnt" id="fidCnt" style="background:rgba(16,185,129,.12);color:var(--green)">0</span>
+          <span id="fidAcctLabel" style="font-size:10px;color:var(--text3);font-family:var(--mono)"></span>
+        </div>
+        <div class="tb-r" style="gap:8px">
+          <button class="btn-sec" onclick="fetchFidelityPrices()">⟳ Live Prices</button>
+          <button class="fid-import-btn" onclick="openFidImport()">⬆ Import Fidelity CSV</button>
+        </div>
+      </div>
+
+      <!-- Position cards -->
+      <div id="fidCards" class="fid-grid"></div>
+
+      <!-- Summary panels -->
+      <div class="fid-pnl-grid">
+        <div class="pnl" id="fidSummaryPnl"></div>
+        <div class="pnl" id="fidIncomePnl"></div>
+      </div>
+
+      <!-- Dividend & Interest log -->
+      <div class="fid-div-wrap">
+        <div class="tb" style="margin-bottom:0">
+          <div class="tb-l">
+            <span class="sec-t" style="color:var(--gold)">💰 Dividend & Interest Log</span>
+            <span class="cnt" id="fidDivCnt" style="background:rgba(251,191,36,.1);color:var(--gold)">0</span>
+          </div>
+          <div class="tb-r">
+            <button class="btn-sec" style="font-size:11px;padding:4px 10px" onclick="toggleFidLog()">
+              <span id="fidLogLabel">▶ Show</span>
+            </button>
+          </div>
+        </div>
+        <div id="fidLogWrap" style="display:none;margin-top:10px">
+          <div class="tbl-card">
+            <table class="dtbl">
+              <thead><tr><th>Date</th><th>Symbol</th><th>Type</th><th class="r">Amount</th></tr></thead>
+              <tbody id="fidLogTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═ FIDELITY CSV IMPORT MODAL ═ -->
+    <div id="fidCsvMod" class="moverlay hidden">
+      <div class="modal" style="max-width:520px">
+        <div class="modal-t" style="color:var(--green)">🌿 Import Fidelity CSV</div>
+        <div class="modal-sec">
+          <div style="font-size:12px;color:var(--text3);margin-bottom:10px">
+            Export from Fidelity → Activity & Orders → Download icon → CSV format.<br>
+            Handles: stock purchases, dividends, interest. Duplicates auto-skipped.
+          </div>
+          <div class="drop-z" id="fidDropZ"
+               onclick="document.getElementById('fidFileInp').click()"
+               ondragover="event.preventDefault();this.classList.add('drag')"
+               ondragleave="this.classList.remove('drag')"
+               ondrop="onFidDrop(event)">
+            <div class="drop-icon">📄</div>
+            <div class="drop-t">Drop Fidelity CSV here</div>
+            <div class="drop-s">or click to browse</div>
+          </div>
+          <input type="file" id="fidFileInp" accept=".csv" style="display:none" onchange="onFidFileInp(event)">
+        </div>
+        <div id="fidImportPrev" style="margin-top:10px"></div>
+        <div class="modal-actions">
+          <button class="btn-sec" onclick="closeFidImport()">Cancel</button>
+          <button class="btn-pri" id="doFidImportBtn" style="display:none" onclick="doFidImport()">✓ Import</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═ RESEARCH ═ -->
+    <div id="tc-res" class="tc">
+      <div class="res-search">
+        <input type="text" id="resTicker" class="sym-inp" placeholder="Ticker symbol (SPY, TSLA, AMD...)"
+               onkeydown="if(event.key==='Enter')doLookup()">
+        <button class="btn-pri" onclick="doLookup()">🔍 Look Up</button>
+        <button class="btn-sec" onclick="addToWL()">+ Watchlist</button>
+        <div class="wl-chips" id="wlChips" style="margin:0;align-self:center"></div>
+      </div>
+      <div id="resResults" class="hidden" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column">
+        <div class="res-layout">
+          <div class="res-main">
+            <div class="res-chart-wrap" id="resChartDiv"></div>
+            <div class="res-notes-wrap">
+              <div class="pnl-t" style="margin-bottom:6px">📝 Research Notes — <span id="resNotesSym" style="color:var(--acc)"></span></div>
+              <textarea id="resNotes" class="notes-ta" style="min-height:80px" placeholder="Thesis, key levels, support/resistance, PUT strike ideas..."></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:6px">
+                <button class="btn-sec" onclick="saveNotes()">💾 Save Notes</button>
+              </div>
+            </div>
+          </div>
+          <div class="res-sidebar">
+            <div class="sp" id="statsPanel">
+              <div class="empty"><div class="empty-i">🔍</div><p>Enter a ticker above</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="resPH" class="empty" style="padding:60px 20px">
+        <div class="empty-i">🔍</div>
+        <p>Enter any ticker to load a live interactive chart,<br>key stats, and your research notes.</p>
+      </div>
+    </div>
+
+  </div><!-- /tab-body -->
+</div><!-- /mainApp -->
+
+<!-- ═══ SETTINGS MODAL ═══ -->
+<div id="settMod" class="moverlay hidden">
+  <div class="modal">
+    <div class="modal-t">⚙ Settings</div>
+    <div class="modal-sec">
+      <div class="msec-t">Live Prices — Finnhub API</div>
+      <div class="fr"><span class="fr-l">API Key</span>
+        <input type="text" id="sFinnhub" class="finp" placeholder="free at finnhub.io" style="width:200px;text-align:left;font-size:11px"></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">
+        Free key at <strong style="color:var(--acc)">finnhub.io</strong> → sign up → API Keys → copy key</div>
+    </div>
+    <div class="modal-sec">
+      <div class="msec-t">Cash Seed — Account Starting Balance</div>
+      <div class="fr"><span class="fr-l">Seed Balance ($)</span>
+        <input type="number" id="sCashSeed" class="finp" step="0.01" placeholder="0.00"></div>
+      <div class="fr"><span class="fr-l">Seed Date</span>
+        <input type="text" id="sCashSeedDate" class="finp" placeholder="MM/DD/YYYY" style="width:145px;text-align:left"></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">
+        Enter your Schwab cash balance on a known date. The app tracks changes from there via CSV imports.</div>
+    </div>
+    <div class="modal-sec">
+      <div class="msec-t">Options Goal</div>
+      <div class="fr"><span class="fr-l">Monthly Income Goal ($)</span>
+        <input type="number" id="sGoal" class="finp" value="250"></div>
+    </div>
+    <div class="modal-sec">
+      <div class="msec-t">CSV Import Cutoff</div>
+      <div class="fr"><span class="fr-l">Last Import Date</span>
+        <input type="text" id="sCutoff" class="finp" placeholder="MM/DD/YYYY"></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">
+        Rows on or before this date are skipped on next import</div>
+    </div>
+    <div class="modal-sec">
+      <div class="msec-t">ETF Seed Dividends (pre-tracking accumulation)</div>
+      <div id="seedInps"></div>
+    </div>
+    <div class="modal-sec">
+      <div class="msec-t">Session Timeout</div>
+      <div class="fr"><span class="fr-l">Auto-logout after</span>
+        <select id="sTimer" class="finp" style="width:160px;text-align:left">
+          <option value="300">5 minutes</option>
+          <option value="600" selected>10 minutes (default)</option>
+          <option value="900">15 minutes</option>
+          <option value="1800">30 minutes</option>
+          <option value="3600">1 hour</option>
+          <option value="14400">4 hours</option>
+          <option value="28800">8 hours</option>
+        </select>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">Resets on any mouse/keyboard activity</div>
+    </div>
+    <div class="modal-sec">
+      <div class="msec-t">Change Password</div>
+      <div class="fr"><span class="fr-l">Current Password</span>
+        <input type="password" id="sCurPw" class="finp" placeholder="current"></div>
+      <div class="fr"><span class="fr-l">New Password</span>
+        <input type="password" id="sNewPw" class="finp" placeholder="new"></div>
+      <div class="fr"><span class="fr-l">Confirm New</span>
+        <input type="password" id="sConPw" class="finp" placeholder="confirm"></div>
+      <div id="sPwMsg" style="font-size:11px;margin-top:4px;font-family:var(--mono);min-height:14px"></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px">
+        <button class="btn-sec" onclick="changePassword()">🔑 Change Password</button>
+      </div>
+    </div>
+    <div class="modal-sec">
+      <div class="msec-t">Data</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-sec" onclick="exportData()">⬇ Export JSON</button>
+        <button class="btn-sec" onclick="document.getElementById('jsonImportInp').click()">⬆ Import JSON</button>
+        <input type="file" id="jsonImportInp" accept=".json" style="display:none" onchange="onSettingsJsonImport(event)">
+        <button class="btn-sec" style="color:var(--gold)" onclick="resetAndPush()">☁ Reset &amp; Push to Drive</button>
+        <button class="btn-sec" style="color:var(--red)" onclick="if(confirm('Reset ALL data?'))resetData()">🗑 Reset Local</button>
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-top:8px"><!-- APP_INFO -->Capital Stacks Tracker v3.0 · Command Center Suite</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-sec" onclick="closeSettings()">Cancel</button>
+      <button class="btn-pri" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CSV IMPORT MODAL ═══ -->
+<div id="csvMod" class="moverlay hidden">
+  <div class="modal">
+    <div class="modal-t">📥 Import Schwab CSV</div>
+    <div class="import-info">
+      Only importing rows <strong>after</strong> <span id="cutoffLbl">—</span> &nbsp;·&nbsp; Duplicates automatically skipped
+    </div>
+    <div class="drop-z" id="dropZ"
+         onclick="document.getElementById('fileInp').click()"
+         ondragover="event.preventDefault();this.classList.add('drag')"
+         ondragleave="this.classList.remove('drag')"
+         ondrop="onDrop(event)">
+      <div class="drop-icon">📄</div>
+      <div class="drop-t">Drop CSV here or click to browse</div>
+      <div class="drop-s">Schwab 8-column transactions export</div>
+    </div>
+    <input type="file" id="fileInp" accept=".csv" style="display:none" onchange="onFileInp(event)">
+    <div id="importPrev" style="margin-top:12px"></div>
+    <div class="modal-actions">
+      <button class="btn-sec" onclick="closeImport()">Cancel</button>
+      <button class="btn-pri" id="doImportBtn" style="display:none" onclick="doImport()">✓ Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ ADD LOT MODAL ═══ -->
+<div id="addLotMod" class="moverlay hidden">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-t">➕ Add Lot — <span id="addLotSym" style="color:var(--green);font-family:var(--mono)"></span></div>
+    <div class="modal-sec">
+      <div class="fr"><span class="fr-l">Date</span>
+        <input type="date" id="lotDate" class="finp" style="width:160px;text-align:left"></div>
+      <div class="fr"><span class="fr-l">Shares</span>
+        <input type="number" id="lotShares" class="finp" min="0.001" step="0.001" placeholder="0"></div>
+      <div class="fr"><span class="fr-l">Cost / Share ($)</span>
+        <input type="number" id="lotCost" class="finp" min="0.01" step="0.01" placeholder="0.00"></div>
+    </div>
+    <div id="lotMsg" style="font-size:11px;font-family:var(--mono);min-height:14px;color:var(--red);margin-bottom:8px"></div>
+    <div class="modal-actions">
+      <button class="btn-sec" onclick="closeAddLot()">Cancel</button>
+      <button class="btn-pri" onclick="saveAddLot()">Add Lot</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ ADD STOCK MODAL ═══ -->
+<div id="addStkMod" class="moverlay hidden">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-t">🏦 Add Stock Position</div>
+    <div class="modal-sec">
+      <div class="fr"><span class="fr-l">Ticker Symbol</span>
+        <input type="text" id="newStkSym" class="finp" placeholder="TSLA" style="text-transform:uppercase;width:100px"></div>
+      <div class="fr"><span class="fr-l">Company Name</span>
+        <input type="text" id="newStkName" class="finp" placeholder="Optional" style="width:200px;text-align:left;font-size:12px"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px">You can add lots after creating the stock.</div>
+    <div id="newStkMsg" style="font-size:11px;font-family:var(--mono);min-height:14px;color:var(--red);margin-bottom:8px"></div>
+    <div class="modal-actions">
+      <button class="btn-sec" onclick="closeAddStock()">Cancel</button>
+      <button class="btn-pri" onclick="saveAddStock()">Add Stock</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SET MKT VAL MODAL ═══ -->
+<div id="mktValMod" class="moverlay hidden">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-t" style="color:var(--red)">📍 Set Market Value</div>
+    <div id="mktValContractInfo" style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px">
+      <div id="mktValSym" style="font-size:16px;font-weight:700;color:var(--acc);font-family:var(--mono)"></div>
+      <div id="mktValFull" style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:8px"></div>
+      <div style="display:flex;gap:16px">
+        <div style="font-size:11px"><span style="color:var(--text3)">Strike </span><span id="mktValStrike" style="font-family:var(--mono);color:var(--text1)"></span></div>
+        <div style="font-size:11px"><span style="color:var(--text3)">Expiry </span><span id="mktValExpiry" style="font-family:var(--mono);color:var(--text1)"></span></div>
+        <div style="font-size:11px"><span style="color:var(--text3)">Collected </span><span id="mktValColl" style="font-family:var(--mono);color:var(--green)"></span></div>
+      </div>
+    </div>
+    <div class="modal-sec">
+      <div class="fr">
+        <span class="fr-l">Current Mkt Val ($)</span>
+        <input type="number" id="mktValInp" class="finp" step="0.01" placeholder="e.g. -1104.52"
+          style="width:140px;text-align:right;color:var(--red);font-family:var(--mono);font-size:14px;font-weight:600">
+      </div>
+      <div id="mktValPrev" style="font-size:10px;color:var(--text3);font-family:var(--mono);text-align:right;margin-top:4px;min-height:14px"></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;line-height:1.5">
+        From Schwab → Positions → Options → Mkt Val column.<br>
+        Enter negative for short positions (e.g. -1104.52).
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-sec" onclick="closeMktValMod()">Cancel</button>
+      <button class="btn-sec" style="color:var(--text3)" onclick="clearMktVal()">Clear</button>
+      <button class="btn-pri" onclick="saveMktVal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toastEl"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════
+   CONSTANTS
+════════════════════════════════════════════════════════ */
+const APP_VERSION = "3.0";
+const CLIENT_ID   = "305146523481-1gucm4vggu2pmucqjgae0vhb1deavnqb.apps.googleusercontent.com";
+const SCOPES      = "https://www.googleapis.com/auth/drive.appdata";
+const DRIVE_FILE  = "cs_tracker.json";
+const ETF_SYMS    = ["TSLY","ULTY","AMDY","CONY"];
+
+/* ════════════════════════════════════════════════════════
+   DEFAULT APP DATA — empty shell
+   Personal data lives in cs_etf_tracker.json (Drive)
+════════════════════════════════════════════════════════ */
+function mkDefault() {
+  return {
+    version: APP_VERSION,
+    settings: {
+      lastCsvImportDate: null,
+      lastUpdated: null,
+      optGoal: 250,
+      finnhubKey: "",
+      lastImportTimestamp: null
+    },
+    cash: {
+      seed: 0,
+      seedDate: null
+    },
+    etfs: [
+      {symbol:"TSLY",name:"YieldMax TSLA Option Income Strategy ETF",shares:0,costPerShare:0,totalCost:0,seedDivs:0,seedDivDate:null,currentPrice:null,priceChange:null,priceChangePct:null,hi52:null,lo52:null,lastPriceUpdate:null},
+      {symbol:"ULTY",name:"YieldMax Ultra Option Income Strategy ETF",shares:0,costPerShare:0,totalCost:0,seedDivs:0,seedDivDate:null,currentPrice:null,priceChange:null,priceChangePct:null,hi52:null,lo52:null,lastPriceUpdate:null},
+      {symbol:"AMDY",name:"YieldMax AMD Option Income Strategy ETF",shares:0,costPerShare:0,totalCost:0,seedDivs:0,seedDivDate:null,currentPrice:null,priceChange:null,priceChangePct:null,hi52:null,lo52:null,lastPriceUpdate:null},
+      {symbol:"CONY",name:"YieldMax COIN Option Income Strategy ETF",shares:0,costPerShare:0,totalCost:0,seedDivs:0,seedDivDate:null,currentPrice:null,priceChange:null,priceChangePct:null,hi52:null,lo52:null,lastPriceUpdate:null}
+    ],
+    stocks: [],
+    dividends: [],
+    stockDividends: [],
+    interest: [],
+    optionTrades: [],
+    fidelity: {
+      positions: [],
+      dividends: [],
+      interest: [],
+      cash: { balance: 0, balanceDate: null },
+      lastCsvImportDate: null,
+      lastImportTimestamp: null
+    },
+    research: { notes: {}, watchlist: ["SPY","NAIL","TSLA","AMD","MSTR","COIN"] }
+  };
+}
+
+/* ════════════════════════════════════════════════════════
+   STATE
+════════════════════════════════════════════════════════ */
+let appData       = mkDefault();
+let tokenClient   = null;
+let accessToken   = null;
+let driveConn     = false;
+let driveFileId   = null;
+let gapiReady     = false;
+let gisReady      = false;
+let pendingRows   = null;
+let curResSym     = null;
+let optChartInst  = null;
+let resChartInst  = null;
+
+/* ════════════════════════════════════════════════════════
+   FORMATTERS
+════════════════════════════════════════════════════════ */
+const f$    = v => v==null?'—':'$'+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fSign = v => v==null?'—':(v>=0?'+$':'-$')+Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fPct  = v => v==null?'—':(v>=0?'+':'')+v.toFixed(2)+'%';
+const fP    = v => v==null?'—':'$'+v.toFixed(2);
+const cc    = v => v==null?'':(v>0?'pos':v<0?'neg':'');
+
+function fDs(iso) {
+  if(!iso) return '—';
+  try{
+    const d=new Date(iso);
+    const date=`${d.getMonth()+1}/${d.getDate()}/${String(d.getFullYear()).slice(2)}`;
+    const time=d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    return `${date} ${time}`;
+  } catch{return iso;}
+}
+function fDt(s) { // MM/DD/YY from MM/DD/YYYY
+  if(!s)return'—';const p=s.split('/');return p.length===3?`${p[0]}/${p[1]}/${p[2].slice(-2)}`:s;
+}
+function cmpD(a,b) {
+  if(!a||!b)return 0;
+  const p=s=>{const[m,d,y]=s.split('/').map(Number);return new Date(y,m-1,d);};
+  return p(a)-p(b);
+}
+function parseAmt(s){return parseFloat(String(s||'').replace(/[$, ]/g,''))||0;}
+function daysLeft(expiry) {
+  if(!expiry)return null;
+  try{const[m,d,y]=expiry.split('/').map(Number);
+    const diff=new Date(y,m-1,d)-new Date();
+    return Math.ceil(diff/86400000);}catch{return null;}
+}
+function getMTD(){const n=new Date();return `${String(n.getMonth()+1).padStart(2,'0')}/01/${n.getFullYear()}`;}
+function getYTD(){return `01/01/${new Date().getFullYear()}`;}
+
+// Week numbering: Week 1 starts 12/29/2025
+function getWeek(dateStr) {
+  try {
+    const[m,d,y]=dateStr.split('/').map(Number);
+    const base=new Date(2025,11,29);
+    const diff=Math.floor((new Date(y,m-1,d)-base)/86400000);
+    return Math.max(1,Math.floor(diff/7)+1);
+  } catch {return 1;}
+}
+function weekStart(wn) {
+  const d=new Date(new Date(2025,11,29).getTime()+(wn-1)*7*86400000);
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+function weekEnd(wn) {
+  const d=new Date(new Date(2025,11,29).getTime()+(wn-1)*7*86400000+4*86400000);
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+function weekMonth(wn) {
+  const d=new Date(new Date(2025,11,29).getTime()+(wn-1)*7*86400000);
+  return d.getMonth()+1;
+}
+function tvSym(t) {
+  const m={SPY:'AMEX:SPY',NAIL:'AMEX:NAIL',DIA:'AMEX:DIA',IWM:'AMEX:IWM',
+           QQQ:'NASDAQ:QQQ',GLD:'AMEX:GLD',TLT:'NASDAQ:TLT'};
+  return m[t.toUpperCase()]||('NASDAQ:'+t.toUpperCase());
+}
+
+/* ════════════════════════════════════════════════════════
+   LOCAL STORAGE
+════════════════════════════════════════════════════════ */
+function saveLocal(){
+  try{localStorage.setItem('cst_v2',JSON.stringify(appData));}catch(e){}
+}
+function loadLocal(){
+  try{const s=localStorage.getItem('cst_v2');
+    if(s){appData=deepMerge(mkDefault(),JSON.parse(s));return true;}}catch(e){}
+  return false;
+}
+function deepMerge(t,s){
+  const o={...t};
+  for(const k in s){
+    if(s[k]&&typeof s[k]==='object'&&!Array.isArray(s[k])) o[k]=deepMerge(t[k]||{},s[k]);
+    else o[k]=s[k];
+  }
+  return o;
+}
+
+/* ════════════════════════════════════════════════════════
+   GOOGLE AUTH + DRIVE
+   (gapiLoaded / gisLoaded defined in <head> — bridge via window._*)
+════════════════════════════════════════════════════════ */
+// Expose runtime functions to the head-defined callbacks
+window._updDot  = () => updDot();
+window._toast   = (m,t) => toast(m,t);
+window._loadDrive = () => loadDrive();
+
+function connectDrive(){
+  const tc = window._tokenClient;
+  const gr = window._gapiReady;
+  const gi = window._gisReady;
+  if(!tc || !gr || !gi){
+    toast('Connecting to Google — please wait…','info');
+    let attempts=0;
+    const poll=setInterval(()=>{
+      attempts++;
+      if(window._tokenClient&&window._gapiReady&&window._gisReady){
+        clearInterval(poll);
+        window._tokenClient.requestAccessToken({prompt:''});
+      } else if(attempts>=12){
+        clearInterval(poll);
+        toast('Google API unavailable. Check console and refresh.','error');
+      }
+    },500);
+    return;
+  }
+  tc.requestAccessToken({prompt:''});
+}
+async function loadDrive(){
+  driveConn = true;
+  updDot();
+  try{
+    const r=await gapi.client.drive.files.list({spaces:'appDataFolder',q:`name='${DRIVE_FILE}'`,fields:'files(id,name)'});
+    if(r.result.files.length>0){
+      driveFileId=r.result.files[0].id;
+      const c=await gapi.client.drive.files.get({fileId:driveFileId,alt:'media'});
+      appData=deepMerge(mkDefault(),JSON.parse(c.body));
+      launchApp();
+      toast('Drive connected ✓','success');
+    } else {
+      // No Drive file — show first-run import screen
+      document.getElementById('loadingScreen').classList.add('hidden');
+      document.getElementById('firstRunScreen').classList.remove('hidden');
+    }
+  } catch(e){
+    console.error('Drive load:',e);
+    // Drive failed — fall back to local as safety net
+    if(!loadLocal()) appData=mkDefault();
+    launchApp();
+    toast('Drive unavailable — using local data','warning');
+  }
+}
+
+function launchApp(){
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('loadingScreen').classList.add('hidden');
+  document.getElementById('firstRunScreen').classList.add('hidden');
+  document.getElementById('mainApp').classList.remove('hidden');
+  renderAll();
+  fetchPrices(true);
+}
+
+// ── First-run JSON import ──────────────────────────────
+function onJsonDrop(e){
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag');
+  if(e.dataTransfer.files[0]) processJsonFile(e.dataTransfer.files[0]);
+}
+function onJsonFileInp(e){ if(e.target.files[0]) processJsonFile(e.target.files[0]); }
+function processJsonFile(file){
+  const msg = document.getElementById('firstRunMsg');
+  msg.style.color='var(--acc)';
+  msg.textContent='Reading file...';
+  const r=new FileReader();
+  r.onload=async ev=>{
+    try{
+      const parsed=JSON.parse(ev.target.result);
+      if(!parsed.etfs||!parsed.optionTrades){
+        msg.style.color='var(--red)';
+        msg.textContent='Invalid file — does not look like cs_etf_tracker.json';
+        return;
+      }
+      appData=deepMerge(mkDefault(),parsed);
+      saveLocal();
+      msg.style.color='var(--green)';
+      msg.textContent='✓ Data loaded — saving to Drive...';
+      await saveCloud();
+      toast('Data imported & saved to Drive ✓','success');
+      launchApp();
+    } catch(ex){
+      msg.style.color='var(--red)';
+      msg.textContent='Failed to parse JSON — check the file';
+    }
+  };
+  r.readAsText(file);
+}
+function startFresh(){
+  if(!confirm('Start with empty data? You can always import your JSON later via Settings.')) return;
+  appData=mkDefault();
+  saveLocal();
+  launchApp();
+}
+async function saveCloud(silent=false){
+  saveLocal();
+  if(!driveConn){if(!silent)toast('Not connected to Drive','warning');return;}
+  try{
+    appData.settings.lastUpdated=new Date().toISOString();
+    const body=JSON.stringify(appData,null,2);
+    if(driveFileId){
+      await gapi.client.request({path:`/upload/drive/v3/files/${driveFileId}`,method:'PATCH',
+        params:{uploadType:'media'},headers:{'Content-Type':'application/json'},body});
+    } else {
+      const m=await gapi.client.drive.files.create({resource:{name:DRIVE_FILE,parents:['appDataFolder']},fields:'id'});
+      driveFileId=m.result.id;
+      await gapi.client.request({path:`/upload/drive/v3/files/${driveFileId}`,method:'PATCH',
+        params:{uploadType:'media'},headers:{'Content-Type':'application/json'},body});
+    }
+    updHdr();
+    if(!silent) toast('Saved to Drive ✓','success');
+  } catch(e){console.error('Save:',e);if(!silent)toast('Saved locally only','warning');}
+}
+
+// Auto-save silently — Drive is master, every state change persists automatically
+function autoSave(){ saveCloud(true); }
+function updDot(){
+  const d=document.getElementById('ddot');
+  if(d) d.className='ddot'+(driveConn?' on':'');
+  const btn=document.getElementById('importCsvBtn');
+  if(btn){
+    btn.disabled=!driveConn;
+    btn.title=driveConn?'Import Schwab CSV':'Connect to Drive first';
+    btn.style.opacity=driveConn?'1':'0.45';
+    btn.style.cursor=driveConn?'pointer':'not-allowed';
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   LIVE PRICES — Finnhub (free API, proper CORS support)
+   Get free key at: finnhub.io
+════════════════════════════════════════════════════════ */
+async function fetchPrices(silent=false){
+  const key = appData.settings.finnhubKey || '';
+  if (!key) {
+    if(!silent) toast('Add your Finnhub API key in ⚙ Settings to enable live prices','warning');
+    return;
+  }
+  if(!silent) toast('Fetching prices...','info');
+  let hits = 0;
+
+  // ETF prices
+  for (const etf of appData.etfs) {
+    try {
+      const url = `https://finnhub.io/api/v1/quote?symbol=${etf.symbol}&token=${key}`;
+      const resp = await fetch(url, {signal: AbortSignal.timeout(6000)});
+      if (!resp.ok) continue;
+      const q = await resp.json();
+      if (!q.c || q.c === 0) continue;
+      etf.currentPrice    = q.c;
+      etf.priceChange     = parseFloat((q.c - q.pc).toFixed(4));
+      etf.priceChangePct  = parseFloat(((q.c - q.pc) / q.pc * 100).toFixed(4));
+      etf.hi52            = null;
+      etf.lo52            = null;
+      etf.lastPriceUpdate = new Date().toISOString();
+      hits++;
+    } catch(e) { console.warn('Finnhub fetch failed:', etf.symbol, e); }
+  }
+
+  // Stock prices
+  for (const stk of (appData.stocks||[])) {
+    try {
+      const url = `https://finnhub.io/api/v1/quote?symbol=${stk.symbol}&token=${key}`;
+      const resp = await fetch(url, {signal: AbortSignal.timeout(6000)});
+      if (!resp.ok) continue;
+      const q = await resp.json();
+      if (!q.c || q.c === 0) continue;
+      stk.currentPrice   = q.c;
+      stk.priceChange    = parseFloat((q.c - q.pc).toFixed(4));
+      stk.priceChangePct = parseFloat(((q.c - q.pc) / q.pc * 100).toFixed(4));
+      stk.lastPriceUpdate= new Date().toISOString();
+      hits++;
+    } catch(e) { console.warn('Finnhub fetch failed:', stk.symbol, e); }
+  }
+
+  if (hits > 0) {
+    saveLocal(); updHdr(); renderCards(); renderEtfTable(); renderDashPanels();
+    renderStockCards(); renderDashStockCards(); renderDashStockPanel();
+    if(!silent) toast(`Prices updated (${hits}) ✓`,'success');
+    autoSave();
+  } else {
+    if(!silent) toast('Price fetch failed — check your Finnhub API key in Settings','warning');
+  }
+}
+function refreshPrices(){ fetchPrices(false); }
+
+async function fetchQuote(sym){
+  const key = appData.settings.finnhubKey || '';
+  if (!key) return null;
+  try {
+    // Parallel fetches: quote + profile + metrics + VIX
+    const [qResp, pResp, mResp, vResp] = await Promise.allSettled([
+      fetch(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${key}`,              {signal: AbortSignal.timeout(6000)}),
+      fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${sym}&token=${key}`,     {signal: AbortSignal.timeout(6000)}),
+      fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${sym}&metric=all&token=${key}`, {signal: AbortSignal.timeout(6000)}),
+      fetch(`https://finnhub.io/api/v1/quote?symbol=VIX&token=${key}`,                {signal: AbortSignal.timeout(6000)})
+    ]);
+
+    const q = qResp.status==='fulfilled'&&qResp.value.ok ? await qResp.value.json() : null;
+    if (!q?.c) return null;
+
+    const p  = pResp.status==='fulfilled'&&pResp.value.ok ? await pResp.value.json() : {};
+    const m  = mResp.status==='fulfilled'&&mResp.value.ok ? await mResp.value.json() : {};
+    const vq = vResp.status==='fulfilled'&&vResp.value.ok ? await vResp.value.json() : null;
+
+    const metric = m.metric || {};
+    return {
+      symbol:                    sym,
+      shortName:                 p.name || sym,
+      regularMarketPrice:        q.c,
+      regularMarketChange:       q.c - q.pc,
+      regularMarketChangePercent:(q.c - q.pc) / q.pc * 100,
+      regularMarketVolume:       metric['10DayAverageTradingVolume'] ? metric['10DayAverageTradingVolume']*1e6 : null,
+      regularMarketDayHigh:      q.h,
+      regularMarketDayLow:       q.l,
+      regularMarketOpen:         q.o,
+      regularMarketPreviousClose:q.pc,
+      fiftyTwoWeekHigh:          metric['52WeekHigh']  || null,
+      fiftyTwoWeekLow:           metric['52WeekLow']   || null,
+      marketCap:                 p.marketCapitalization ? p.marketCapitalization*1e6 : null,
+      trailingPE:                metric['peNormalizedAnnual'] || metric['peTTM'] || null,
+      beta:                      metric['beta'] || null,
+      vix:                       vq?.c || null
+    };
+  } catch(e) { console.warn('fetchQuote error:', e); return null; }
+}
+
+/* ════════════════════════════════════════════════════════
+   CSV PARSER
+════════════════════════════════════════════════════════ */
+function parseCSVLine(line){
+  const cols=[];let inQ=false,cur='';
+  for(const ch of line){
+    if(ch==='"'){inQ=!inQ;continue;}
+    if(ch===','&&!inQ){cols.push(cur.trim());cur='';continue;}
+    cur+=ch;
+  }
+  cols.push(cur.trim());return cols;
+}
+function parseSchwabCSV(text){
+  const STOCK_SYMS=(appData.stocks||[]).map(s=>s.symbol);
+  const lines=text.trim().split('\n').filter(l=>l.trim());
+  const all=[];
+  for(let i=1;i<lines.length;i++){
+    const c=parseCSVLine(lines[i]);
+    if(c.length<8)continue;
+    // Handle "MM/DD/YYYY as of MM/DD/YYYY" date format for Pr Yr Cash Div
+    const rawDate=c[0].trim();
+    const date=rawDate.includes(' as of ')?rawDate.split(' as of ')[0].trim():rawDate;
+    all.push({date,action:c[1].trim(),symbol:c[2].trim(),desc:c[3].trim(),
+      qty:parseFloat(c[4])||0,price:parseAmt(c[5]),fees:parseAmt(c[6]),amount:parseAmt(c[7])});
+  }
+  const cutoff=appData.settings.lastCsvImportDate;
+  const VALID=['Sell to Open','Buy to Close','Cash Dividend','Qualified Dividend',
+               'Credit Interest','Buy','Pr Yr Cash Div'];
+  const keep=all.filter(r=>{
+    if(!VALID.includes(r.action))return false;
+    if(cutoff&&cmpD(r.date,cutoff)<0)return false;
+    // ETF Cash Dividends: only keep our 4 ETFs
+    if(r.action==='Cash Dividend'&&!ETF_SYMS.includes(r.symbol))return false;
+    // Pr Yr Cash Div: treat same as Cash Dividend — only ETFs
+    if(r.action==='Pr Yr Cash Div'&&!ETF_SYMS.includes(r.symbol))return false;
+    // Qualified Dividend: only keep known stocks
+    if(r.action==='Qualified Dividend'&&!STOCK_SYMS.includes(r.symbol))return false;
+    // Buy: only keep known stocks (or will auto-create)
+    // Credit Interest: always keep
+    return true;
+  });
+  return{all,keep};
+}
+
+/* ════════════════════════════════════════════════════════
+   CSV IMPORT UI
+════════════════════════════════════════════════════════ */
+function openImport(){
+  document.getElementById('cutoffLbl').textContent=appData.settings.lastCsvImportDate||'all time';
+  document.getElementById('importPrev').innerHTML='';
+  document.getElementById('doImportBtn').style.display='none';
+  pendingRows=null;
+  document.getElementById('csvMod').classList.remove('hidden');
+}
+function closeImport(){
+  document.getElementById('csvMod').classList.add('hidden');
+  document.getElementById('fileInp').value='';
+  pendingRows=null;
+}
+function onDrop(e){
+  e.preventDefault();document.getElementById('dropZ').classList.remove('drag');
+  if(e.dataTransfer.files[0])processFile(e.dataTransfer.files[0]);
+}
+function onFileInp(e){if(e.target.files[0])processFile(e.target.files[0]);}
+function processFile(file){
+  const r=new FileReader();
+  r.onload=ev=>{
+    const{all,keep}=parseSchwabCSV(ev.target.result);
+    pendingRows=keep;
+
+    // Categorize and dedup for preview
+    const newEtfDivs=keep.filter(r=>{
+      if(!['Cash Dividend','Pr Yr Cash Div'].includes(r.action))return false;
+      return !appData.dividends.find(d=>d.date===r.date&&d.symbol===r.symbol&&Math.abs(d.amount-r.amount)<0.01);
+    });
+    const newStkDivs=keep.filter(r=>{
+      if(r.action!=='Qualified Dividend')return false;
+      return !(appData.stockDividends||[]).find(d=>d.date===r.date&&d.symbol===r.symbol&&Math.abs(d.amount-r.amount)<0.01);
+    });
+    const newInterest=keep.filter(r=>{
+      if(r.action!=='Credit Interest')return false;
+      return !(appData.interest||[]).find(i=>i.date===r.date&&Math.abs(i.amount-r.amount)<0.01);
+    });
+    const newBuys=keep.filter(r=>{
+      if(r.action!=='Buy')return false;
+      const stk=appData.stocks.find(s=>s.symbol===r.symbol);
+      if(!stk) return true; // new stock
+      const lotAmt=Math.abs(r.amount);
+      const costPerShare=lotAmt/r.qty;
+      return !stk.lots.find(l=>l.date===r.date&&Math.abs(l.shares-r.qty)<0.001&&Math.abs(l.costPerShare-costPerShare)<0.01);
+    });
+    const newSTOs=keep.filter(r=>{
+      if(r.action!=='Sell to Open')return false;
+      return !appData.optionTrades.find(t=>t.fullSymbol===r.symbol&&t.stoDate===r.date);
+    });
+    const newBTCs=keep.filter(r=>{
+      if(r.action!=='Buy to Close')return false;
+      return !!appData.optionTrades.find(t=>t.status==='open'&&t.fullSymbol===r.symbol);
+    });
+
+    const netNew=newEtfDivs.length+newStkDivs.length+newInterest.length+newBuys.length+newSTOs.length+newBTCs.length;
+    const maxDate=keep.length?keep.reduce((mx,r)=>cmpD(r.date,mx)>0?r.date:mx,'01/01/2000'):null;
+    const skipped=(all.length-1)-netNew;
+
+    // Cash impact preview
+    const cashIn=newEtfDivs.reduce((s,r)=>s+r.amount,0)
+      +newStkDivs.reduce((s,r)=>s+r.amount,0)
+      +newInterest.reduce((s,r)=>s+r.amount,0)
+      +newSTOs.reduce((s,r)=>s+r.amount,0)
+      +newBTCs.reduce((s,r)=>s+r.amount,0)
+      +newBuys.reduce((s,r)=>s+r.amount,0); // buys are negative
+
+    const row=(lbl,cnt,col)=>cnt>0?`<span style="color:var(--text2)">${lbl}</span><span style="color:${col};font-weight:600">${cnt}</span>`:'';
+
+    let html=`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px">
+      <div style="font-weight:600;margin-bottom:10px;font-size:13px">${file.name}</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-family:var(--mono);font-size:12px;margin-bottom:10px">
+        <span style="color:var(--text2)">Total rows scanned:</span><span>${all.length-1}</span>
+        <span style="color:var(--text2)">Already imported / skipped:</span><span style="color:var(--text3)">${skipped}</span>
+        ${row('ETF dividends:',newEtfDivs.length,'var(--gold)')}
+        ${row('Stock dividends:',newStkDivs.length,'var(--green)')}
+        ${row('Interest payments:',newInterest.length,'var(--acc)')}
+        ${row('Stock buys (lots):',newBuys.length,'var(--green)')}
+        ${row('Options STO:',newSTOs.length,'var(--acc)')}
+        ${row('Options BTC:',newBTCs.length,'var(--acc)')}
+      </div>`;
+    if(newBuys.length){
+      html+=`<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:11px">`;
+      newBuys.forEach(r=>{
+        const cps=Math.abs(r.amount)/r.qty;
+        html+=`<div style="color:var(--green);font-family:var(--mono)">+ ${r.symbol} · ${r.qty} sh @ $${cps.toFixed(2)} (${r.date})</div>`;
+      });
+      html+=`</div>`;
+    }
+    if(cashIn!==0){
+      const cashCls=cashIn>0?'var(--green)':'var(--red)';
+      html+=`<div style="border-top:1px solid var(--border);padding-top:8px;font-size:12px;font-family:var(--mono)">
+        Cash impact: <span style="color:${cashCls};font-weight:600">${cashIn>0?'+':''}$${Math.abs(cashIn).toFixed(2)}</span></div>`;
+    }
+    if(maxDate) html+=`<div style="margin-top:8px;font-size:11px;color:var(--text2)">Cutoff will update to: <strong style="color:var(--gold)">${maxDate}</strong></div>`;
+    if(netNew===0) html+=`<div style="margin-top:8px;font-size:12px;color:var(--gold)">⚠ No new rows to import.</div>`;
+    html+=`</div>`;
+    document.getElementById('importPrev').innerHTML=html;
+    document.getElementById('doImportBtn').style.display=netNew>0?'block':'none';
+  };
+  r.readAsText(file);
+}
+function doImport(){
+  if(!pendingRows||!pendingRows.length)return;
+  let nEtfDiv=0,nStkDiv=0,nInt=0,nBuy=0,nSTO=0,nBTC=0;
+  let maxDate=appData.settings.lastCsvImportDate||'01/01/2000';
+  if(!appData.stockDividends)appData.stockDividends=[];
+  if(!appData.interest)appData.interest=[];
+  if(!appData.cash)appData.cash={seed:0,seedDate:null};
+
+  pendingRows.forEach(r=>{
+    if(cmpD(r.date,maxDate)>0) maxDate=r.date;
+    const sym=r.symbol;
+    const und=sym.split(' ')[0];
+
+    if(r.action==='Cash Dividend'||r.action==='Pr Yr Cash Div'){
+      if(ETF_SYMS.includes(sym)){
+        const dup=appData.dividends.find(d=>d.date===r.date&&d.symbol===sym&&Math.abs(d.amount-r.amount)<0.01);
+        if(!dup){
+          appData.dividends.push({id:'div_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+            date:r.date,symbol:sym,amount:r.amount});
+          nEtfDiv++;
+        }
+      }
+
+    } else if(r.action==='Qualified Dividend'){
+      const dup=appData.stockDividends.find(d=>d.date===r.date&&d.symbol===sym&&Math.abs(d.amount-r.amount)<0.01);
+      if(!dup){
+        appData.stockDividends.push({id:'sdiv_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+          date:r.date,symbol:sym,amount:r.amount,type:'Qualified Dividend'});
+        nStkDiv++;
+      }
+
+    } else if(r.action==='Credit Interest'){
+      const dup=appData.interest.find(i=>i.date===r.date&&Math.abs(i.amount-r.amount)<0.01);
+      if(!dup){
+        appData.interest.push({id:'int_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+          date:r.date,amount:r.amount,description:r.desc||'Credit Interest'});
+        nInt++;
+      }
+
+    } else if(r.action==='Buy'){
+      const costPerShare=r.qty>0?Math.abs(r.amount)/r.qty:Math.abs(r.price);
+      let stk=appData.stocks.find(s=>s.symbol===sym);
+      if(!stk){
+        // Auto-create stock entry
+        stk={symbol:sym,name:r.desc||sym,locked:false,currentPrice:null,
+          priceChange:null,priceChangePct:null,lastPriceUpdate:null,lots:[]};
+        appData.stocks.push(stk);
+      }
+      const dupLot=stk.lots.find(l=>l.date===r.date&&Math.abs(l.shares-r.qty)<0.001&&Math.abs(l.costPerShare-costPerShare)<0.01);
+      if(!dupLot){
+        stk.lots.push({date:r.date,shares:r.qty,costPerShare:parseFloat(costPerShare.toFixed(4))});
+        nBuy++;
+      }
+
+    } else if(r.action==='Sell to Open'){
+      const dup=appData.optionTrades.find(t=>t.fullSymbol===sym&&t.stoDate===r.date);
+      if(!dup){
+        const parts=sym.match(/(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/)||[];
+        appData.optionTrades.push({
+          id:'t'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+          underlying:und,fullSymbol:sym,expiry:parts[2]||'',
+          strike:parseFloat(parts[3])||0,optType:parts[4]||'P',
+          stoDate:r.date,stoPrice:r.price,stoFees:r.fees,stoAmt:r.amount,
+          btcDate:null,btcPrice:null,btcFees:null,btcAmt:null,
+          realizedPL:null,status:'open'
+        });nSTO++;
+      }
+
+    } else if(r.action==='Buy to Close'){
+      const sto=appData.optionTrades.find(t=>t.status==='open'&&t.fullSymbol===sym);
+      if(sto){
+        sto.btcDate=r.date;sto.btcPrice=r.price;sto.btcFees=r.fees;
+        sto.btcAmt=r.amount;sto.realizedPL=parseFloat((sto.stoAmt+r.amount).toFixed(2));
+        sto.status='closed';nBTC++;
+      }
+    }
+  });
+
+  appData.settings.lastCsvImportDate=maxDate;
+  appData.settings.lastImportTimestamp=new Date().toISOString();
+  appData.settings.lastUpdated=new Date().toISOString();
+  saveLocal();closeImport();renderAll();
+  const parts=[];
+  if(nEtfDiv)parts.push(`${nEtfDiv} ETF divs`);
+  if(nStkDiv)parts.push(`${nStkDiv} stk divs`);
+  if(nInt)parts.push(`${nInt} interest`);
+  if(nBuy)parts.push(`${nBuy} stock lots`);
+  if(nSTO)parts.push(`${nSTO} STO`);
+  if(nBTC)parts.push(`${nBTC} BTC`);
+  toast(`Imported: ${parts.join(' · ')} ✓`,'success');
+  autoSave();
+}
+
+/* ════════════════════════════════════════════════════════
+   DATA HELPERS
+════════════════════════════════════════════════════════ */
+function getDivTotal(sym){
+  const e=appData.etfs.find(x=>x.symbol===sym);
+  return (e?.seedDivs||0)+appData.dividends.filter(d=>d.symbol===sym).reduce((s,d)=>s+d.amount,0);
+}
+function getHMP(etf){return(getDivTotal(etf.symbol)/etf.totalCost)*100;}
+function getCurr(etf){const p=etf.currentPrice;return p?p*etf.shares:null;}
+
+// Cash flow for a week = sum of all STO amounts + BTC amounts in that week
+function weekCF(wn,und=null){
+  return appData.optionTrades.reduce((s,t)=>{
+    if(und&&t.underlying!==und)return s;
+    if(getWeek(t.stoDate)===wn) s+=t.stoAmt;
+    if(t.btcDate&&getWeek(t.btcDate)===wn) s+=t.btcAmt;
+    return s;
+  },0);
+}
+function weekCFByUnd(wn){
+  const unds=[...new Set(appData.optionTrades.map(t=>t.underlying))].sort();
+  const res={};unds.forEach(u=>res[u]=weekCF(wn,u));
+  return res;
+}
+function ytdRealizedPL(){
+  return appData.optionTrades.filter(t=>t.status==='closed'&&t.realizedPL!=null)
+    .reduce((s,t)=>s+t.realizedPL,0);
+}
+function mtdCF(){
+  const mn=new Date().getMonth()+1;
+  return appData.optionTrades.reduce((s,t)=>{
+    const sm=t.stoDate?parseInt(t.stoDate.split('/')[0]):0;
+    const bm=t.btcDate?parseInt(t.btcDate.split('/')[0]):0;
+    if(sm===mn) s+=t.stoAmt;
+    if(t.btcDate&&bm===mn) s+=t.btcAmt;
+    return s;
+  },0);
+}
+
+/* ════════════════════════════════════════════════════════
+   OPTIONS — MARKET VALUE MODAL
+════════════════════════════════════════════════════════ */
+let _mktValId = null;
+
+function openMktValMod(id){
+  const t=appData.optionTrades.find(t=>t.id===id);
+  if(!t)return;
+  _mktValId=id;
+  el('mktValSym').textContent=t.underlying;
+  el('mktValFull').textContent=t.fullSymbol;
+  el('mktValStrike').textContent='$'+t.strike;
+  el('mktValExpiry').textContent=t.expiry;
+  el('mktValColl').textContent=f$(t.stoAmt);
+  el('mktValInp').value=t.optMktVal!=null?t.optMktVal:'';
+  el('mktValPrev').textContent=t.optMktVal!=null?'Current: '+fSign(t.optMktVal):'No value set';
+  el('mktValMod').classList.remove('hidden');
+  setTimeout(()=>el('mktValInp').focus(),50);
+}
+function closeMktValMod(){
+  el('mktValMod').classList.add('hidden');
+  _mktValId=null;
+}
+function saveMktVal(){
+  if(!_mktValId)return;
+  const t=appData.optionTrades.find(t=>t.id===_mktValId);
+  if(!t)return;
+  const n=parseFloat(el('mktValInp').value);
+  if(isNaN(n)){toast('Please enter a valid number','warning');return;}
+  t.optMktVal=n;
+  saveLocal();closeMktValMod();
+  renderOpenPos();renderDashCashPanel();
+  autoSave();
+  toast(`Mkt val set: ${t.underlying} ${t.expiry} → ${fSign(n)}`,'success');
+}
+function clearMktVal(){
+  if(!_mktValId)return;
+  const t=appData.optionTrades.find(t=>t.id===_mktValId);
+  if(!t)return;
+  if(!confirm('Clear the market value for this position?'))return;
+  t.optMktVal=null;
+  saveLocal();closeMktValMod();
+  renderOpenPos();renderDashCashPanel();
+  autoSave();
+  toast(`Mkt val cleared for ${t.underlying} ${t.expiry}`,'warning');
+}
+
+/* ════════════════════════════════════════════════════════
+   FIDELITY — DATA HELPERS
+════════════════════════════════════════════════════════ */
+function fidShares(pos){
+  const base=pos.baseShares||0;
+  const newSh=(pos.lots||[]).reduce((s,l)=>s+l.shares,0);
+  return base+newSh;
+}
+function fidCost(pos){
+  const baseCost=(pos.baseShares||0)*(pos.baseAvgCost||0);
+  const newCost=(pos.lots||[]).reduce((s,l)=>s+(l.shares*l.price),0);
+  return baseCost+newCost;
+}
+function fidAvg(pos){const sh=fidShares(pos);return sh>0?fidCost(pos)/sh:0;}
+function fidCurrVal(pos){const p=pos.currentPrice;return p?fidShares(pos)*p:null;}
+function fidGL(pos){const cv=fidCurrVal(pos);return cv!=null?cv-fidCost(pos):null;}
+function fidGLPct(pos){const c=fidCost(pos);const gl=fidGL(pos);return(c>0&&gl!=null)?gl/c*100:null;}
+
+/* ════════════════════════════════════════════════════════
+   FIDELITY — RENDER CARDS
+════════════════════════════════════════════════════════ */
+function renderFidelityTab(){
+  const fid=appData.fidelity||{};
+  const positions=fid.positions||[];
+  el('fidCnt').textContent=positions.length;
+  const acct=fid.accountId||'—';
+  const acctEl=el('fidAcctLabel');
+  if(acctEl)acctEl.textContent=`Individual TOD · ${acct}`;
+
+  if(!positions.length){
+    el('fidCards').innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-i">🌿</div><p>No Fidelity positions yet.<br>Import Fidelity CSV or import your cs_tracker.json.</p></div>`;
+  } else {
+    el('fidCards').innerHTML=positions.map(pos=>{
+      const sh=fidShares(pos);
+      const cost=fidCost(pos);
+      const avg=fidAvg(pos);
+      const cv=fidCurrVal(pos);
+      const gl=fidGL(pos);
+      const glPct=fidGLPct(pos);
+      const p=pos.currentPrice;
+      const chgCls=pos.priceChange!=null?(pos.priceChange>=0?'pos':'neg'):'';
+      const chgHtml=p!=null&&pos.priceChange!=null
+        ?`<span class="${chgCls}" style="font-size:11px;font-family:var(--mono)">${pos.priceChange>=0?'+':''}${pos.priceChange.toFixed(2)} (${fPct(pos.priceChangePct)})</span>`:'';
+      const glCls=gl!=null?(gl>=0?'pos':'neg'):'';
+      const barPct=glPct!=null?Math.min(100,Math.max(0,50+glPct/2)):50;
+      const barColor=gl!=null&&gl>=0?'var(--green)':'var(--red)';
+      return `<div class="fpc">
+        <div class="fpc-sym">${pos.symbol}</div>
+        <div class="fpc-name">${pos.name||''}</div>
+        <div class="fpc-price">${p!=null?'$'+p.toFixed(2):'—'} ${chgHtml}</div>
+        <div class="fpc-stats">
+          <div><div class="es-lbl">Shares</div><div class="es-val">${sh.toFixed(3)}</div></div>
+          <div><div class="es-lbl">Avg Cost</div><div class="es-val">${fP(avg)}</div></div>
+          <div><div class="es-lbl">Cost Basis</div><div class="es-val">${f$(cost)}</div></div>
+          <div><div class="es-lbl">Curr Value</div><div class="es-val ${glCls}">${cv!=null?f$(cv):'—'}</div></div>
+          <div><div class="es-lbl">G/L $</div><div class="es-val ${glCls}">${gl!=null?fSign(gl):'—'}</div></div>
+          <div><div class="es-lbl">G/L %</div><div class="es-val ${glCls}">${glPct!=null?fPct(glPct):'—'}</div></div>
+        </div>
+        <div class="fpc-bar"><div class="fpc-bar-fill" style="width:${barPct.toFixed(1)}%;background:${barColor}"></div></div>
+      </div>`;
+    }).join('');
+  }
+
+  // Summary panel
+  const positions2=fid.positions||[];
+  const totCost=positions2.reduce((s,p)=>s+fidCost(p),0);
+  const hasPrices=positions2.some(p=>p.currentPrice!=null);
+  const totCV=hasPrices?positions2.reduce((s,p)=>{const cv=fidCurrVal(p);return cv!=null?s+cv:s;},0):null;
+  const totGL=totCV!=null?totCV-totCost:null;
+  const totGLPct=totCost>0&&totGL!=null?totGL/totCost*100:null;
+  const cash=(fid.cash&&fid.cash.balance)||0;
+  const totAcct=totCV!=null?totCV+cash:null;
+  const best=hasPrices?positions2.filter(p=>fidGLPct(p)!=null).sort((a,b)=>fidGLPct(b)-fidGLPct(a))[0]:null;
+  const worst=hasPrices?positions2.filter(p=>fidGLPct(p)!=null).sort((a,b)=>fidGLPct(a)-fidGLPct(b))[0]:null;
+
+  el('fidSummaryPnl').innerHTML=`
+    <div class="pnl-t" style="color:var(--green)">🌿 Account Summary — Individual TOD</div>
+    <div class="sr"><span class="sr-l">Total Deployed (cost basis)</span><span class="sr-r">${f$(totCost)}</span></div>
+    <div class="sr"><span class="sr-l">Current Market Value</span><span class="sr-r ${totCV!=null?(totGL>=0?'pos':'neg'):''}">${totCV!=null?f$(totCV):'—'}</span></div>
+    <div class="sr"><span class="sr-l">Unrealized G/L</span><span class="sr-r ${totGL!=null?(totGL>=0?'pos':'neg'):''}" style="font-size:15px;font-weight:600">${totGL!=null?fSign(totGL):'—'}</span></div>
+    <div class="sr"><span class="sr-l">Return</span><span class="sr-r ${totGLPct!=null?(totGLPct>=0?'pos':'neg'):''}">${totGLPct!=null?fPct(totGLPct):'—'}</span></div>
+    <div class="sr" style="border-top:2px solid var(--border2)">
+      <span class="sr-l" style="color:var(--text3)">Cash</span><span class="sr-r acc">${f$(cash)}</span></div>
+    <div class="sr"><span class="sr-l" style="font-weight:600">Total Account Value</span>
+      <span class="sr-r pos" style="font-size:15px;font-weight:600">${totAcct!=null?f$(totAcct+cash):'—'}</span></div>
+    ${best?`<div class="sr" style="margin-top:4px"><span class="sr-l" style="color:var(--text3)">Best</span><span class="sr-r pos">${best.symbol} ${fPct(fidGLPct(best))}</span></div>`:''}
+    ${worst&&worst!==best?`<div class="sr"><span class="sr-l" style="color:var(--text3)">Worst</span><span class="sr-r neg">${worst.symbol} ${fPct(fidGLPct(worst))}</span></div>`:''}`;
+
+  // Income panel
+  const divs=fid.dividends||[];
+  const ints=fid.interest||[];
+  const totDiv=divs.reduce((s,d)=>s+d.amount,0);
+  const totInt=ints.reduce((s,i)=>s+i.amount,0);
+  const bySymbol={};
+  divs.forEach(d=>{bySymbol[d.symbol]=(bySymbol[d.symbol]||0)+d.amount;});
+  el('fidIncomePnl').innerHTML=`
+    <div class="pnl-t" style="color:var(--gold)">💰 Income Received</div>
+    ${Object.entries(bySymbol).map(([sym,amt])=>
+      `<div class="sr"><span class="sr-l">${sym} Dividends</span><span class="sr-r gld">+${f$(amt)}</span></div>`
+    ).join('')}
+    <div class="sr"><span class="sr-l">Total Dividends</span><span class="sr-r gld">+${f$(totDiv)}</span></div>
+    <div class="sr"><span class="sr-l">Interest Earned</span><span class="sr-r acc">+${f$(totInt)}</span></div>
+    <div class="sr" style="border-top:2px solid var(--border2)">
+      <span class="sr-l" style="font-weight:600">Total Income</span>
+      <span class="sr-r pos" style="font-size:15px;font-weight:600">+${f$(totDiv+totInt)}</span></div>
+    <div style="font-size:10px;color:var(--text3);margin-top:8px">
+      DCA period: Jan–Apr 2025 · $2,008.51 deployed<br>
+      Last import: ${fid.lastCsvImportDate||'—'}</div>`;
+
+  // Dividend + interest log
+  const allLog=[
+    ...divs.map(d=>({...d,type:'Dividend'})),
+    ...ints.map(i=>({...i,symbol:'FCASH',type:'Interest'}))
+  ].sort((a,b)=>cmpD(b.date,a.date));
+  el('fidDivCnt').textContent=allLog.length;
+  el('fidLogTbody').innerHTML=allLog.length
+    ?allLog.map(r=>`<tr>
+        <td class="muted">${r.date}</td>
+        <td class="sym" style="color:var(--green)">${r.symbol}</td>
+        <td><span class="tag ${r.type==='Interest'?'tb2':'tg'}">${r.type}</span></td>
+        <td class="r gld">+${f$(r.amount)}</td>
+      </tr>`).join('')
+    :`<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--text3)">No income records yet</td></tr>`;
+}
+
+/* ════════════════════════════════════════════════════════
+   FIDELITY — LIVE PRICES
+════════════════════════════════════════════════════════ */
+async function fetchFidelityPrices(){
+  const key=appData.settings.finnhubKey||'';
+  if(!key){toast('Add Finnhub API key in ⚙ Settings','warning');return;}
+  const positions=(appData.fidelity&&appData.fidelity.positions)||[];
+  if(!positions.length){toast('No Fidelity positions to price','warning');return;}
+  toast('Fetching Fidelity prices...','info');
+  let hits=0;
+  for(const pos of positions){
+    try{
+      const url=`https://finnhub.io/api/v1/quote?symbol=${pos.symbol}&token=${key}`;
+      const resp=await fetch(url,{signal:AbortSignal.timeout(6000)});
+      if(!resp.ok)continue;
+      const q=await resp.json();
+      if(!q.c||q.c===0)continue;
+      pos.currentPrice=q.c;
+      pos.priceChange=parseFloat((q.c-q.pc).toFixed(4));
+      pos.priceChangePct=parseFloat(((q.c-q.pc)/q.pc*100).toFixed(4));
+      pos.lastPriceUpdate=new Date().toISOString();
+      hits++;
+    }catch(e){console.warn('Fidelity price fetch failed:',pos.symbol,e);}
+  }
+  if(hits>0){
+    saveLocal();renderFidelityTab();autoSave();
+    toast(`Fidelity prices updated (${hits}) ✓`,'success');
+  } else {
+    toast('Fidelity price fetch failed — check Finnhub key','warning');
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   FIDELITY — CSV IMPORT
+════════════════════════════════════════════════════════ */
+let fidPendingRows=null;
+
+function openFidImport(){
+  fidPendingRows=null;
+  el('fidImportPrev').innerHTML='';
+  el('doFidImportBtn').style.display='none';
+  el('fidCsvMod').classList.remove('hidden');
+}
+function closeFidImport(){
+  el('fidCsvMod').classList.add('hidden');
+  el('fidFileInp').value='';
+  fidPendingRows=null;
+}
+function onFidDrop(e){
+  e.preventDefault();el('fidDropZ').classList.remove('drag');
+  if(e.dataTransfer.files[0])processFidFile(e.dataTransfer.files[0]);
+}
+function onFidFileInp(e){if(e.target.files[0])processFidFile(e.target.files[0]);}
+
+function parseFidelityCSV(text){
+  if(!appData.fidelity)appData.fidelity={positions:[],dividends:[],interest:[],cash:{balance:0,balanceDate:null},lastCsvImportDate:null,lastImportTimestamp:null};
+  const lines=text.split('\n').filter(l=>l.trim()&&!l.startsWith('"The')&&!l.startsWith('"Brokerage')&&!l.startsWith('"Financial')&&!l.startsWith('Date down'));
+  const rows=[];
+  lines.forEach(line=>{
+    const cols=[];let cur='',inQ=false;
+    for(const ch of line){
+      if(ch==='"'){inQ=!inQ;continue;}
+      if(ch===','&&!inQ){cols.push(cur.trim());cur='';continue;}
+      cur+=ch;
+    }
+    cols.push(cur.trim());
+    if(cols.length>=11&&cols[0]&&cols[1]&&cols[0]!=='Run Date')rows.push(cols);
+  });
+  const cutoff=appData.fidelity.lastCsvImportDate;
+  const FIDELITY_SYMS=['AMZN','NVDA','PLTR','SPY','TSLA']; // known + any new buys
+  const all=rows.map(c=>({
+    date:c[0].trim(),action:c[1].trim(),symbol:c[2].trim(),
+    price:parseFloat(c[5])||0,qty:parseFloat(c[6])||0,amount:parseFloat(c[10])||0
+  }));
+  const keep=all.filter(r=>{
+    if(cutoff&&cmpD(r.date,cutoff)<0)return false;
+    if(r.action.startsWith('YOU BOUGHT')&&r.symbol&&r.symbol!=='315994103')return true;
+    if(r.action.startsWith('DIVIDEND RECEIVED')&&r.symbol&&r.symbol!=='315994103')return true;
+    if(r.action.startsWith('INTEREST EARNED'))return true;
+    return false;
+  });
+  return{all,keep};
+}
+
+function processFidFile(file){
+  const r=new FileReader();
+  r.onload=ev=>{
+    const{all,keep}=parseFidelityCSV(ev.target.result);
+    fidPendingRows=keep;
+    const fid=appData.fidelity||{};
+    const newBuys=keep.filter(r=>{
+      if(!r.action.startsWith('YOU BOUGHT'))return false;
+      const pos=((fid.positions)||[]).find(p=>p.symbol===r.symbol);
+      if(!pos)return true; // new symbol
+      return !(pos.lots||[]).find(l=>l.date===r.date&&Math.abs(l.shares-r.qty)<0.0001&&Math.abs(l.price-r.price)<0.01);
+    });
+    const newDivs=keep.filter(r=>{
+      if(!r.action.startsWith('DIVIDEND RECEIVED'))return false;
+      return !((fid.dividends)||[]).find(d=>d.date===r.date&&d.symbol===r.symbol&&Math.abs(d.amount-r.amount)<0.001);
+    });
+    const newInt=keep.filter(r=>{
+      if(!r.action.startsWith('INTEREST EARNED'))return false;
+      return !((fid.interest)||[]).find(i=>i.date===r.date&&Math.abs(i.amount-r.amount)<0.001);
+    });
+    const netNew=newBuys.length+newDivs.length+newInt.length;
+    const maxDate=keep.length?keep.reduce((mx,r)=>cmpD(r.date,mx)>0?r.date:mx,'01/01/2000'):null;
+    const skipped=(all.length)-netNew;
+    const row=(lbl,cnt,col)=>cnt>0?`<span style="color:var(--text2)">${lbl}</span><span style="color:${col};font-weight:600">${cnt}</span>`:'';
+    let html=`<div style="background:var(--bg2);border:1px solid rgba(16,185,129,.2);border-radius:8px;padding:14px">
+      <div style="font-weight:600;margin-bottom:10px;font-size:13px;color:var(--green)">${file.name}</div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-family:var(--mono);font-size:12px;margin-bottom:8px">
+        <span style="color:var(--text2)">Total rows scanned:</span><span>${all.length}</span>
+        <span style="color:var(--text2)">Already imported/skipped:</span><span style="color:var(--text3)">${skipped}</span>
+        ${row('Stock buys (new lots):',newBuys.length,'var(--green)')}
+        ${row('Dividends:',newDivs.length,'var(--gold)')}
+        ${row('Interest:',newInt.length,'var(--acc)')}
+      </div>`;
+    if(newBuys.length){
+      html+=`<div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);border-radius:5px;padding:7px 10px;margin-bottom:8px;font-size:11px">`;
+      newBuys.forEach(r=>{ html+=`<div style="color:var(--green);font-family:var(--mono)">+ ${r.symbol} ${r.qty} sh @ $${r.price.toFixed(2)} (${r.date})</div>`; });
+      html+=`</div>`;
+    }
+    if(maxDate)html+=`<div style="font-size:11px;color:var(--text2);margin-top:6px">Cutoff will update to: <strong style="color:var(--gold)">${maxDate}</strong></div>`;
+    if(netNew===0)html+=`<div style="margin-top:8px;font-size:12px;color:var(--gold)">⚠ No new rows to import.</div>`;
+    html+=`</div>`;
+    el('fidImportPrev').innerHTML=html;
+    el('doFidImportBtn').style.display=netNew>0?'block':'none';
+  };
+  r.readAsText(file);
+}
+
+function doFidImport(){
+  if(!fidPendingRows||!fidPendingRows.length)return;
+  if(!appData.fidelity)appData.fidelity={positions:[],dividends:[],interest:[],cash:{balance:0,balanceDate:null},lastCsvImportDate:null,lastImportTimestamp:null};
+  let nBuy=0,nDiv=0,nInt=0;
+  let maxDate=appData.fidelity.lastCsvImportDate||'01/01/2000';
+  fidPendingRows.forEach(r=>{
+    if(cmpD(r.date,maxDate)>0)maxDate=r.date;
+    if(r.action.startsWith('YOU BOUGHT')&&r.symbol){
+      let pos=appData.fidelity.positions.find(p=>p.symbol===r.symbol);
+      if(!pos){
+        pos={symbol:r.symbol,name:r.symbol,baseShares:0,baseAvgCost:0,lots:[],
+          currentPrice:null,priceChange:null,priceChangePct:null,lastPriceUpdate:null};
+        appData.fidelity.positions.push(pos);
+      }
+      const dup=(pos.lots||[]).find(l=>l.date===r.date&&Math.abs(l.shares-r.qty)<0.0001&&Math.abs(l.price-r.price)<0.01);
+      if(!dup){
+        if(!pos.lots)pos.lots=[];
+        pos.lots.push({date:r.date,shares:r.qty,price:r.price,amount:Math.abs(r.amount)});
+        nBuy++;
+      }
+    } else if(r.action.startsWith('DIVIDEND RECEIVED')&&r.symbol){
+      const dup=(appData.fidelity.dividends||[]).find(d=>d.date===r.date&&d.symbol===r.symbol&&Math.abs(d.amount-r.amount)<0.001);
+      if(!dup){
+        if(!appData.fidelity.dividends)appData.fidelity.dividends=[];
+        appData.fidelity.dividends.push({id:'fdiv_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),date:r.date,symbol:r.symbol,amount:r.amount});
+        nDiv++;
+      }
+    } else if(r.action.startsWith('INTEREST EARNED')){
+      const dup=(appData.fidelity.interest||[]).find(i=>i.date===r.date&&Math.abs(i.amount-r.amount)<0.001);
+      if(!dup){
+        if(!appData.fidelity.interest)appData.fidelity.interest=[];
+        appData.fidelity.interest.push({id:'fint_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),date:r.date,amount:r.amount});
+        nInt++;
+      }
+    }
+  });
+  appData.fidelity.lastCsvImportDate=maxDate;
+  appData.fidelity.lastImportTimestamp=new Date().toISOString();
+  saveLocal();closeFidImport();renderFidelityTab();
+  const parts=[];
+  if(nBuy)parts.push(`${nBuy} lots`);
+  if(nDiv)parts.push(`${nDiv} divs`);
+  if(nInt)parts.push(`${nInt} interest`);
+  toast(`Fidelity import: ${parts.join(' · ')} ✓`,'success');
+  autoSave();
+}
+
+function toggleFidLog(){
+  const wrap=el('fidLogWrap');const lbl=el('fidLogLabel');
+  const open=wrap.style.display!=='none';
+  wrap.style.display=open?'none':'';
+  lbl.textContent=open?'▶ Show':'▼ Hide';
+}
+
+/* ════════════════════════════════════════════════════════
+   RENDER ALL
+════════════════════════════════════════════════════════ */
+function renderAll(){
+  updHdr();updDot();
+  renderCards();renderDashStockCards();renderDashPanels();renderDashStockPanel();renderDashCashPanel();
+  renderEtfTable();renderDivLog();
+  renderOptionsTab();
+  renderStockCards();
+  renderFidelityTab();
+  renderWLChips();
+}
+function updHdr(){
+  el('hLastImport').textContent=appData.settings.lastImportTimestamp?fDs(appData.settings.lastImportTimestamp):'—';
+  el('hLastSaved').textContent=appData.settings.lastUpdated?fDs(appData.settings.lastUpdated):'—';
+  const px=appData.etfs.find(e=>e.lastPriceUpdate);
+  el('hPriceTime').textContent=px?fDs(px.lastPriceUpdate):'—';
+  const stamp=el('priceStamp');
+  if(stamp) stamp.textContent=px?`Prices as of ${fDs(px.lastPriceUpdate)}`:'';
+}
+function el(id){return document.getElementById(id);}
+
+/* ════════════════════════════════════════════════════════
+   DASHBOARD ETF CARDS
+════════════════════════════════════════════════════════ */
+function renderCards(){
+  el('dashCards').innerHTML=appData.etfs.map(etf=>{
+    const p=etf.currentPrice;const cv=getCurr(etf);
+    const divs=getDivTotal(etf.symbol);
+    const unrl=cv!=null?cv-etf.totalCost:null;
+    const toRecoup=etf.totalCost-divs;           // positive = still owed, negative = fully recouped
+    const netLiq=cv!=null?cv-toRecoup:null;      // Net if Liquidated = Curr Value - Still to Recoup
+    const hp=getHMP(etf);const hm=hp>=100;
+    const chgCls=etf.priceChange!=null?(etf.priceChange>=0?'pos':'neg'):'';
+    const chgHtml=etf.priceChange!=null
+      ?`<span class="ec-chg ${chgCls}">${etf.priceChange>=0?'+':''}${etf.priceChange.toFixed(2)} (${fPct(etf.priceChangePct)})</span>`:'';
+    const recoupCls=toRecoup<=0?'pos':'neg';
+    const recoupLbl=toRecoup<=0?'Fully Recouped ✓':'Still to Recoup';
+    return `<div class="ec ${hm?'hm':''}">
+      <div class="ec-hdr"><span class="ec-sym">${etf.symbol}</span>${hm?`<span class="hm-b">🏠 House $</span>`:''}</div>
+      <div class="ec-name" title="${etf.name}">${etf.name}</div>
+      <div class="ec-p-row">
+        <span style="color:var(--text2);font-size:14px">$</span>
+        <span class="ec-price" contenteditable="true"
+          onblur="setManual('${etf.symbol}',this)"
+          title="Click to enter price manually">${p!=null?p.toFixed(2):'—'}</span>
+        ${chgHtml}
+        ${!p&&!appData.settings.finnhubKey?`<span style="font-size:10px;color:var(--text3);font-family:var(--sans)">Add API key in ⚙</span>`:''}
+      </div>
+      <div class="ec-stats">
+        <div><div class="es-lbl">Shares</div><div class="es-val">${etf.shares}</div></div>
+        <div><div class="es-lbl">Cost/sh</div><div class="es-val">${fP(etf.costPerShare)}</div></div>
+        <div><div class="es-lbl">Total Cost</div><div class="es-val">${f$(etf.totalCost)}</div></div>
+        <div><div class="es-lbl">Curr Value</div><div class="es-val ${cc(unrl)}">${cv!=null?f$(cv):'—'}</div></div>
+        <div><div class="es-lbl">Divs Recv'd</div><div class="es-val gld">${f$(divs)}</div></div>
+        <div><div class="es-lbl">${recoupLbl}</div><div class="es-val ${recoupCls}">${toRecoup<=0?f$(Math.abs(toRecoup)):f$(toRecoup)}</div></div>
+        <div><div class="es-lbl">Net if Liquidated</div><div class="es-val ${netLiq!=null?cc(netLiq):''}" style="grid-column:span 2">${netLiq!=null?fSign(netLiq):'(divs) '+f$(divs)}</div></div>
+      </div>
+      <div class="pb-wrap">
+        <div class="pb-labels"><span>Div Coverage</span><span>${hp.toFixed(1)}%</span></div>
+        <div class="pb"><div class="pb-fill ${hm?'ov':hp>70?'w':'n'}" style="width:${Math.min(hp,100).toFixed(1)}%"></div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function setManual(sym,elem){
+  const v=parseFloat(elem.textContent.replace(/[^0-9.]/g,''));
+  if(!isNaN(v)&&v>0){
+    const e=appData.etfs.find(x=>x.symbol===sym);
+    if(e){e.currentPrice=v;saveLocal();renderAll();autoSave();}
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   STOCK HELPERS
+════════════════════════════════════════════════════════ */
+function stkShares(stk){ return (stk.lots||[]).reduce((s,l)=>s+l.shares,0); }
+function stkBasis(stk){ return (stk.lots||[]).reduce((s,l)=>s+(l.shares*l.costPerShare),0); }
+function stkAvgCost(stk){ const sh=stkShares(stk); return sh>0?stkBasis(stk)/sh:0; }
+function stkCurrVal(stk){ const p=stk.currentPrice; return p?stkShares(stk)*p:null; }
+function stkGL(stk){ const cv=stkCurrVal(stk); return cv!=null?cv-stkBasis(stk):null; }
+function stkGLPct(stk){ const b=stkBasis(stk); const gl=stkGL(stk); return (b>0&&gl!=null)?gl/b*100:null; }
+
+/* ════════════════════════════════════════════════════════
+   STOCK CARDS — STOCKS TAB
+════════════════════════════════════════════════════════ */
+function renderStockCards(){
+  const stks = appData.stocks||[];
+  el('stkCnt').textContent = stks.length;
+  if(!stks.length){
+    el('stkCards').innerHTML=`<div class="empty" style="grid-column:1/-1"><div class="empty-i">🏦</div><p>No stocks yet — click + Add Stock to get started.</p></div>`;
+    return;
+  }
+  el('stkCards').innerHTML = stks.map((stk,si)=>{
+    const sh    = stkShares(stk);
+    const basis = stkBasis(stk);
+    const avg   = stkAvgCost(stk);
+    const cv    = stkCurrVal(stk);
+    const gl    = stkGL(stk);
+    const glPct = stkGLPct(stk);
+    const p     = stk.currentPrice;
+    const chgCls= stk.priceChange!=null?(stk.priceChange>=0?'pos':'neg'):'';
+    const chgHtml= p!=null&&stk.priceChange!=null
+      ?`<span class="${chgCls}" style="font-size:12px;font-family:var(--mono)">${stk.priceChange>=0?'+':''}${stk.priceChange.toFixed(2)} (${fPct(stk.priceChangePct)})</span>`:'';
+    const glCls = gl!=null?(gl>=0?'pos':'neg'):'';
+    const lockBtn= stk.locked
+      ?`<button class="btn-lock unlocked" onclick="toggleStockLock(${si})">🔓 Unlock</button>`
+      :`<button class="btn-lock" onclick="toggleStockLock(${si})">🔒 Lock</button>`;
+    const lotsHtml = (stk.lots||[]).map((lot,li)=>`
+      <div class="skc-lot-row">
+        <span>${lot.date} · ${lot.shares} sh</span>
+        <span>${fP(lot.costPerShare)}</span>
+        ${!stk.locked?`<span style="cursor:pointer;color:var(--red);font-size:11px;margin-left:6px" onclick="deleteLot(${si},${li})" title="Remove lot">×</span>`:''}
+      </div>`).join('');
+    const addLotBtn = stk.locked
+      ?`<button class="btn-add-lot" disabled>+ Add Lot (unlock first)</button>`
+      :`<button class="btn-add-lot" onclick="openAddLot(${si})">+ Add Lot</button>`;
+    return `<div class="skc${stk.locked?' locked':''}">
+      <div class="skc-hdr">
+        <div>
+          <div class="skc-sym">${stk.symbol}</div>
+          <div class="skc-name">${stk.name||''}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end">
+          ${lockBtn}
+          <button onclick="deleteStock(${si})" style="background:none;border:none;color:var(--text4);font-size:11px;cursor:pointer;padding:0" title="Remove stock">🗑</button>
+        </div>
+      </div>
+      <div class="skc-price ${p==null?'muted':''}">${p!=null?'$'+p.toFixed(2):'—'} ${chgHtml}</div>
+      <div class="skc-lots">
+        <div class="skc-lots-hdr">${(stk.lots||[]).length} LOT${(stk.lots||[]).length!==1?'S':''}</div>
+        ${lotsHtml}
+        <div class="skc-avg"><span>Avg cost</span><span>${fP(avg)}</span></div>
+      </div>
+      <div class="skc-stats">
+        <div><div class="es-lbl">Cost Basis</div><div class="es-val">${f$(basis)}</div></div>
+        <div><div class="es-lbl">Curr Value</div><div class="es-val ${cv!=null?cc(cv-basis):''}">${cv!=null?f$(cv):'—'}</div></div>
+        <div><div class="es-lbl">Unreal G/L</div><div class="es-val ${glCls}">${gl!=null?fSign(gl):'—'}</div></div>
+        <div><div class="es-lbl">G/L %</div><div class="es-val ${glCls}">${glPct!=null?fPct(glPct):'—'}</div></div>
+      </div>
+      ${addLotBtn}
+    </div>`;
+  }).join('');
+}
+
+/* ════════════════════════════════════════════════════════
+   STOCK CARDS — DASHBOARD ROW (compact)
+════════════════════════════════════════════════════════ */
+function renderDashStockCards(){
+  const stks = appData.stocks||[];
+  const el2 = document.getElementById('dashStkCards');
+  if(!el2) return;
+  if(!stks.length){ el2.innerHTML=''; return; }
+  el2.style.marginBottom='0';
+  el2.innerHTML = stks.map(stk=>{
+    const sh    = stkShares(stk);
+    const basis = stkBasis(stk);
+    const avg   = stkAvgCost(stk);
+    const cv    = stkCurrVal(stk);
+    const gl    = stkGL(stk);
+    const glPct = stkGLPct(stk);
+    const p     = stk.currentPrice;
+    const chgCls= stk.priceChange!=null?(stk.priceChange>=0?'pos':'neg'):'';
+    const chgHtml= p!=null&&stk.priceChange!=null
+      ?`<span class="ec-chg ${chgCls}">${stk.priceChange>=0?'+':''}${stk.priceChange.toFixed(2)} (${fPct(stk.priceChangePct)})</span>`:'';
+    const glCls = gl!=null?(gl>=0?'pos':'neg'):'';
+    const pctBar= glPct!=null?Math.max(0,Math.min(100,100+glPct)):0;
+    const barCls= gl!=null&&gl>=0?'n':'ov';
+    return `<div class="ec" style="border-color:rgba(16,185,129,0.25)">
+      <div class="ec-hdr"><span class="ec-sym" style="color:var(--green)">${stk.symbol}</span></div>
+      <div class="ec-name">${stk.name||''}</div>
+      <div class="ec-p-row">
+        <span style="color:var(--text2);font-size:14px">$</span>
+        <span class="ec-price" style="cursor:default">${p!=null?p.toFixed(2):'—'}</span>
+        ${chgHtml}
+      </div>
+      <div class="ec-stats">
+        <div><div class="es-lbl">Shares</div><div class="es-val">${sh}</div></div>
+        <div><div class="es-lbl">Avg Cost</div><div class="es-val">${fP(avg)}</div></div>
+        <div><div class="es-lbl">Cost Basis</div><div class="es-val">${f$(basis)}</div></div>
+        <div><div class="es-lbl">Curr Value</div><div class="es-val ${glCls}">${cv!=null?f$(cv):'—'}</div></div>
+        <div><div class="es-lbl">Unreal G/L</div><div class="es-val ${glCls}" style="grid-column:span 2">${gl!=null?fSign(gl)+' ('+fPct(glPct)+')':'—'}</div></div>
+      </div>
+      <div class="pb-wrap">
+        <div class="pb-labels"><span>vs Cost Basis</span><span class="${glCls}" style="font-family:var(--mono)">${glPct!=null?fPct(glPct):'—'}</span></div>
+        <div class="pb"><div class="pb-fill ${barCls}" style="width:${pctBar.toFixed(1)}%"></div></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ════════════════════════════════════════════════════════
+   STOCK PANEL — DASHBOARD SUMMARY
+════════════════════════════════════════════════════════ */
+function renderDashStockPanel(){
+  const stks = appData.stocks||[];
+  const pnl  = el('dashStkPnl');
+  if(!pnl) return;
+  const totBasis= stks.reduce((s,stk)=>s+stkBasis(stk),0);
+  const hasPrices= stks.some(stk=>stk.currentPrice!=null);
+  const totCV   = hasPrices?stks.reduce((s,stk)=>{const cv=stkCurrVal(stk);return cv!=null?s+cv:s;},0):null;
+  const totGL   = totCV!=null?totCV-totBasis:null;
+  const totGLPct= totBasis>0&&totGL!=null?totGL/totBasis*100:null;
+  const best    = hasPrices?stks.filter(stk=>stkGLPct(stk)!=null).sort((a,b)=>stkGLPct(b)-stkGLPct(a))[0]:null;
+  const worst   = hasPrices?stks.filter(stk=>stkGLPct(stk)!=null).sort((a,b)=>stkGLPct(a)-stkGLPct(b))[0]:null;
+  pnl.innerHTML=`
+    <div class="pnl-t" style="color:var(--green)">🏦 Stock Positions</div>
+    ${stks.map(stk=>{
+      const gl=stkGL(stk);const glPct=stkGLPct(stk);
+      return `<div class="sr"><span class="sr-l">${stk.symbol} · ${stkShares(stk)} sh @ ${fP(stkAvgCost(stk))}</span>
+        <span class="sr-r ${gl!=null?(gl>=0?'pos':'neg'):''}">${glPct!=null?fPct(glPct):'—'}</span></div>`;
+    }).join('')}
+    <div class="sr" style="border-top:2px solid var(--border2);margin-top:4px;padding-top:6px">
+      <span class="sr-l">Total Cost Basis</span><span class="sr-r">${f$(totBasis)}</span></div>
+    <div class="sr"><span class="sr-l">Current Value</span><span class="sr-r acc">${totCV!=null?f$(totCV):'—'}</span></div>
+    <div class="sr" style="border-bottom:2px solid var(--border2)">
+      <span class="sr-l" style="font-weight:600">Unrealized G/L</span>
+      <span class="sr-r ${totGL!=null?(totGL>=0?'pos':'neg'):''}" style="font-size:15px;font-weight:600">${totGL!=null?fSign(totGL):'—'}</span></div>
+    ${best?`<div class="sr" style="margin-top:4px"><span class="sr-l" style="color:var(--text3)">Best</span><span class="sr-r pos">${best.symbol} ${fPct(stkGLPct(best))}</span></div>`:''}
+    ${worst&&worst!==best?`<div class="sr"><span class="sr-l" style="color:var(--text3)">Worst</span><span class="sr-r neg">${worst.symbol} ${fPct(stkGLPct(worst))}</span></div>`:''}`;
+}
+
+/* ════════════════════════════════════════════════════════
+   STOCK CRUD — Add / Delete / Lock
+════════════════════════════════════════════════════════ */
+let _addLotIdx = null;
+
+function openAddLot(si){
+  _addLotIdx=si;
+  const stk=appData.stocks[si];
+  el('addLotSym').textContent=stk.symbol;
+  el('lotDate').value=new Date().toISOString().split('T')[0].replace(/-/g,(m,o)=>o===4?'/':o===7?'/':m)
+    .split('/').reduce((a,b,i)=>i===0?b:i===1?a+'/'+b:a+'/'+b);
+  el('lotDate').value='';
+  el('lotShares').value='';
+  el('lotCost').value='';
+  el('lotMsg').textContent='';
+  el('addLotMod').classList.remove('hidden');
+}
+function closeAddLot(){
+  el('addLotMod').classList.add('hidden');
+  _addLotIdx=null;
+}
+function saveAddLot(){
+  if(_addLotIdx===null) return;
+  const dateRaw = el('lotDate').value;
+  const shares  = parseFloat(el('lotShares').value);
+  const cost    = parseFloat(el('lotCost').value);
+  if(!dateRaw){el('lotMsg').textContent='Please enter a date.';return;}
+  if(!shares||shares<=0){el('lotMsg').textContent='Please enter shares > 0.';return;}
+  if(!cost||cost<=0){el('lotMsg').textContent='Please enter cost per share > 0.';return;}
+  // Normalise date to MM/DD/YYYY
+  let dateStr = dateRaw;
+  if(dateRaw.includes('-')){const[y,m,d]=dateRaw.split('-');dateStr=`${m}/${d}/${y}`;}
+  appData.stocks[_addLotIdx].lots.push({date:dateStr,shares,costPerShare:cost});
+  const stkSym=appData.stocks[_addLotIdx].symbol;
+  saveLocal();closeAddLot();
+  renderStockCards();renderDashStockCards();renderDashStockPanel();
+  autoSave();toast(`Lot added to ${stkSym} ✓`,'success');
+}
+function deleteLot(si,li){
+  if(!confirm('Remove this lot?')) return;
+  appData.stocks[si].lots.splice(li,1);
+  saveLocal();renderStockCards();renderDashStockCards();renderDashStockPanel();autoSave();
+}
+function toggleStockLock(si){
+  appData.stocks[si].locked=!appData.stocks[si].locked;
+  saveLocal();renderStockCards();autoSave();
+  toast(appData.stocks[si].locked?`${appData.stocks[si].symbol} locked 🔒`:`${appData.stocks[si].symbol} unlocked 🔓`,'info');
+}
+function deleteStock(si){
+  const sym=appData.stocks[si].symbol;
+  if(!confirm(`Remove ${sym} and all its lots?`)) return;
+  appData.stocks.splice(si,1);
+  saveLocal();renderStockCards();renderDashStockCards();renderDashStockPanel();autoSave();
+  toast(`${sym} removed`,'warning');
+}
+function openAddStock(){
+  el('newStkSym').value='';
+  el('newStkName').value='';
+  el('newStkMsg').textContent='';
+  el('addStkMod').classList.remove('hidden');
+  setTimeout(()=>el('newStkSym').focus(),50);
+}
+function closeAddStock(){ el('addStkMod').classList.add('hidden'); }
+function saveAddStock(){
+  const sym=(el('newStkSym').value||'').trim().toUpperCase();
+  const name=(el('newStkName').value||'').trim();
+  if(!sym){el('newStkMsg').textContent='Please enter a ticker symbol.';return;}
+  if(appData.stocks.find(s=>s.symbol===sym)){el('newStkMsg').textContent=`${sym} already exists.`;return;}
+  appData.stocks.push({symbol:sym,name,locked:false,currentPrice:null,priceChange:null,priceChangePct:null,lastPriceUpdate:null,lots:[]});
+  saveLocal();closeAddStock();renderStockCards();renderDashStockCards();renderDashStockPanel();autoSave();
+  toast(`${sym} added ✓`,'success');
+}
+
+/* ════════════════════════════════════════════════════════
+   CASH & INCOME PANEL
+════════════════════════════════════════════════════════ */
+function renderDashCashPanel(){
+  const pnl=el('dashCashPnl');if(!pnl)return;
+  const c=appData.cash||{};
+  const seed=c.seed||0;
+  const etfDivs=appData.dividends.reduce((s,d)=>s+d.amount,0);
+  const etfSeedDivs=appData.etfs.reduce((s,e)=>s+(e.seedDivs||0),0);
+  const stkDivs=(appData.stockDividends||[]).reduce((s,d)=>s+d.amount,0);
+  const intTotal=(appData.interest||[]).reduce((s,i)=>s+i.amount,0);
+  const optPremSTO=appData.optionTrades.reduce((s,t)=>s+(t.stoAmt||0),0);
+  const optPremBTC=appData.optionTrades.filter(t=>t.btcAmt).reduce((s,t)=>s+(t.btcAmt||0),0);
+  const optNet=optPremSTO+optPremBTC;
+  const openOptHeld=appData.optionTrades.filter(t=>t.status==='open').reduce((s,t)=>s+(t.stoAmt||0),0);
+  const totalYTDIncome=etfDivs+stkDivs+intTotal+optNet;
+  const etfCV=appData.etfs.reduce((s,e)=>{const cv=getCurr(e);return cv!=null?s+cv:s;},0);
+  const stkCV=(appData.stocks||[]).reduce((s,stk)=>{const cv=stkCurrVal(stk);return cv!=null?s+cv:s;},0);
+  const hasPrices=appData.etfs.some(e=>e.currentPrice)||(appData.stocks||[]).some(s=>s.currentPrice);
+  // Open options marked-to-market (user-entered per contract, negative = liability)
+  const openOptsWithMV=appData.optionTrades.filter(t=>t.status==='open'&&t.optMktVal!=null);
+  const optsMktVal=openOptsWithMV.reduce((s,t)=>s+t.optMktVal,0);
+  const hasMktVal=openOptsWithMV.length>0;
+  const totalAcct=seed>0&&hasPrices?seed+etfCV+stkCV+(hasMktVal?optsMktVal:0):null;
+
+  pnl.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+      <div>
+        <div class="pnl-t">💵 Cash Balance</div>
+        ${seed
+          ?`<div class="sr"><span class="sr-l">Cash on Hand (${c.seedDate||'—'})</span><span class="sr-r acc" style="font-size:15px;font-weight:600">${f$(seed)}</span></div>
+            <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5">Update via ⚙ Settings when you check Schwab.<br>This is your verified snapshot.</div>`
+          :`<div class="sr"><span class="sr-l" style="color:var(--gold)">⚠ Set cash balance in ⚙ Settings</span></div>`}
+        <div class="sr" style="margin-top:8px"><span class="sr-l" style="color:var(--text3)">Options collateral held</span><span class="sr-r gld">${f$(openOptHeld)}</span></div>
+        <div class="sr"><span class="sr-l" style="color:var(--text3)">Available (est.)</span><span class="sr-r acc">${seed?f$(seed-openOptHeld):'—'}</span></div>
+      </div>
+      <div>
+        <div class="pnl-t">📈 YTD Income</div>
+        <div class="sr"><span class="sr-l">ETF Dividends</span><span class="sr-r gld">+${f$(etfDivs)}</span></div>
+        <div class="sr"><span class="sr-l">Stock Dividends</span><span class="sr-r pos">+${f$(stkDivs)}</span></div>
+        <div class="sr"><span class="sr-l">Interest</span><span class="sr-r acc">+${f$(intTotal)}</span></div>
+        <div class="sr"><span class="sr-l">Options Premiums (STO)</span><span class="sr-r pos">+${f$(optPremSTO)}</span></div>
+        <div class="sr"><span class="sr-l">Options Buybacks (BTC)</span><span class="sr-r neg">${fSign(optPremBTC)}</span></div>
+        <div class="sr" style="border-top:2px solid var(--border2)"><span class="sr-l" style="font-weight:600">Total YTD Income</span><span class="sr-r pos" style="font-size:15px;font-weight:600">${fSign(totalYTDIncome)}</span></div>
+        ${etfSeedDivs>0?`<div class="sr"><span class="sr-l" style="color:var(--text3)">Pre-2026 ETF divs (seed)</span><span class="sr-r gld">${f$(etfSeedDivs)}</span></div>`:''}
+      </div>
+      <div>
+        <div class="pnl-t">🏦 Total Account Value</div>
+        <div class="sr"><span class="sr-l">Cash (verified snapshot)</span><span class="sr-r acc">${seed?f$(seed):'—'}</span></div>
+        <div class="sr"><span class="sr-l">ETF Market Value</span><span class="sr-r">${hasPrices?f$(etfCV):'—'}</span></div>
+        <div class="sr"><span class="sr-l">Stock Market Value</span><span class="sr-r">${hasPrices?f$(stkCV):'—'}</span></div>
+        <div class="sr"><span class="sr-l" style="color:var(--text3)">Open Options Mkt Val <span style="font-size:9px">(${openOptsWithMV.length}/${appData.optionTrades.filter(t=>t.status==='open').length} entered)</span></span>
+          <span class="sr-r ${hasMktVal?(optsMktVal<0?'neg':'pos'):'muted'}">${hasMktVal?fSign(optsMktVal):'enter in ⚡ Options'}</span></div>
+        <div class="sr" style="border-top:2px solid var(--border2)">
+          <span class="sr-l" style="font-weight:600">Total Account</span>
+          <span class="sr-r ${totalAcct!=null?'pos':''}" style="font-size:15px;font-weight:600">${totalAcct!=null?f$(totalAcct):'Refresh prices'}</span>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:6px">Enter options mkt val in ⚡ Options tab.<br>Update cash in ⚙ Settings periodically.</div>
+      </div>
+    </div>`;
+}
+
+/* ════════════════════════════════════════════════════════
+   DASHBOARD PANELS
+════════════════════════════════════════════════════════ */
+function renderDashPanels(){
+  const mtd=mtdCF();const ytd=ytdRealizedPL();
+  const goal=appData.settings.optGoal||250;
+  const pct=Math.min((mtd/goal)*100,100);
+  const openTrades=appData.optionTrades.filter(t=>t.status==='open');
+  const gclr=pct>=100?'var(--green)':pct>=65?'var(--gold)':'var(--pri)';
+
+  el('dashOptPnl').innerHTML=`
+    <div class="pnl-t">⚡ Options Income</div>
+    <div class="sr"><span class="sr-l">MTD Cash Flow</span><span class="sr-r ${mtd>0?'pos':'neg'}">${fSign(mtd)}</span></div>
+    <div class="sr"><span class="sr-l">YTD Realized P&L</span><span class="sr-r pos">${f$(ytd)}</span></div>
+    <div class="sr"><span class="sr-l">Open Positions</span><span class="sr-r acc">${openTrades.length}</span></div>
+    <div class="sr"><span class="sr-l">Open Premium Held</span><span class="sr-r acc">${f$(openTrades.reduce((s,t)=>s+t.stoAmt,0))}</span></div>
+    <div class="goal-wrap">
+      <div class="goal-lbl">
+        <span>MTD Goal Progress</span>
+        <span style="font-family:var(--mono);color:${gclr}">${pct.toFixed(0)}%</span>
+      </div>
+      <div class="goal-bar">
+        <div class="goal-fill" style="width:${pct}%;background:${gclr}"></div>
+      </div>
+      <div class="goal-sub" style="font-family:var(--mono)">${fSign(mtd)} of ${f$(goal)} goal</div>
+    </div>`;
+
+  const totBasis=appData.etfs.reduce((s,e)=>s+e.totalCost,0);
+  const totCurr=appData.etfs.reduce((s,e)=>{const cv=getCurr(e);return cv!=null?s+cv:s;},0);
+  const hasPrices=appData.etfs.some(e=>e.currentPrice);
+  const totDivs=appData.etfs.reduce((s,e)=>s+getDivTotal(e.symbol),0);
+  const hmCount=appData.etfs.filter(e=>getHMP(e)>=100).length;
+  const unrl=hasPrices?totCurr-totBasis:null;
+  const totToRecoup=totBasis-totDivs;                          // positive = still owed
+  const netLiq=hasPrices?totCurr-totToRecoup:null;             // Net if Liquidated today
+  const toRecoupCls=totToRecoup<=0?'pos':'';
+  const toRecoupLbl=totToRecoup<=0?'Fully Recouped ✓':'Still to Recoup';
+
+  el('dashPortPnl').innerHTML=`
+    <div class="pnl-t">💼 ETF Portfolio</div>
+    <div class="sr"><span class="sr-l">Total Cost Basis</span><span class="sr-r">${f$(totBasis)}</span></div>
+    <div class="sr"><span class="sr-l">Total Divs Recv'd</span><span class="sr-r gld">${f$(totDivs)}</span></div>
+    <div class="sr"><span class="sr-l">${toRecoupLbl}</span><span class="sr-r ${toRecoupCls||'neg'}">${f$(Math.abs(totToRecoup))}</span></div>
+    <div class="sr"><span class="sr-l">Current Value</span><span class="sr-r acc">${hasPrices?f$(totCurr):'—'}</span></div>
+    <div class="sr" style="border-bottom:2px solid var(--border2)">
+      <span class="sr-l" style="font-weight:600">Net if Liquidated Today</span>
+      <span class="sr-r ${netLiq!=null?cc(netLiq):''}" style="font-size:15px;font-weight:600">${netLiq!=null?fSign(netLiq):'—'}</span>
+    </div>
+    <div class="sr" style="margin-top:4px"><span class="sr-l" style="color:var(--text3)">Unrealized G/L (price only)</span><span class="sr-r ${cc(unrl)}">${unrl!=null?fSign(unrl):'—'}</span></div>
+    <div class="sr"><span class="sr-l" style="color:var(--text3)">House Money ETFs</span><span class="sr-r ${hmCount>0?'gld':''}">${hmCount} / ${appData.etfs.length}</span></div>
+    <div class="sr"><span class="sr-l" style="color:var(--text3)">Div Coverage of Basis</span><span class="sr-r acc">${totBasis>0?((totDivs/totBasis)*100).toFixed(1):'0.0'}%</span></div>`;
+}
+
+/* ════════════════════════════════════════════════════════
+   ETFs TAB
+════════════════════════════════════════════════════════ */
+function renderEtfTable(){
+  el('etfTbody').innerHTML=appData.etfs.map(etf=>{
+    const cv=getCurr(etf);const divs=getDivTotal(etf.symbol);
+    const unrl=cv!=null?cv-etf.totalCost:null;
+    const glPct=unrl!=null?(unrl/etf.totalCost)*100:null;
+    const hp=getHMP(etf);const hm=hp>=100;
+    const toRecoup=etf.totalCost-divs;           // positive = still owed, negative = fully recouped
+    const netLiq=cv!=null?cv-toRecoup:null;      // Net if Liquidated
+    const recoupCls=toRecoup<=0?'pos':'neg';
+    return `<tr>
+      <td class="sym">${etf.symbol}</td>
+      <td>${etf.shares}</td>
+      <td>${fP(etf.costPerShare)}</td>
+      <td>${f$(etf.totalCost)}</td>
+      <td class="r ${etf.currentPrice?'':'muted'}">${etf.currentPrice?fP(etf.currentPrice):'—'}</td>
+      <td class="r">${cv!=null?f$(cv):'—'}</td>
+      <td class="r ${cc(unrl)}">${unrl!=null?fSign(unrl):'—'}</td>
+      <td class="r ${cc(glPct)}">${glPct!=null?fPct(glPct):'—'}</td>
+      <td class="r gld">${f$(divs)}</td>
+      <td class="r ${recoupCls}">${toRecoup<=0?'+'+f$(Math.abs(toRecoup)):f$(toRecoup)}</td>
+      <td class="r ${netLiq!=null?cc(netLiq):''}">${netLiq!=null?fSign(netLiq):'(divs) '+f$(divs)}</td>
+      <td class="r acc">${hp.toFixed(1)}%</td>
+      <td><span class="tag ${hm?'tgo':'tb2'}">${hm?'🏠 House $':'📈 Building'}</span></td>
+    </tr>`;
+  }).join('');
+}
+function toggleDivLog(){
+  const wrap=el('divLogWrap');const lbl=el('divLogToggleLabel');
+  const open=wrap.style.display!=='none';
+  wrap.style.display=open?'none':'';
+  lbl.textContent=open?'▶ Show':'▼ Hide';
+}
+function renderDivLog(){
+  const filt=el('divFilt').value;
+  const divs=[...appData.dividends].sort((a,b)=>cmpD(b.date,a.date));
+  const show=filt?divs.filter(d=>d.symbol===filt):divs;
+  el('divCnt').textContent=show.length+(appData.dividends.length!==show.length?` / ${appData.dividends.length}`:'');
+  if(show.length===0){
+    el('divTbody').innerHTML=`<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text3)">No dividend records — import CSV to add</td></tr>`;
+    return;
+  }
+  el('divTbody').innerHTML=show.map(d=>`<tr>
+    <td class="muted">${fDt(d.date)}</td>
+    <td class="sym">${d.symbol}</td>
+    <td class="r gld">${f$(d.amount)}</td>
+    <td class="muted" style="font-size:11px">CSV import</td>
+  </tr>`).join('');
+}
+
+/* ════════════════════════════════════════════════════════
+   OPTIONS TAB
+════════════════════════════════════════════════════════ */
+function renderOptionsTab(){
+  renderOptStats();renderUndScorecard();renderOpenPos();renderTradeLog();renderWeekGrid();renderByUnd();
+  buildOptChart();
+}
+function renderUndScorecard(){
+  const unds=[...new Set(appData.optionTrades.map(t=>t.underlying))].sort();
+  const colors={SPY:'#10b981',NAIL:'#f59e0b',default:'#3b82f6'};
+  el('undScorecard').innerHTML=unds.map(und=>{
+    const trades=appData.optionTrades.filter(t=>t.underlying===und);
+    const closed=trades.filter(t=>t.status==='closed'&&t.realizedPL!=null);
+    const open=trades.filter(t=>t.status==='open');
+    const realized=closed.reduce((s,t)=>s+t.realizedPL,0);
+    const openPrem=open.reduce((s,t)=>s+t.stoAmt,0);
+    const avg=closed.length?realized/closed.length:null;
+    const col=colors[und]||colors.default;
+    const rlzCls=realized>0?'pos':realized<0?'neg':'muted';
+    return `<div style="background:var(--card);border:1px solid var(--border);border-left:3px solid ${col};border-radius:0 11px 11px 0;padding:14px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:17px;font-weight:700;color:var(--acc);font-family:var(--mono)">${und}</span>
+        <div style="display:flex;gap:6px">
+          ${open.length?`<span class="tag tgo">${open.length} open</span>`:''}
+          <span class="tag tb2">${trades.length} trades</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+        <div>
+          <div class="es-lbl">Realized P&L</div>
+          <div class="es-val ${rlzCls}" style="font-size:15px">${closed.length?fSign(realized):'—'}</div>
+        </div>
+        <div>
+          <div class="es-lbl">Closed trades</div>
+          <div class="es-val" style="font-size:15px">${closed.length}</div>
+        </div>
+        <div>
+          <div class="es-lbl">Avg / trade</div>
+          <div class="es-val" style="font-size:15px">${avg!=null?f$(avg):'—'}</div>
+        </div>
+      </div>
+      <div style="padding-top:8px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11px;color:var(--text3)">Open premium held</span>
+        <span style="font-size:13px;font-weight:600;color:var(--acc);font-family:var(--mono)">${openPrem>0?f$(openPrem):'—'}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+function renderOptStats(){
+  const mtd=mtdCF();const ytd=ytdRealizedPL();const goal=appData.settings.optGoal||250;
+  const open=appData.optionTrades.filter(t=>t.status==='open');
+  const closed=appData.optionTrades.filter(t=>t.status==='closed'&&t.realizedPL!=null);
+  const avgPL=closed.length?closed.reduce((s,t)=>s+t.realizedPL,0)/closed.length:0;
+  const unds=[...new Set(appData.optionTrades.map(t=>t.underlying))];
+
+  el('optStats').innerHTML=[
+    {l:'MTD Cash Flow',v:fSign(mtd),vc:mtd>=0?'pos':'neg',s:`Goal: ${f$(goal)}`},
+    {l:'YTD Realized P&L',v:f$(ytd),vc:'pos',s:`${closed.length} closed trades`},
+    {l:'Open Positions',v:open.length,vc:'acc',s:`${unds.length} underlyings`},
+    {l:'Avg P&L / Trade',v:f$(avgPL),vc:'gld',s:`${closed.length} samples`},
+    {l:'Open Premium',v:f$(open.reduce((s,t)=>s+t.stoAmt,0)),vc:'acc',s:'pending collection'}
+  ].map(x=>`<div class="sb">
+    <div class="sb-l">${x.l}</div>
+    <div class="sb-v ${x.vc}">${x.v}</div>
+    <div class="sb-s">${x.s}</div>
+  </div>`).join('');
+}
+function renderOpenPos(){
+  const open=appData.optionTrades.filter(t=>t.status==='open')
+    .sort((a,b)=>cmpD(a.expiry,b.expiry));
+  el('openCnt').textContent=open.length;
+  if(open.length===0){
+    el('openTbody').innerHTML=`<tr><td colspan="9" style="text-align:center;padding:16px;color:var(--text3)">No open positions</td></tr>`;
+    return;
+  }
+  el('openTbody').innerHTML=open.map(t=>{
+    const dl=daysLeft(t.expiry);
+    const dlCls=dl!=null&&dl<=3?'neg':dl!=null&&dl<=7?'gld':'pos';
+    const hasVal=t.optMktVal!=null;
+    const btnLabel=hasVal?fSign(t.optMktVal):'+ Set value';
+    const btnCls=hasVal?'btn-mktval set':'btn-mktval unset';
+    return `<tr style="background:rgba(59,130,246,.03)">
+      <td class="sym">${t.underlying}</td>
+      <td style="font-size:11px;color:var(--text2)">${t.fullSymbol}</td>
+      <td class="muted">${fDt(t.stoDate)}</td>
+      <td class="r gld">$${t.strike}</td>
+      <td class="muted">${t.expiry}</td>
+      <td class="r acc">$${t.stoPrice.toFixed(2)}</td>
+      <td class="r pos">${f$(t.stoAmt)}</td>
+      <td class="${dlCls}">${dl!=null?dl+' days':'—'}</td>
+      <td class="r"><button class="${btnCls}" onclick="openMktValMod('${t.id}')">${btnLabel}</button></td>
+    </tr>`;
+  }).join('');
+}
+function renderTradeLog(){
+  const trades=[...appData.optionTrades].sort((a,b)=>cmpD(b.stoDate,a.stoDate));
+  if(trades.length===0){
+    el('logTbody').innerHTML=`<tr><td colspan="8" style="text-align:center;padding:16px;color:var(--text3)">No trades yet — import CSV</td></tr>`;
+    return;
+  }
+  el('logTbody').innerHTML=trades.map(t=>{
+    const isOpen=t.status==='open';
+    return `<tr>
+      <td class="muted">${fDt(t.stoDate)}</td>
+      <td style="font-size:11px;color:var(--text2)">${t.fullSymbol}</td>
+      <td class="r acc">$${t.stoPrice.toFixed(2)}</td>
+      <td class="r pos">${f$(t.stoAmt)}</td>
+      <td class="${isOpen?'muted':''}">${isOpen?'—':fDt(t.btcDate)}</td>
+      <td class="r ${isOpen?'muted':'neg'}">${isOpen?'—':'-'+f$(Math.abs(t.btcAmt))}</td>
+      <td class="r ${isOpen?'muted':cc(t.realizedPL)}">${isOpen?'—':fSign(t.realizedPL)}</td>
+      <td><span class="tag ${isOpen?'tb2':'tg'}">${isOpen?'⏳ Open':'✓ Closed'}</span></td>
+    </tr>`;
+  }).join('');
+}
+function renderWeekGrid(){
+  const unds=[...new Set(appData.optionTrades.map(t=>t.underlying))].sort();
+  const curWk=getWeek(new Date().toLocaleDateString('en-US'));
+  const maxWk=Math.max(curWk,Math.max(...appData.optionTrades.map(t=>getWeek(t.stoDate))));
+  const showWks=Math.min(52,Math.max(maxWk+2,20));
+
+  // Build header
+  let head=`<thead><tr><th>Wk</th><th>Dates</th>`;
+  unds.forEach(u=>head+=`<th>${u}</th>`);
+  head+=`<th>Weekly Total</th><th>Mo. Running</th></tr></thead>`;
+
+  // Build rows
+  let body='<tbody>';
+  let moRunning=0;let prevMo=null;
+  for(let wn=1;wn<=showWks;wn++){
+    const mo=weekMonth(wn);
+    if(prevMo!==null&&mo!==prevMo){
+      // Only show month total if it had activity
+      if(moRunning>0.01){
+        const moName=new Date(2026,prevMo-1,1).toLocaleString('en-US',{month:'short'})+' 2026';
+        body+=`<tr class="mo-row"><td colspan="2">${moName} Total</td>`;
+        unds.forEach(()=>body+=`<td>—</td>`);
+        body+=`<td colspan="2"><span class="gc">${f$(moRunning)}</span></td></tr>`;
+      }
+      moRunning=0;
+    }
+    prevMo=mo;
+
+    const undTotals=unds.map(u=>weekCF(wn,u));
+    const total=undTotals.reduce((s,v)=>s+v,0);
+    if(Math.abs(total)<0.01&&wn>curWk){body+=``;continue;} // skip empty future weeks
+    moRunning+=total;
+    const isCur=wn===curWk;
+    const rowCls=isCur?'cur-row':'';
+    const tc=cc(total);
+
+    body+=`<tr class="${rowCls}">
+      <td>${wn}${isCur?' ◀':''}</td>
+      <td>${weekStart(wn)}–${weekEnd(wn)}</td>`;
+    undTotals.forEach(v=>{
+      body+=`<td class="${Math.abs(v)<0.01?'ec2':cc(v)}">${Math.abs(v)<0.01?'—':fSign(v)}</td>`;
+    });
+    body+=`<td class="${Math.abs(total)<0.01?'ec2':tc}">${Math.abs(total)<0.01?'—':fSign(total)}</td>`;
+    body+=`<td class="${moRunning>0?'gc':'ec2'}">${moRunning>0?f$(moRunning):'—'}</td>`;
+    body+=`</tr>`;
+  }
+  body+='</tbody>';
+  el('wg52').innerHTML=head+body;
+}
+function renderByUnd(){
+  const unds=[...new Set(appData.optionTrades.map(t=>t.underlying))].sort();
+  let html='';
+  unds.forEach(und=>{
+    const trades=appData.optionTrades.filter(t=>t.underlying===und);
+    const closed=trades.filter(t=>t.status==='closed'&&t.realizedPL!=null);
+    const open=trades.filter(t=>t.status==='open');
+    const totalPrem=trades.reduce((s,t)=>s+t.stoAmt,0);
+    const realizedPL=closed.reduce((s,t)=>s+t.realizedPL,0);
+    const avgPL=closed.length?realizedPL/closed.length:0;
+    const wksActive=closed.length>0?[...new Set(closed.map(t=>getWeek(t.stoDate)))].length:0;
+    html+=`<div style="background:var(--card);border:1px solid var(--border);border-radius:11px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:13px">
+        <span style="font-size:16px;font-weight:700;color:var(--acc);font-family:var(--mono)">${und}</span>
+        <span class="tag tb2">${trades.length} trades</span>
+        ${open.length?`<span class="tag tgo">${open.length} open</span>`:''}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+        <div><div class="es-lbl">Total Premium Coll.</div><div class="es-val acc">${f$(totalPrem)}</div></div>
+        <div><div class="es-lbl">Realized P&L</div><div class="es-val pos">${f$(realizedPL)}</div></div>
+        <div><div class="es-lbl">Avg P&L / Trade</div><div class="es-val gld">${f$(avgPL)}</div></div>
+        <div><div class="es-lbl">Closed Trades</div><div class="es-val">${closed.length}</div></div>
+      </div>
+    </div>`;
+  });
+  el('byUndContent').innerHTML=html||'<div class="empty"><p>No trades yet</p></div>';
+}
+
+/* ════════════════════════════════════════════════════════
+   TRADINGVIEW CHARTS
+════════════════════════════════════════════════════════ */
+function buildOptChart(){
+  // Chart removed from Options tab — use Research tab for charts
+}
+function buildResChart(sym){
+  el('resChartDiv').innerHTML='';
+  if(typeof TradingView==='undefined'){
+    el('resChartDiv').innerHTML='<div class="empty" style="padding:60px"><div class="empty-i">📈</div><p>TradingView not loaded. Check your connection.</p></div>';
+    return;
+  }
+  new TradingView.widget({
+    autosize:true,symbol:tvSym(sym),interval:'D',timezone:'America/New_York',
+    theme:'dark',style:'1',locale:'en',toolbar_bg:'#111e30',
+    enable_publishing:false,hide_top_toolbar:false,hide_side_toolbar:false,
+    allow_symbol_change:true,container_id:'resChartDiv'
+  });
+}
+
+/* ════════════════════════════════════════════════════════
+   RESEARCH TAB
+════════════════════════════════════════════════════════ */
+function renderWLChips(){
+  const wl=appData.research.watchlist||[];
+  el('wlChips').innerHTML=wl.map(t=>`
+    <div class="wlc" onclick="lookupFromWL('${t}')">
+      <span>${t}</span>
+      <span class="del" onclick="removeWL(event,'${t}')">✕</span>
+    </div>`).join('');
+}
+function lookupFromWL(sym){
+  el('resTicker').value=sym;doLookup();
+}
+function addToWL(){
+  const sym=(el('resTicker').value||'').trim().toUpperCase();
+  if(!sym)return;
+  if(!appData.research.watchlist.includes(sym)){
+    appData.research.watchlist.push(sym);saveLocal();renderWLChips();
+    toast(`${sym} added to watchlist`,'success');
+    autoSave();
+  }
+}
+function removeWL(e,sym){
+  e.stopPropagation();
+  appData.research.watchlist=appData.research.watchlist.filter(x=>x!==sym);
+  saveLocal();renderWLChips();
+  autoSave();
+}
+async function doLookup(){
+  const sym=(el('resTicker').value||'').trim().toUpperCase();
+  if(!sym)return;
+  curResSym=sym;
+  el('resPH').classList.add('hidden');
+  el('resResults').classList.remove('hidden');
+  el('statsPanel').innerHTML=`<div class="empty"><div class="spin"></div><p style="margin-top:8px">Loading ${sym}...</p></div>`;
+  const notesSym=document.getElementById('resNotesSym');if(notesSym)notesSym.textContent=sym;
+  buildResChart(sym);
+  // Load saved notes
+  const notes=appData.research.notes[sym];
+  el('resNotes').value=notes?notes.text:'';
+  // Fetch quote
+  const q=await fetchQuote(sym);
+  renderStatsPanel(sym,q);
+}
+function renderStatsPanel(sym, q){
+  if(!q){
+    el('statsPanel').innerHTML=`<div class="empty"><div class="empty-i">⚠️</div><p>Could not load data for <strong>${sym}</strong>.<br>Check ticker or API key.</p></div>`;
+    return;
+  }
+  const p   = q.regularMarketPrice;
+  const chg = q.regularMarketChange;
+  const chgPct = q.regularMarketChangePercent;
+  const chgCls = chg >= 0 ? 'pos' : 'neg';
+  const hi52 = q.fiftyTwoWeekHigh;
+  const lo52 = q.fiftyTwoWeekLow;
+  const distLo = lo52 ? ((p - lo52) / lo52 * 100) : null;
+  const distHi = hi52 ? ((p - hi52) / hi52 * 100) : null;
+  const vix  = q.vix;
+
+  const fmt  = (v, d=2) => v != null ? v.toFixed(d) : '—';
+  const fmtB = v => v==null?'—':v>1e12?`$${(v/1e12).toFixed(2)}T`:v>1e9?`$${(v/1e9).toFixed(1)}B`:v>1e6?`$${(v/1e6).toFixed(1)}M`:`$${v.toFixed(0)}`;
+  const fmtV = v => v==null?'—':v>1e6?`${(v/1e6).toFixed(1)}M`:v>1e3?`${(v/1e3).toFixed(1)}K`:`${v}`;
+
+  // Support / Resistance bands
+  const r1 = p * 1.01; const r2 = p * 1.02;
+  const s1 = p * 0.99; const s2 = p * 0.98;
+
+  // VIX context
+  const vixColor = vix == null ? 'var(--text3)' : vix > 30 ? 'var(--red)' : vix > 20 ? 'var(--gold)' : 'var(--green)';
+  const vixLabel = vix == null ? '—' : vix > 30 ? 'High — widen strikes' : vix > 20 ? 'Elevated — normal caution' : 'Low — tighter premiums';
+
+  // PUT sweet spot — conservative: 5–8% OTM, 3–7 DTE weekly or 21–45 DTE monthly
+  const sweet1 = p * 0.95; const sweet2 = p * 0.92;
+
+  // Today's date for DTE calc
+  const today = new Date();
+  function dte(daysOut) {
+    const d = new Date(today.getTime() + daysOut * 86400000);
+    return `${d.getMonth()+1}/${d.getDate()} (${daysOut}d)`;
+  }
+
+  el('statsPanel').innerHTML=`
+    <div class="sp-ticker">${sym}</div>
+    <div class="sp-name">${q.shortName||sym}</div>
+    <div class="sp-price">${fP(p)}</div>
+    <div class="sp-chg ${chgCls}">${chg>=0?'+':''}${fmt(chg)} (${fmt(chgPct)}%)</div>
+
+    <div class="sp-grid">
+      <div><div class="si-l">52W High</div><div class="si-v pos">${hi52?fP(hi52):'—'}</div></div>
+      <div><div class="si-l">52W Low</div><div class="si-v neg">${lo52?fP(lo52):'—'}</div></div>
+      <div><div class="si-l">Above 52W Lo</div><div class="si-v ${distLo!=null?(distLo>20?'pos':'gld'):''}">${distLo!=null?'+'+fmt(distLo)+'%':'—'}</div></div>
+      <div><div class="si-l">From 52W Hi</div><div class="si-v ${distHi!=null?'neg':''}">${distHi!=null?fmt(distHi)+'%':'—'}</div></div>
+      <div><div class="si-l">Volume (10d avg)</div><div class="si-v">${fmtV(q.regularMarketVolume)}</div></div>
+      <div><div class="si-l">Mkt Cap</div><div class="si-v">${fmtB(q.marketCap)}</div></div>
+      <div><div class="si-l">P/E</div><div class="si-v">${fmt(q.trailingPE)}</div></div>
+      <div><div class="si-l">Beta</div><div class="si-v">${fmt(q.beta)}</div></div>
+    </div>
+
+    <!-- VIX Environment -->
+    <div class="put-box" style="margin-bottom:8px">
+      <div class="put-t">🌡 Market Environment</div>
+      <div class="put-row">
+        <span>VIX</span>
+        <span style="color:${vixColor};font-weight:600">${vix!=null?vix.toFixed(2):'—'}</span>
+      </div>
+      <div style="font-size:10px;color:${vixColor};text-align:right;margin-top:2px">${vixLabel}</div>
+      <div class="put-row" style="margin-top:6px"><span>Day High / Low</span><span>${fP(q.regularMarketDayHigh)} / ${fP(q.regularMarketDayLow)}</span></div>
+      <div class="put-row"><span>Prev Close</span><span>${fP(q.regularMarketPreviousClose)}</span></div>
+    </div>
+
+    <!-- Support / Resistance -->
+    <div class="put-box" style="margin-bottom:8px">
+      <div class="put-t">📊 Support &amp; Resistance</div>
+      <div class="put-row"><span style="color:var(--red)">R2 (+2%)</span><span style="color:var(--red)">${fP(r2)}</span></div>
+      <div class="put-row"><span style="color:var(--orange)">R1 (+1%)</span><span style="color:var(--orange)">${fP(r1)}</span></div>
+      <div class="put-row" style="border-top:1px dashed var(--border2);border-bottom:1px dashed var(--border2);padding:4px 0">
+        <span style="color:var(--acc);font-weight:600">Current</span>
+        <span style="color:var(--acc);font-weight:600">${fP(p)}</span>
+      </div>
+      <div class="put-row"><span style="color:var(--green)">S1 (−1%)</span><span style="color:var(--green)">${fP(s1)}</span></div>
+      <div class="put-row"><span style="color:var(--green)">S2 (−2%)</span><span style="color:var(--green)">${fP(s2)}</span></div>
+      ${lo52?`<div class="put-row"><span style="color:var(--gold)">52W Low</span><span style="color:var(--gold)">${fP(lo52)}</span></div>`:''}
+    </div>
+
+    <!-- PUT Setup Guide -->
+    <div class="put-box">
+      <div class="put-t">🎯 PUT Setup Guide</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:8px">Conservative: 5–8% OTM · Weekly 3–7 DTE · Monthly 21–45 DTE</div>
+      <div class="put-row"><span>5% OTM Strike</span><span style="color:var(--green);font-weight:600">${fP(sweet1)}</span></div>
+      <div class="put-row"><span>8% OTM Strike</span><span style="color:var(--green);font-weight:600">${fP(sweet2)}</span></div>
+      ${lo52?`<div class="put-row"><span>52W Low +5%</span><span style="color:var(--gold)">${fP(lo52*1.05)}</span></div>`:''}
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+        <div class="put-t" style="margin-bottom:6px">📅 Target Expiry Dates</div>
+        <div class="put-row"><span>Weekly (5 DTE)</span><span class="acc">${dte(5)}</span></div>
+        <div class="put-row"><span>Weekly (7 DTE)</span><span class="acc">${dte(7)}</span></div>
+        <div class="put-row"><span>Monthly (21 DTE)</span><span class="acc">${dte(21)}</span></div>
+        <div class="put-row"><span>Monthly (45 DTE)</span><span class="acc">${dte(45)}</span></div>
+      </div>
+    </div>`;
+}
+
+function saveNotes(){
+  if(!curResSym)return;
+  if(!appData.research.notes) appData.research.notes={};
+  appData.research.notes[curResSym]={text:el('resNotes').value,updatedAt:new Date().toISOString()};
+  saveLocal();toast(`Notes saved for ${curResSym}`,'success');
+  autoSave();
+}
+
+/* ════════════════════════════════════════════════════════
+   SETTINGS
+════════════════════════════════════════════════════════ */
+function openSettings(){
+  el('sFinnhub').value=appData.settings.finnhubKey||'';
+  el('sGoal').value=appData.settings.optGoal||250;
+  el('sCutoff').value=appData.settings.lastCsvImportDate||'';
+  el('sCashSeed').value=(appData.cash&&appData.cash.seed)||0;
+  el('sCashSeedDate').value=(appData.cash&&appData.cash.seedDate)||'';
+  el('seedInps').innerHTML=appData.etfs.map(e=>`
+    <div class="fr">
+      <span class="fr-l">${e.symbol} seed ($)</span>
+      <input type="number" step="0.01" class="finp" id="sd_${e.symbol}" value="${e.seedDivs||0}">
+    </div>`).join('');
+  const savedT=localStorage.getItem('cst_timer_setting');if(savedT)el('sTimer').value=savedT;
+  el('settMod').classList.remove('hidden');
+}
+function closeSettings(){el('settMod').classList.add('hidden');}
+function saveSettings(){
+  appData.settings.finnhubKey=el('sFinnhub').value.trim();
+  appData.settings.optGoal=parseFloat(el('sGoal').value)||250;
+  appData.settings.lastCsvImportDate=el('sCutoff').value||appData.settings.lastCsvImportDate;
+  if(!appData.cash)appData.cash={seed:0,seedDate:null};
+  const newSeed=parseFloat(el('sCashSeed').value)||0;
+  const newSeedDate=el('sCashSeedDate').value.trim()||null;
+  if(newSeed)appData.cash.seed=newSeed;
+  if(newSeedDate)appData.cash.seedDate=newSeedDate;
+  appData.etfs.forEach(e=>{
+    const inp=el('sd_'+e.symbol);if(inp) e.seedDivs=parseFloat(inp.value)||e.seedDivs;
+  });
+  const tval=el('sTimer').value;if(tval){localStorage.setItem('cst_timer_setting',tval);_timeLeft=parseInt(tval);}
+  saveLocal();closeSettings();renderAll();toast('Settings saved ✓','success');
+  autoSave();
+}
+function exportData(){
+  const blob=new Blob([JSON.stringify(appData,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`cs_etf_tracker_${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+}
+function onSettingsJsonImport(e){
+  if(!e.target.files[0]) return;
+  const r=new FileReader();
+  r.onload=async ev=>{
+    try{
+      const parsed=JSON.parse(ev.target.result);
+      if(!parsed.etfs||!parsed.optionTrades){toast('Invalid JSON file','error');return;}
+      if(!confirm('This will overwrite all current data with the imported file and save to Drive. Continue?')) return;
+      appData=deepMerge(mkDefault(),parsed);
+      saveLocal();closeSettings();renderAll();
+      await saveCloud();
+      toast('JSON imported & saved to Drive ✓','success');
+    } catch(ex){toast('Failed to parse JSON file','error');}
+  };
+  r.readAsText(e.target.files[0]);
+  e.target.value='';
+}
+
+function resetData(){appData=mkDefault();saveLocal();renderAll();toast('Data reset','warning');}
+
+async function resetAndPush(){
+  if(!confirm('This will overwrite your Google Drive data with the current seed defaults.\n\nContinue?')) return;
+  appData = mkDefault();
+  saveLocal();
+  renderAll();
+  closeSettings();
+  if(!driveConn){ toast('Not connected to Drive — local data reset only','warning'); return; }
+  toast('Pushing seed data to Drive...','info');
+  try {
+    appData.settings.lastUpdated = new Date().toISOString();
+    const body = JSON.stringify(appData, null, 2);
+    if(driveFileId){
+      await gapi.client.request({path:`/upload/drive/v3/files/${driveFileId}`,method:'PATCH',
+        params:{uploadType:'media'},headers:{'Content-Type':'application/json'},body});
+    } else {
+      const m = await gapi.client.drive.files.create({resource:{name:DRIVE_FILE,parents:['appDataFolder']},fields:'id'});
+      driveFileId = m.result.id;
+      await gapi.client.request({path:`/upload/drive/v3/files/${driveFileId}`,method:'PATCH',
+        params:{uploadType:'media'},headers:{'Content-Type':'application/json'},body});
+    }
+    updHdr();
+    toast('✓ Seed data pushed to Drive — refresh prices to populate','success');
+  } catch(e){ console.error('Push failed:',e); toast('Drive push failed — data reset locally only','error'); }
+}
+
+/* ════════════════════════════════════════════════════════
+   TAB / SUB-TAB SWITCHING
+════════════════════════════════════════════════════════ */
+function switchTab(id){
+  document.querySelectorAll('.tc').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  el('tc-'+id).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if(id==='opts'){setTimeout(buildOptChart,100);}
+}
+function switchSub(id){
+  document.querySelectorAll('.stc').forEach(s=>s.classList.add('hidden'));
+  document.querySelectorAll('.st').forEach(b=>b.classList.remove('active'));
+  el('stc-'+id).classList.remove('hidden');
+  event.currentTarget.classList.add('active');
+}
+
+/* ════════════════════════════════════════════════════════
+   PASSWORD — SHA-256
+   Default password removed — Option B: first-run creates password
+   Hash stored in localStorage: cset_pw_hash
+════════════════════════════════════════════════════════ */
+const PW_KEY = "cst_pw_hash";
+
+async function sha256(str) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function getStoredHash() { return localStorage.getItem(PW_KEY) || null; }
+async function doLogin() {
+  if(!getStoredHash()){showPwErr('No password set — create one first');return;}
+  const pw = document.getElementById('pwInp').value;
+  if (!pw) { showPwErr('Enter your password'); return; }
+  const hash = await sha256(pw);
+  if (hash === getStoredHash()) {
+    document.getElementById('pwErr').textContent = '';
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('loadingScreen').classList.remove('hidden');
+    const st=localStorage.getItem('cst_timer_setting');if(st)_timeLeft=parseInt(st);
+    _startTimer();
+    connectDrive();
+  } else {
+    showPwErr('Incorrect password');
+    const inp = document.getElementById('pwInp');
+    inp.classList.add('err');
+    inp.value = '';
+    setTimeout(() => inp.classList.remove('err'), 400);
+  }
+}
+function showPwCreateErr(msg){document.getElementById('pwCreateErr').textContent=msg;}
+async function createFirstPassword() {
+  const p1=document.getElementById('pwCreate1').value;
+  const p2=document.getElementById('pwCreate2').value;
+  if(!p1||p1.length<4){showPwCreateErr('Minimum 4 characters');return;}
+  if(p1!==p2){showPwCreateErr('Passwords do not match');return;}
+  localStorage.setItem(PW_KEY,await sha256(p1));
+  document.getElementById('createPwMode').classList.add('hidden');
+  document.getElementById('loginMode').classList.remove('hidden');
+  document.getElementById('pwInp').value='';
+  document.getElementById('pwCreate1').value='';
+  document.getElementById('pwCreate2').value='';
+  showPwErr('Password created — please log in');
+}
+function togglePwCreate(){
+  const inp=document.getElementById('pwCreate1');
+  inp.type=inp.type==='password'?'text':'password';
+}
+function showPwErr(msg) { document.getElementById('pwErr').textContent = msg; }
+function togglePw() {
+  const inp = document.getElementById('pwInp');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+async function changePassword() {
+  const cur = document.getElementById('sCurPw').value;
+  const nw  = document.getElementById('sNewPw').value;
+  const con = document.getElementById('sConPw').value;
+  const msg = document.getElementById('sPwMsg');
+  if (!cur || !nw || !con) { msg.style.color='var(--red)'; msg.textContent='Fill in all three fields'; return; }
+  if (nw !== con)           { msg.style.color='var(--red)'; msg.textContent='New passwords do not match'; return; }
+  if (nw.length < 4)        { msg.style.color='var(--red)'; msg.textContent='Minimum 4 characters'; return; }
+  const curHash = await sha256(cur);
+  if (curHash !== getStoredHash()) { msg.style.color='var(--red)'; msg.textContent='Current password incorrect'; return; }
+  localStorage.setItem(PW_KEY, await sha256(nw));
+  msg.style.color='var(--green)'; msg.textContent='✓ Password changed';
+  ['sCurPw','sNewPw','sConPw'].forEach(id=>document.getElementById(id).value='');
+}
+
+
+/* ══ SESSION TIMER ══ */
+let _timeLeft=600,_timerInterval;
+function _startTimer(){
+  clearInterval(_timerInterval);
+  _timeLeft=600;
+  _timerInterval=setInterval(()=>{
+    _timeLeft--;
+    if(_timeLeft<=0){clearInterval(_timerInterval);_doLogout();}
+  },1000);
+}
+function _resetTimer(){_timeLeft=600;}
+function _doLogout(){
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('mainApp')?.classList.add('hidden');
+  document.getElementById('pwInp').value='';
+  toast('Session expired — please log in again','warning');
+}
+document.addEventListener('mousemove',()=>{if(_timerInterval)_resetTimer();});
+document.addEventListener('keydown',()=>{if(_timerInterval)_resetTimer();});
+document.addEventListener('click',()=>{if(_timerInterval)_resetTimer();});
+
+/* ════════════════════════════════════════════════════════
+   TOAST
+════════════════════════════════════════════════════════ */
+function toast(msg,type='info'){
+  const icons={success:'✓',error:'✕',info:'ℹ',warning:'⚠'};
+  const t=document.createElement('div');
+  t.className=`toast ${type}`;
+  t.innerHTML=`<span>${icons[type]||'ℹ'}</span><span>${msg}</span>`;
+  el('toastEl').appendChild(t);
+  setTimeout(()=>t.remove(),3500);
+}
+</script>
+<script src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+<script src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+</body>
+</html>
