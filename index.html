@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Capital Stacks Tracker</title>
-  <meta name="google-client-id" content="REPLACE_WITH_YOUR_CLIENT_ID">
+  <meta name="google-client-id" content="">
   <link rel="shortcut icon" href="command-center/cs-tracker-icon.ico" type="image/x-icon">
   <!-- <link rel="icon" href="/command-center/favicon.ico"> -->
   <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
@@ -21,10 +21,20 @@
         }catch(e){console.error('[Drive] GAPI init failed:',e);}
       });
     }
-    function gisLoaded(){
+    async function gisLoaded(){
       try{
+        // Attempt to load client_id from config.json (not checked into repo)
+        let metaClient = '';
         const meta = document.querySelector('meta[name="google-client-id"]');
-        const metaClient = meta ? meta.getAttribute('content') : '';
+        if(meta) metaClient = meta.getAttribute('content') || '';
+        try{
+          const r = await fetch('config.json');
+          if(r.ok){
+            const cfg = await r.json();
+            if(cfg && cfg.client_id) metaClient = cfg.client_id;
+          }
+        }catch(e){/* ignore if no config.json */}
+
         window._tokenClient=google.accounts.oauth2.initTokenClient({
           client_id: metaClient || 'REPLACE_WITH_YOUR_CLIENT_ID',
           scope:"https://www.googleapis.com/auth/drive.appdata",

@@ -11,3 +11,4 @@ dist/
 /.idea
 /.vscode
 exported_data/
+config.json
