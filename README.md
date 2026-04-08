@@ -1,4 +1,4 @@
-Capital Stacks Tracker — GitHub Pages + Google Drive setup
+Money Bags Tracker — GitHub Pages + Google Drive setup
 
 This repo is a static single-file app (`index.html`). It uses the Google Identity Services (GIS) + Google Drive API (appDataFolder) to store app state.
 
