@@ -982,6 +982,37 @@ function mkDefault() {
     research: { notes: {}, watchlist: ["SPY","NAIL","TSLA","AMD","MSTR","COIN"] }
   };
 }
+// Generic JSON import handler — supports full app export (overwrite) or transaction-style JSON (append)
+async function handleImportedJson(parsed, opts){
+  // Full export
+  if(parsed && parsed.etfs && parsed.optionTrades){
+    if(opts && opts.mode==='firstRun'){
+      appData = deepMerge(mkDefault(), parsed);
+      saveLocal();
+      await saveCloud();
+      return true;
+    }
+    return false; // other flows handle full overwrite earlier
+  }
+
+  // Transaction-style imports: common keys
+  const candidates = parsed && (parsed.transactions || parsed.activities || parsed.rows || parsed.items || (Array.isArray(parsed) && parsed));
+  const items = Array.isArray(candidates) ? candidates : null;
+  if(items && items.length>0){
+    // Append raw items into optionTrades for later review (caller should save & render)
+    if(!appData.optionTrades) appData.optionTrades = [];
+    const before = appData.optionTrades.length;
+    items.forEach(it => {
+      const entry = Object.assign({ _imported: true, _import_source: (opts && opts.source) || 'json' , _import_at: new Date().toISOString() }, it);
+      appData.optionTrades.push(entry);
+    });
+    const added = appData.optionTrades.length - before;
+    toast(`${added} transaction(s) appended`,'success');
+    return true;
+  }
+
+  return false;
+}
 
 /* ════════════════════════════════════════════════════════
    STATE
@@ -1160,18 +1191,16 @@ function processJsonFile(file){
   r.onload=async ev=>{
     try{
       const parsed=JSON.parse(ev.target.result);
-      if(!parsed.etfs||!parsed.optionTrades){
+      const handled = await handleImportedJson(parsed, {mode:'firstRun'});
+      if(handled) {
+        msg.style.color='var(--green)';
+        msg.textContent='✓ Data imported';
+        toast('JSON imported ✓','success');
+        launchApp();
+      } else {
         msg.style.color='var(--red)';
-        msg.textContent='Invalid file — does not look like cs_etf_tracker.json';
-        return;
+        msg.textContent='Invalid file — unsupported JSON format';
       }
-      appData=deepMerge(mkDefault(),parsed);
-      saveLocal();
-      msg.style.color='var(--green)';
-      msg.textContent='✓ Data loaded — saving to Drive...';
-      await saveCloud();
-      toast('Data imported & saved to Drive ✓','success');
-      launchApp();
     } catch(ex){
       msg.style.color='var(--red)';
       msg.textContent='Failed to parse JSON — check the file';
@@ -2823,12 +2852,23 @@ function onSettingsJsonImport(e){
   r.onload=async ev=>{
     try{
       const parsed=JSON.parse(ev.target.result);
-      if(!parsed.etfs||!parsed.optionTrades){toast('Invalid JSON file','error');return;}
-      if(!confirm('This will overwrite all current data with the imported file and save to Drive. Continue?')) return;
-      appData=deepMerge(mkDefault(),parsed);
-      saveLocal();closeSettings();renderAll();
-      await saveCloud();
-      toast('JSON imported & saved to Drive ✓','success');
+      // Use generic handler which supports full app exports or transaction lists
+      if(parsed.etfs && parsed.optionTrades){
+        if(!confirm('This will overwrite all current data with the imported file and save to Drive. Continue?')) return;
+        appData=deepMerge(mkDefault(),parsed);
+        saveLocal();closeSettings();renderAll();
+        await saveCloud();
+        toast('JSON imported & saved to Drive ✓','success');
+        return;
+      }
+      const handled = await handleImportedJson(parsed, {mode:'settings'});
+      if(handled){
+        saveLocal();closeSettings();renderAll();
+        await saveCloud();
+        toast('JSON transactions appended & saved to Drive ✓','success');
+      } else {
+        toast('Invalid JSON file','error');
+      }
     } catch(ex){toast('Failed to parse JSON file','error');}
   };
   r.readAsText(e.target.files[0]);
