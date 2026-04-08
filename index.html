@@ -5,7 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Capital Stacks Tracker</title>
-  <link rel="shortcut icon" href="/command-center/cs-tracker-icon.ico" type="image/x-icon">
+  <meta name="google-client-id" content="REPLACE_WITH_YOUR_CLIENT_ID">
+  <link rel="shortcut icon" href="command-center/cs-tracker-icon.ico" type="image/x-icon">
   <!-- <link rel="icon" href="/command-center/favicon.ico"> -->
   <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
   <!-- Google API callbacks defined before scripts load -->
@@ -22,8 +23,10 @@
     }
     function gisLoaded(){
       try{
+        const meta = document.querySelector('meta[name="google-client-id"]');
+        const metaClient = meta ? meta.getAttribute('content') : '';
         window._tokenClient=google.accounts.oauth2.initTokenClient({
-          client_id:"305146523481-1gucm4vggu2pmucqjgae0vhb1deavnqb.apps.googleusercontent.com",
+          client_id: metaClient || 'REPLACE_WITH_YOUR_CLIENT_ID',
           scope:"https://www.googleapis.com/auth/drive.appdata",
           callback:async r=>{
             if(r.error){console.error('[Drive] GIS token error:',r.error);if(window._toast)window._toast('Auth failed: '+r.error,'error');return;}
@@ -46,6 +49,9 @@
     });
   </script>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Google API libraries (load after callbacks defined above) -->
+  <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+  <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
   <style>
     :root {
       --bg:       #080d1a; --bg2:     #0c1222; --surface: #0f1928;
@@ -921,7 +927,7 @@
    CONSTANTS
 ════════════════════════════════════════════════════════ */
 const APP_VERSION = "3.0";
-const CLIENT_ID   = "305146523481-1gucm4vggu2pmucqjgae0vhb1deavnqb.apps.googleusercontent.com";
+const CLIENT_ID   = (document.querySelector('meta[name="google-client-id"]')||{content:null}).content || "REPLACE_WITH_YOUR_CLIENT_ID";
 const SCOPES      = "https://www.googleapis.com/auth/drive.appdata";
 const DRIVE_FILE  = "cs_tracker.json";
 const ETF_SYMS    = ["TSLY","ULTY","AMDY","CONY"];
