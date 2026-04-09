@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Authenticating…</title>
+  <style>
+    body { font-family: sans-serif; display: flex; align-items: center;
+           justify-content: center; height: 100vh; margin: 0; background: #0f1117; color: #aaa; }
+  </style>
+</head>
+<body>
+  <p>Completing sign-in, this window will close automatically…</p>
+  <script>
+    (function () {
+      // Token arrives in the URL hash for implicit flow, or as query params for errors.
+      var hash   = window.location.hash.slice(1);
+      var search = window.location.search.slice(1);
+      var params = new URLSearchParams(hash || search);
+
+      var token = params.get('access_token');
+      var error = params.get('error');
+
+      if (window.opener) {
+        window.opener.postMessage(
+          { type: 'TGC_OAUTH', token: token || null, error: error || null },
+          window.location.origin
+        );
+      }
+      window.close();
+    })();
+  </script>
+</body>
+</html>
