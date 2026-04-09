@@ -1070,6 +1070,33 @@ async function syncFromGoogleDrive() {
   }
 }
 
+let driveBootPromptShown = false;
+
+async function maybeAutoConnectDriveOnLoad() {
+  if (driveBootPromptShown) return;
+  if (!(storageMeta.preferredBackend === 'drive' || storageMeta.driveFileId)) return;
+  driveBootPromptShown = true;
+
+  const shouldConnect = window.confirm(
+    'Connect to Google Drive now and restore your latest dashboard data?\n\n'
+    + 'Choose OK to sign in and auto-load your data.\n'
+    + 'Choose Cancel to stay local for now.'
+  );
+  if (!shouldConnect) {
+    setFsStatus('Drive linked — click ☁ Connect Drive or ☁↓ Restore from Drive when ready.', 'var(--amber)');
+    return;
+  }
+
+  if (storageMeta.driveFileId) {
+    await syncFromGoogleDrive();
+    setFsStatus('✓ Drive connected and restored — auto-save to Drive is active', 'var(--green)');
+    return;
+  }
+
+  await connectGoogleDrive();
+  setFsStatus('✓ Drive connected — auto-save to Drive is active', 'var(--green)');
+}
+
 // ── Warn on unsaved close ────────────────────────────────
 window.addEventListener('beforeunload', e => {
   if (unsaved) { e.preventDefault(); e.returnValue = ''; }
@@ -2189,8 +2216,10 @@ function processFile(file) {
     addLog(`Total in database: ${db.transactions.length}`, 'info');
     if (fileHandle) {
       addLog('Auto-saving to ' + fileHandle.name + '…', 'info');
+    } else if (storageMeta.driveFileId) {
+      addLog('Auto-saving to Google Drive…', 'info');
     } else {
-      addLog('Tip: click 💾 Save in the top bar to write your data to disk.', 'warn');
+      addLog('Tip: click ☁ Connect Drive to enable auto-sync backup, or click 💾 Save for a local file.', 'warn');
     }
     refreshAll();
     addLog('Done. All views refreshed.', 'ok');
@@ -2885,7 +2914,7 @@ const SEED_CSV = `Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amou
 // Show initial file status
 if (FS_SUPPORTED) {
   if (storageMeta.preferredBackend === 'drive' && storageMeta.driveFileId) {
-    setFsStatus('Drive linked (' + (storageMeta.driveFileName || 'tgcapital-data.json') + ') — click Sync Drive to pull latest', 'var(--accent)');
+    setFsStatus('Drive linked (' + (storageMeta.driveFileName || 'tgcapital-data.json') + ') — you will be prompted to connect and restore latest data', 'var(--accent)');
   } else if (storageMeta.preferredBackend === 'file' && storageMeta.localFileName) {
     setFsStatus('File backend last used: ' + storageMeta.localFileName + ' — click Open File to relink this session', 'var(--text2)');
   } else {
@@ -2896,7 +2925,12 @@ if (FS_SUPPORTED) {
 }
 
 // Initial render
-renderDashboard();
+refreshAll();
+setTimeout(() => {
+  maybeAutoConnectDriveOnLoad().catch(err => {
+    setFsStatus('! Drive auto-connect failed: ' + err.message, 'var(--red)');
+  });
+}, 200);
 </script>
 </body>
 </html>
