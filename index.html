@@ -133,6 +133,70 @@
   .import-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   @media (max-width: 700px) { .import-grid { grid-template-columns: 1fr; } }
 
+  /* ── Mobile Responsive ── */
+  @media (max-width: 768px) {
+    .main { padding: 12px; }
+    .topbar { padding: 8px 12px; gap: 12px; }
+    .topbar-stats { gap: 6px; }
+    .nav { padding: 6px 12px; gap: 0; }
+    .nav-btn { padding: 5px 10px; font-size: 12px; }
+    .card { border-radius: 4px; }
+    .card-header { padding: 10px 12px; gap: 8px; flex-direction: column; align-items: flex-start; }
+    .card-title { font-size: 11px; }
+    #perfFilterBar { flex-direction: column !important; gap: 8px !important; width: 100%; }
+    #perfInstFilter { margin-left: 0 !important; border-left: none !important; padding-left: 0 !important; width: 100%; justify-content: flex-start !important; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
+    .kpi { padding: 10px 12px; }
+    .kpi-value { font-size: 18px; }
+    .kpi-label { font-size: 9px; }
+    .kpi-sub { font-size: 10px; }
+    .filter-bar { gap: 4px; padding: 8px 12px; flex-wrap: wrap; }
+    .filter-btn { padding: 3px 8px; font-size: 11px; }
+    table { font-size: 11px; }
+    th { padding: 6px 8px; font-size: 9px; }
+    td { padding: 7px 8px; font-size: 11px; }
+    .empty-row td { padding: 20px; }
+    .chart-wrap { height: 300px !important; }
+    .logo { font-size: 13px; }
+    .tstat { padding: 6px 8px; min-height: 48px; }
+    .tstat-label { font-size: 9px; }
+    .tstat-val { font-size: 14px; }
+  }
+
+  @media (max-width: 480px) {
+    .main { padding: 8px; }
+    .topbar { padding: 6px 8px; gap: 8px; }
+    .topbar-stats { grid-template-columns: repeat(2, 1fr) !important; gap: 4px; }
+    .nav { padding: 4px 8px;}
+    .nav-btn { padding: 4px 8px; font-size: 11px; }
+    .card { border-radius: 3px; }
+    .card-header { padding: 8px 10px; }
+    .card-title { font-size: 10px; }
+    #perfFilterBar { flex-direction: column !important; gap: 6px !important; }
+    #perfInstFilter { margin-left: 0 !important; border-left: none !important; padding-left: 0 !important; width: 100%; gap: 4px !important; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .kpi { padding: 8px 10px; }
+    .kpi-value { font-size: 16px; }
+    .kpi-label { font-size: 8px; }
+    .kpi-sub { font-size: 9px; }
+    .filter-bar { gap: 3px; padding: 6px 8px; }
+    .filter-btn { padding: 2px 6px; font-size: 10px; height: 28px; }
+    table { font-size: 10px; }
+    th { padding: 4px 6px; font-size: 8px; }
+    td { padding: 5px 6px; font-size: 10px; }
+    .tbl-wrap { font-size: 10px; }
+    .badge { font-size: 8px; padding: 1px 4px; }
+    .chart-wrap { height: 240px !important; }
+    .pos { font-size: 13px; }
+    .logo { font-size: 12px; }
+    .tstat { padding: 4px 6px; min-height: 40px; }
+    .tstat-label { font-size: 8px; }
+    .tstat-val { font-size: 12px; }
+    .btn { padding: 6px 12px; font-size: 12px; }
+    .btn-sm { padding: 4px 8px; font-size: 11px; }
+  }
+
+
   /* ── Filters ── */
   .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 16px; background: var(--bg2); border-bottom: 1px solid var(--border); }
   .filter-btn { font-size: 12px; font-family: var(--mono); padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border); background: transparent; color: var(--text1); cursor: pointer; transition: all 0.15s; }
@@ -271,12 +335,16 @@
 <div class="view" id="view-performance">
   <div class="card" style="margin-bottom:16px;">
     <div class="card-header">
-      <span class="card-title">Period Performance (Closed Option Trades)</span>
-      <div class="filter-bar" style="padding:0;background:transparent;border:none;gap:6px;">
+      <span class="card-title">Period Performance</span>
+      <div class="filter-bar" id="perfFilterBar" style="padding:0;background:transparent;border:none;gap:6px;flex-wrap:wrap;width:100%;flex-direction:row;">
         <button class="filter-btn active" id="perf-daily" onclick="setPerformancePeriod('daily', this)">Daily</button>
         <button class="filter-btn" id="perf-weekly" onclick="setPerformancePeriod('weekly', this)">Weekly</button>
         <button class="filter-btn" id="perf-monthly" onclick="setPerformancePeriod('monthly', this)">Monthly</button>
         <button class="filter-btn" id="perf-yearly" onclick="setPerformancePeriod('yearly', this)">Yearly</button>
+        <span style="margin-left:auto;border-left:1px solid var(--border);padding-left:12px;display:flex;gap:6px;" id="perfInstFilter">
+          <button class="filter-btn active" id="perf-opts-only" onclick="setPerformanceInstruments('options-only', this)">Options Only</button>
+          <button class="filter-btn" id="perf-all-inst" onclick="setPerformanceInstruments('all', this)">All Instruments</button>
+        </span>
       </div>
     </div>
     <div style="padding:12px 16px;font-family:var(--mono);font-size:11px;color:var(--text2);" id="perfSummarySub">—</div>
@@ -287,6 +355,11 @@
     <div class="kpi"><div class="kpi-label">Current Weekly P&L</div><div class="kpi-value pos n" id="perf-week-pnl">—</div><div class="kpi-sub" id="perf-week-sub">—</div></div>
     <div class="kpi"><div class="kpi-label">Current Monthly P&L</div><div class="kpi-value pos n" id="perf-month-pnl">—</div><div class="kpi-sub" id="perf-month-sub">—</div></div>
     <div class="kpi"><div class="kpi-label">Current Yearly P&L</div><div class="kpi-value pos n" id="perf-year-pnl">—</div><div class="kpi-sub" id="perf-year-sub">—</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="card-header"><span class="card-title">Cumulative P&L by Period</span></div>
+    <div style="padding:16px;"><div class="chart-wrap"><canvas id="performanceChart" role="img" aria-label="Cumulative P&L by time period">Performance chart</canvas></div></div>
   </div>
 
   <div class="card">
@@ -1909,6 +1982,9 @@ function computeStats() {
 // CHARTS
 // ════════════════════════════════════════════════════════
 let pnlChartInst = null, symbolChartInst = null, typeChartInst = null;
+let performanceChartInst = null;
+let performancePeriod = 'daily';
+let performanceInstruments = 'options-only';
 
 function renderCharts(closedTrades) {
   // P&L curve (cumulative, by date)
@@ -2025,8 +2101,6 @@ function dirBadge(d) {
   return d === 'short' ? '<span class="badge badge-short">SHORT</span>' : '<span class="badge badge-long">LONG</span>';
 }
 
-let performancePeriod = 'daily';
-
 function isoWeekParts(dateObj) {
   const d = new Date(Date.UTC(dateObj.getUTCFullYear(), dateObj.getUTCMonth(), dateObj.getUTCDate()));
   const day = d.getUTCDay() || 7;
@@ -2103,13 +2177,28 @@ function setPerformancePeriod(period, btn) {
   renderPerformance();
 }
 
+function setPerformanceInstruments(instruments, btn) {
+  performanceInstruments = instruments;
+  document.querySelectorAll('#perf-opts-only, #perf-all-inst').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderPerformance();
+}
+
 function renderPerformance() {
   const { optionClosed } = computeStats();
+  
+  // Filter trades by instrument type
+  let filteredTrades = optionClosed;
+  if (performanceInstruments === 'all') {
+    // Include all closed trades (options + stock/ETF)
+    const allTrades = db.trades.filter(t => t.status === 'closed' && t.closeDate && t.netPnl !== undefined);
+    filteredTrades = [...optionClosed, ...allTrades.filter(t => !t.type || t.type !== 'option')];
+  }
 
-  const day = currentPeriodMetrics(optionClosed, 'daily');
-  const week = currentPeriodMetrics(optionClosed, 'weekly');
-  const month = currentPeriodMetrics(optionClosed, 'monthly');
-  const year = currentPeriodMetrics(optionClosed, 'yearly');
+  const day = currentPeriodMetrics(filteredTrades, 'daily');
+  const week = currentPeriodMetrics(filteredTrades, 'weekly');
+  const month = currentPeriodMetrics(filteredTrades, 'monthly');
+  const year = currentPeriodMetrics(filteredTrades, 'yearly');
 
   const setKpi = (prefix, m, granularity) => {
     const el = document.getElementById(prefix + '-pnl');
@@ -2122,14 +2211,16 @@ function renderPerformance() {
   setKpi('perf-month', month, 'monthly');
   setKpi('perf-year', year, 'yearly');
 
-  const rows = bucketPerformance(optionClosed, performancePeriod);
+  const rows = bucketPerformance(filteredTrades, performancePeriod);
   const tbody = document.querySelector('#performanceTable tbody');
+  const instLabel = performanceInstruments === 'all' ? 'all instruments' : 'options';
   document.getElementById('perfSummarySub').textContent = rows.length
-    ? `Showing ${performancePeriod} performance across ${rows.length} periods`
+    ? `Showing ${performancePeriod} performance (${instLabel}) across ${rows.length} periods`
     : `No data for ${performancePeriod} performance yet`;
 
   if (!rows.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No closed trades yet.</td></tr>';
+    renderPerformanceChart([]);
     return;
   }
 
@@ -2146,6 +2237,83 @@ function renderPerformance() {
       <td class="r"><span class="pos ${pnlClass(avg)}">${fmt$(avg)}</span></td>
     </tr>`;
   }).join('');
+  
+  renderPerformanceChart(rows);
+}
+
+function renderPerformanceChart(rows) {
+  if (!rows || !rows.length) {
+    if (performanceChartInst) performanceChartInst.destroy();
+    performanceChartInst = null;
+    return;
+  }
+
+  // Sort rows by period key to ensure chronological order
+  const sorted = [...rows].sort((a, b) => a.key.localeCompare(b.key));
+  
+  // Build cumulative P&L and label
+  let cumPnl = 0;
+  const labels = sorted.map(r => periodLabel(r.key, performancePeriod));
+  const cumulativeData = sorted.map(r => {
+    cumPnl += r.pnl;
+    return cumPnl;
+  });
+  
+  const chartColors = cumulativeData.map(v => v >= 0 ? 'rgba(132, 204, 22, 0.8)' : 'rgba(240, 112, 112, 0.8)');
+  const borderColor = cumulativeData.map(v => v >= 0 ? '#84cc16' : '#f07070');
+
+  if (performanceChartInst) performanceChartInst.destroy();
+  performanceChartInst = new Chart(document.getElementById('performanceChart'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Cumulative P&L',
+        data: cumulativeData,
+        borderColor: borderColor,
+        backgroundColor: 'rgba(132, 204, 22, 0.1)',
+        fill: true,
+        tension: 0.2,
+        pointRadius: 4,
+        pointBackgroundColor: chartColors,
+        pointBorderColor: borderColor,
+        pointBorderWidth: 1,
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: 'var(--text1)', font: { family: 'var(--mono)' } } },
+        tooltip: {
+          backgroundColor: 'rgba(20, 22, 24, 0.95)',
+          titleColor: 'var(--green)',
+          bodyColor: 'var(--text1)',
+          borderColor: 'var(--border)',
+          borderWidth: 1,
+          callbacks: {
+            label: ctx => {
+              const val = ctx.parsed.y || 0;
+              return `${fmt$(val)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          ticks: { color: 'var(--text2)', callback: v => fmt$(v) },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          border: { color: 'var(--border)' }
+        },
+        x: {
+          ticks: { color: 'var(--text2)' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+          border: { color: 'var(--border)' }
+        }
+      }
+    }
+  });
 }
 
 function renderDashboard() {
