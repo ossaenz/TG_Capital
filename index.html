@@ -179,6 +179,10 @@
 
   /* ── Trades table search ── */
   .tbl-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  /* ── Status bar (below nav) ── */
+  .status-bar { padding: 4px 20px; background: var(--bg1); border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 11px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-bar:empty { display: none; }
 </style>
 </head>
 <body>
@@ -193,7 +197,6 @@
     <button class="btn btn-sm" id="btnDriveConnect" onclick="connectGoogleDrive()" style="background:var(--accent-dim);color:#a8c8f8;border:1px solid var(--accent);" title="Connect Google Drive appDataFolder">☁ Connect Drive</button>
     <button class="btn btn-sm" id="btnDriveSync" onclick="syncFromGoogleDrive()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Pull latest data from Google Drive">⇅ Sync Drive</button>
     <span id="backendBadge" style="font-family:var(--mono);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;padding:3px 7px;border-radius:3px;border:1px solid var(--border);color:var(--text2);background:var(--bg3);white-space:nowrap">Backend: none</span>
-    <span id="fsStatus" style="font-family:var(--mono);font-size:11px;color:var(--text2);white-space:nowrap"></span>
   </div>
   <div class="topbar-stats" id="topbarStats">
     <div class="tstat"><div class="tstat-label">Realized P&L</div><div class="tstat-val" id="ts-realized" style="color:var(--text2)">—</div></div>
@@ -213,6 +216,9 @@
   <button class="nav-btn" onclick="showView('import')">Import</button>
   <button class="nav-btn" onclick="showView('audit')">Audit Trail</button>
 </div>
+
+<!-- STATUS BAR -->
+<div class="status-bar" id="fsStatus"></div>
 
 <div class="main">
 
