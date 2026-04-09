@@ -195,6 +195,7 @@
     <button class="btn btn-sm" id="btnOpenFile" onclick="openDataFile()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Open a TGCapital .json data file from disk">📂 Open File</button>
     <button class="btn btn-sm" id="btnSaveFile" onclick="saveDataFile()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);" title="Save all data to disk">💾 Save</button>
     <button class="btn btn-sm" id="btnDriveConnect" onclick="connectGoogleDrive()" style="background:var(--accent-dim);color:#a8c8f8;border:1px solid var(--accent);" title="Connect Google Drive appDataFolder">☁ Connect Drive</button>
+    <button class="btn btn-sm" id="btnDriveAuto" onclick="toggleAutoDriveConnect()" style="background:var(--accent-dim);color:#a8c8f8;border:1px solid var(--accent);" title="When ON, app auto-connects to Drive and restores data on startup">Auto Drive: ON</button>
     <button class="btn btn-sm" id="btnDriveSave" onclick="syncToGoogleDrive('manual')" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Save (upload) current data to Google Drive">☁↑ Save to Drive</button>
     <button class="btn btn-sm" id="btnDriveSync" onclick="syncFromGoogleDrive()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Restore (download) data from Google Drive">☁↓ Restore from Drive</button>
     <span id="backendBadge" style="font-family:var(--mono);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;padding:3px 7px;border-radius:3px;border:1px solid var(--border);color:var(--text2);background:var(--bg3);white-space:nowrap">Backend: none</span>
@@ -657,15 +658,35 @@ function loadStorageMeta() {
       driveFileId: parsed.driveFileId || null,
       driveFileName: parsed.driveFileName || null,
       localFileName: parsed.localFileName || null,
+      autoDriveConnect: parsed.autoDriveConnect !== false,
     };
   } catch {
-    return { preferredBackend: null, driveFileId: null, driveFileName: null, localFileName: null };
+    return { preferredBackend: null, driveFileId: null, driveFileName: null, localFileName: null, autoDriveConnect: true };
   }
 }
 
 function saveStorageMeta() {
   try { localStorage.setItem(STORAGE_META_KEY, JSON.stringify(storageMeta)); } catch {}
   updateBackendBadge();
+  updateDriveAutoToggleUI();
+}
+
+function updateDriveAutoToggleUI() {
+  const btn = document.getElementById('btnDriveAuto');
+  if (!btn) return;
+  const on = storageMeta.autoDriveConnect !== false;
+  btn.textContent = on ? 'Auto Drive: ON' : 'Auto Drive: OFF';
+  btn.style.opacity = on ? '1' : '0.75';
+}
+
+function toggleAutoDriveConnect() {
+  storageMeta.autoDriveConnect = !(storageMeta.autoDriveConnect !== false);
+  saveStorageMeta();
+  if (storageMeta.autoDriveConnect !== false) {
+    setFsStatus('Auto Drive enabled — app will auto-connect and restore on startup', 'var(--green)');
+  } else {
+    setFsStatus('Auto Drive disabled — app will ask before Drive restore on startup', 'var(--amber)');
+  }
 }
 
 function loadDB() {
@@ -1076,6 +1097,17 @@ async function maybeAutoConnectDriveOnLoad() {
   if (driveBootPromptShown) return;
   if (!(storageMeta.preferredBackend === 'drive' || storageMeta.driveFileId)) return;
   driveBootPromptShown = true;
+
+  if (storageMeta.autoDriveConnect !== false) {
+    if (storageMeta.driveFileId) {
+      await syncFromGoogleDrive();
+      setFsStatus('✓ Drive connected and restored — auto-save to Drive is active', 'var(--green)');
+      return;
+    }
+    await connectGoogleDrive();
+    setFsStatus('✓ Drive connected — auto-save to Drive is active', 'var(--green)');
+    return;
+  }
 
   const shouldConnect = window.confirm(
     'Connect to Google Drive now and restore your latest dashboard data?\n\n'
@@ -2926,6 +2958,7 @@ if (FS_SUPPORTED) {
 
 // Initial render
 refreshAll();
+updateDriveAutoToggleUI();
 setTimeout(() => {
   maybeAutoConnectDriveOnLoad().catch(err => {
     setFsStatus('! Drive auto-connect failed: ' + err.message, 'var(--red)');
