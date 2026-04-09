@@ -194,6 +194,9 @@
   <div style="display:flex;gap:8px;align-items:center;margin-left:16px;">
     <button class="btn btn-sm" id="btnOpenFile" onclick="openDataFile()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Open a TGCapital .json data file from disk">📂 Open File</button>
     <button class="btn btn-sm" id="btnSaveFile" onclick="saveDataFile()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);" title="Save all data to disk">💾 Save</button>
+    <button class="btn btn-sm" id="btnCfgSave" onclick="saveLocalConfigFile()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Save app configuration to local disk">⚙ Save Config</button>
+    <button class="btn btn-sm" id="btnCfgOpen" onclick="openLocalConfigFile()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Load app configuration from local disk">⚙ Open Config</button>
+    <button class="btn btn-sm" id="btnLocalDiskMode" onclick="toggleLocalDiskMode()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);" title="When ON, local disk is preferred and Google Drive sync is disabled">Local Disk Mode: OFF</button>
     <button class="btn btn-sm" id="btnDriveConnect" onclick="connectGoogleDrive()" style="background:var(--accent-dim);color:#a8c8f8;border:1px solid var(--accent);" title="Connect Google Drive appDataFolder">☁ Connect Drive</button>
     <button class="btn btn-sm" id="btnDriveAuto" onclick="toggleAutoDriveConnect()" style="background:var(--accent-dim);color:#a8c8f8;border:1px solid var(--accent);" title="When ON, app auto-connects to Drive and restores data on startup">Auto Drive: ON</button>
     <button class="btn btn-sm" id="btnDriveSave" onclick="syncToGoogleDrive('manual')" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Save (upload) current data to Google Drive">☁↑ Save to Drive</button>
@@ -475,6 +478,7 @@ const STORAGE_META_KEY = 'tgcapital_storage_meta_v1';
 const FS_SUPPORTED = ('showOpenFilePicker' in window);
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const DRIVE_DATA_FILE_NAME = 'tgcapital-data.json';
+const LOCAL_CONFIG_FILE_NAME = 'tgcapital-config.json';
 
 let fileHandle = null;        // FileSystemFileHandle — session only
 let saveTimer = null;         // debounce handle
@@ -659,9 +663,10 @@ function loadStorageMeta() {
       driveFileName: parsed.driveFileName || null,
       localFileName: parsed.localFileName || null,
       autoDriveConnect: parsed.autoDriveConnect !== false,
+      localDiskMode: parsed.localDiskMode === true,
     };
   } catch {
-    return { preferredBackend: null, driveFileId: null, driveFileName: null, localFileName: null, autoDriveConnect: true };
+    return { preferredBackend: null, driveFileId: null, driveFileName: null, localFileName: null, autoDriveConnect: true, localDiskMode: false };
   }
 }
 
@@ -669,6 +674,7 @@ function saveStorageMeta() {
   try { localStorage.setItem(STORAGE_META_KEY, JSON.stringify(storageMeta)); } catch {}
   updateBackendBadge();
   updateDriveAutoToggleUI();
+  updateLocalDiskModeUI();
 }
 
 function updateDriveAutoToggleUI() {
@@ -677,6 +683,103 @@ function updateDriveAutoToggleUI() {
   const on = storageMeta.autoDriveConnect !== false;
   btn.textContent = on ? 'Auto Drive: ON' : 'Auto Drive: OFF';
   btn.style.opacity = on ? '1' : '0.75';
+}
+
+function updateLocalDiskModeUI() {
+  const btn = document.getElementById('btnLocalDiskMode');
+  if (!btn) return;
+  const on = storageMeta.localDiskMode === true;
+  btn.textContent = on ? 'Local Disk Mode: ON' : 'Local Disk Mode: OFF';
+  btn.style.opacity = on ? '1' : '0.8';
+}
+
+function toggleLocalDiskMode() {
+  storageMeta.localDiskMode = !(storageMeta.localDiskMode === true);
+  if (storageMeta.localDiskMode) {
+    storageMeta.preferredBackend = 'file';
+    storageMeta.autoDriveConnect = false;
+  }
+  saveStorageMeta();
+  updateLocalDiskModeUI();
+  if (storageMeta.localDiskMode) {
+    setFsStatus('Local Disk Mode enabled — Google Drive sync is disabled', 'var(--green)');
+  } else {
+    setFsStatus('Local Disk Mode disabled — Google Drive is available again', 'var(--accent)');
+  }
+}
+
+function makeConfigSnapshot() {
+  return {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    app: 'TGCapital',
+    storageMeta: {
+      preferredBackend: storageMeta.preferredBackend || null,
+      driveFileId: storageMeta.driveFileId || null,
+      driveFileName: storageMeta.driveFileName || null,
+      localFileName: storageMeta.localFileName || null,
+      autoDriveConnect: storageMeta.autoDriveConnect !== false,
+      localDiskMode: storageMeta.localDiskMode === true,
+    },
+  };
+}
+
+function applyConfigSnapshot(cfg) {
+  const meta = cfg && typeof cfg === 'object' ? (cfg.storageMeta || cfg) : null;
+  if (!meta || typeof meta !== 'object') throw new Error('Invalid config file format');
+
+  storageMeta.preferredBackend = meta.preferredBackend || null;
+  storageMeta.driveFileId = meta.driveFileId || null;
+  storageMeta.driveFileName = meta.driveFileName || null;
+  storageMeta.localFileName = meta.localFileName || null;
+  storageMeta.autoDriveConnect = meta.autoDriveConnect !== false;
+  storageMeta.localDiskMode = meta.localDiskMode === true;
+
+  if (storageMeta.localDiskMode) {
+    storageMeta.preferredBackend = 'file';
+    storageMeta.autoDriveConnect = false;
+  }
+
+  saveStorageMeta();
+  updateLocalDiskModeUI();
+}
+
+async function saveLocalConfigFile() {
+  if (!FS_SUPPORTED) {
+    setFsStatus('Local config save requires Chrome/Edge File System Access API', 'var(--amber)');
+    return;
+  }
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: LOCAL_CONFIG_FILE_NAME,
+      types: [{ description: 'TGCapital Config', accept: { 'application/json': ['.json'] } }],
+    });
+    const writable = await handle.createWritable();
+    await writable.write(JSON.stringify(makeConfigSnapshot(), null, 2));
+    await writable.close();
+    setFsStatus('✓ Config saved to disk: ' + (handle.name || LOCAL_CONFIG_FILE_NAME), 'var(--green)');
+  } catch (err) {
+    if (err.name !== 'AbortError') setFsStatus('! Config save failed: ' + err.message, 'var(--red)');
+  }
+}
+
+async function openLocalConfigFile() {
+  if (!FS_SUPPORTED) {
+    setFsStatus('Local config load requires Chrome/Edge File System Access API', 'var(--amber)');
+    return;
+  }
+  try {
+    const [handle] = await window.showOpenFilePicker({
+      types: [{ description: 'TGCapital Config', accept: { 'application/json': ['.json'] } }],
+      multiple: false,
+    });
+    const file = await handle.getFile();
+    const parsed = JSON.parse(await file.text());
+    applyConfigSnapshot(parsed);
+    setFsStatus('✓ Config loaded from disk: ' + (handle.name || LOCAL_CONFIG_FILE_NAME), 'var(--green)');
+  } catch (err) {
+    if (err.name !== 'AbortError') setFsStatus('! Config load failed: ' + err.message, 'var(--red)');
+  }
 }
 
 function toggleAutoDriveConnect() {
@@ -709,6 +812,12 @@ function saveDB(data) {
   db = sanitizeDB(data);
   if (fileHandle) {
     queueAutoSave(() => writeToDisk(db), 'file');
+    return;
+  }
+
+  if (storageMeta.localDiskMode === true) {
+    setFsStatus('! Local Disk Mode is ON. Click 💾 Save to write to local file.', 'var(--amber)');
+    unsaved = true;
     return;
   }
 
@@ -771,6 +880,28 @@ async function openDataFile() {
 
 // ── Save / Save As ───────────────────────────────────────
 async function saveDataFile() {
+  if (storageMeta.localDiskMode === true) {
+    if (!FS_SUPPORTED) {
+      exportJSON();
+      return;
+    }
+    try {
+      if (!fileHandle) {
+        fileHandle = await window.showSaveFilePicker({
+          suggestedName: 'tgcapital-data.json',
+          types: [{ description: 'TGCapital Data', accept: { 'application/json': ['.json'] } }],
+        });
+        storageMeta.localFileName = fileHandle.name || null;
+      }
+      storageMeta.preferredBackend = 'file';
+      saveStorageMeta();
+      await writeToDisk(db);
+    } catch (err) {
+      if (err.name !== 'AbortError') setFsStatus('⚠ ' + err.message, 'var(--red)');
+    }
+    return;
+  }
+
   if (storageMeta.preferredBackend === 'drive' && storageMeta.driveFileId) {
     try {
       await syncToGoogleDrive('manual');
@@ -839,6 +970,11 @@ function updateBackendBadge() {
 
   if (fileHandle) {
     label = 'Backend: file active';
+    fg = 'var(--green)';
+    bg = 'var(--green-dim)';
+    border = 'var(--green)';
+  } else if (storageMeta.localDiskMode === true) {
+    label = 'Backend: local disk mode';
     fg = 'var(--green)';
     bg = 'var(--green-dim)';
     border = 'var(--green)';
@@ -1029,6 +1165,10 @@ async function downloadDriveData(fileId) {
 }
 
 async function connectGoogleDrive() {
+  if (storageMeta.localDiskMode === true) {
+    setFsStatus('Local Disk Mode is ON. Disable it to use Google Drive.', 'var(--amber)');
+    return;
+  }
   try {
     await requestDriveToken('consent');
     let file = await findDriveDataFile();
@@ -1052,6 +1192,10 @@ async function connectGoogleDrive() {
 }
 
 async function syncToGoogleDrive(mode) {
+  if (storageMeta.localDiskMode === true) {
+    if (mode !== 'auto') setFsStatus('Local Disk Mode is ON. Drive save is disabled.', 'var(--amber)');
+    return;
+  }
   try {
     if (!storageMeta.driveFileId) {
       await connectGoogleDrive();
@@ -1067,6 +1211,10 @@ async function syncToGoogleDrive(mode) {
 }
 
 async function syncFromGoogleDrive() {
+  if (storageMeta.localDiskMode === true) {
+    setFsStatus('Local Disk Mode is ON. Drive restore is disabled.', 'var(--amber)');
+    return;
+  }
   try {
     await requestDriveToken('');
     if (!storageMeta.driveFileId) {
@@ -1095,6 +1243,7 @@ let driveBootPromptShown = false;
 
 async function maybeAutoConnectDriveOnLoad() {
   if (driveBootPromptShown) return;
+  if (storageMeta.localDiskMode === true) return;
   if (!(storageMeta.preferredBackend === 'drive' || storageMeta.driveFileId)) return;
   driveBootPromptShown = true;
 
@@ -2959,6 +3108,7 @@ if (FS_SUPPORTED) {
 // Initial render
 refreshAll();
 updateDriveAutoToggleUI();
+updateLocalDiskModeUI();
 setTimeout(() => {
   maybeAutoConnectDriveOnLoad().catch(err => {
     setFsStatus('! Drive auto-connect failed: ' + err.message, 'var(--red)');
