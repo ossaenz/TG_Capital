@@ -195,7 +195,8 @@
     <button class="btn btn-sm" id="btnOpenFile" onclick="openDataFile()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Open a TGCapital .json data file from disk">📂 Open File</button>
     <button class="btn btn-sm" id="btnSaveFile" onclick="saveDataFile()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);" title="Save all data to disk">💾 Save</button>
     <button class="btn btn-sm" id="btnDriveConnect" onclick="connectGoogleDrive()" style="background:var(--accent-dim);color:#a8c8f8;border:1px solid var(--accent);" title="Connect Google Drive appDataFolder">☁ Connect Drive</button>
-    <button class="btn btn-sm" id="btnDriveSync" onclick="syncFromGoogleDrive()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Pull latest data from Google Drive">⇅ Sync Drive</button>
+    <button class="btn btn-sm" id="btnDriveSave" onclick="syncToGoogleDrive('manual')" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Save (upload) current data to Google Drive">☁↑ Save to Drive</button>
+    <button class="btn btn-sm" id="btnDriveSync" onclick="syncFromGoogleDrive()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Restore (download) data from Google Drive">☁↓ Restore from Drive</button>
     <span id="backendBadge" style="font-family:var(--mono);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;padding:3px 7px;border-radius:3px;border:1px solid var(--border);color:var(--text2);background:var(--bg3);white-space:nowrap">Backend: none</span>
   </div>
   <div class="topbar-stats" id="topbarStats">
@@ -1030,11 +1031,18 @@ async function connectGoogleDrive() {
 }
 
 async function syncToGoogleDrive(mode) {
-  if (!storageMeta.driveFileId) return;
-  await requestDriveToken('');
-  await uploadDriveData(storageMeta.driveFileId, sanitizeDB(db));
-  unsaved = false;
-  if (mode !== 'auto') setFsStatus('✓ Synced to Drive — ' + new Date().toLocaleTimeString(), 'var(--green)');
+  try {
+    if (!storageMeta.driveFileId) {
+      await connectGoogleDrive();
+      return;
+    }
+    await requestDriveToken('');
+    await uploadDriveData(storageMeta.driveFileId, sanitizeDB(db));
+    unsaved = false;
+    if (mode !== 'auto') setFsStatus('✓ Saved to Drive — ' + new Date().toLocaleTimeString(), 'var(--green)');
+  } catch (err) {
+    setFsStatus('! Drive save failed: ' + err.message, 'var(--red)');
+  }
 }
 
 async function syncFromGoogleDrive() {
