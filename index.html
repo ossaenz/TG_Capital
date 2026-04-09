@@ -135,65 +135,260 @@
 
   /* ── Mobile Responsive ── */
   @media (max-width: 768px) {
-    .main { padding: 12px; }
-    .topbar { padding: 8px 12px; gap: 12px; }
-    .topbar-stats { gap: 6px; }
-    .nav { padding: 6px 12px; gap: 0; }
-    .nav-btn { padding: 5px 10px; font-size: 12px; }
-    .card { border-radius: 4px; }
-    .card-header { padding: 10px 12px; gap: 8px; flex-direction: column; align-items: flex-start; }
-    .card-title { font-size: 11px; }
-    #perfFilterBar { flex-direction: column !important; gap: 8px !important; width: 100%; }
-    #perfInstFilter { margin-left: 0 !important; border-left: none !important; padding-left: 0 !important; width: 100%; justify-content: flex-start !important; }
-    .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
-    .kpi { padding: 10px 12px; }
-    .kpi-value { font-size: 18px; }
-    .kpi-label { font-size: 9px; }
-    .kpi-sub { font-size: 10px; }
-    .filter-bar { gap: 4px; padding: 8px 12px; flex-wrap: wrap; }
-    .filter-btn { padding: 3px 8px; font-size: 11px; }
-    table { font-size: 11px; }
-    th { padding: 6px 8px; font-size: 9px; }
-    td { padding: 7px 8px; font-size: 11px; }
-    .empty-row td { padding: 20px; }
-    .chart-wrap { height: 300px !important; }
-    .logo { font-size: 13px; }
-    .tstat { padding: 6px 8px; min-height: 48px; }
+    body { font-size: 13px; }
+    .main { padding: 10px; max-width: 100%; }
+    .topbar { 
+      flex-direction: column; 
+      padding: 8px; 
+      gap: 10px; 
+      align-items: stretch;
+    }
+    .logo { font-size: 13px; margin-bottom: 0; }
+    .topbar-stats { 
+      width: 100%;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+      margin-left: 0;
+    }
+    .tstat { padding: 8px; min-height: 52px; gap: 2px; }
     .tstat-label { font-size: 9px; }
     .tstat-val { font-size: 14px; }
+    
+    .nav { 
+      padding: 6px;
+      gap: 2px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .nav-btn { 
+      padding: 6px 10px;
+      font-size: 11px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    
+    .card { border-radius: 4px; }
+    .card-header { 
+      padding: 10px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+    }
+    .card-title { font-size: 11px; }
+    
+    #perfFilterBar { 
+      flex-direction: column !important;
+      gap: 6px !important;
+      width: 100%;
+    }
+    #perfInstFilter { 
+      margin-left: 0 !important;
+      border-left: none !important;
+      padding-left: 0 !important;
+      width: 100%;
+      gap: 4px !important;
+      flex-wrap: wrap;
+    }
+    
+    .kpi-grid { 
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .kpi { 
+      padding: 10px;
+      border-radius: 4px;
+    }
+    .kpi-label { font-size: 9px; margin-bottom: 4px; }
+    .kpi-value { font-size: 18px; line-height: 1.2; }
+    .kpi-sub { font-size: 10px; margin-top: 2px; }
+    
+    .filter-btn { 
+      padding: 6px 10px;
+      font-size: 11px;
+      min-height: 32px;
+      display: inline-flex;
+      align-items: center;
+    }
+    
+    table { font-size: 12px; }
+    th { 
+      padding: 8px;
+      font-size: 9px;
+    }
+    td { 
+      padding: 8px;
+      font-size: 11px;
+    }
+    .empty-row td { padding: 16px; }
+    
+    .chart-wrap { height: 280px !important; }
+    .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   }
 
   @media (max-width: 480px) {
-    .main { padding: 8px; }
-    .topbar { padding: 6px 8px; gap: 8px; }
-    .topbar-stats { grid-template-columns: repeat(2, 1fr) !important; gap: 4px; }
-    .nav { padding: 4px 8px;}
-    .nav-btn { padding: 4px 8px; font-size: 11px; }
-    .card { border-radius: 3px; }
-    .card-header { padding: 8px 10px; }
-    .card-title { font-size: 10px; }
-    #perfFilterBar { flex-direction: column !important; gap: 6px !important; }
-    #perfInstFilter { margin-left: 0 !important; border-left: none !important; padding-left: 0 !important; width: 100%; gap: 4px !important; }
-    .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-    .kpi { padding: 8px 10px; }
-    .kpi-value { font-size: 16px; }
-    .kpi-label { font-size: 8px; }
-    .kpi-sub { font-size: 9px; }
-    .filter-bar { gap: 3px; padding: 6px 8px; }
-    .filter-btn { padding: 2px 6px; font-size: 10px; height: 28px; }
-    table { font-size: 10px; }
-    th { padding: 4px 6px; font-size: 8px; }
-    td { padding: 5px 6px; font-size: 10px; }
-    .tbl-wrap { font-size: 10px; }
-    .badge { font-size: 8px; padding: 1px 4px; }
-    .chart-wrap { height: 240px !important; }
-    .pos { font-size: 13px; }
-    .logo { font-size: 12px; }
-    .tstat { padding: 4px 6px; min-height: 40px; }
-    .tstat-label { font-size: 8px; }
-    .tstat-val { font-size: 12px; }
-    .btn { padding: 6px 12px; font-size: 12px; }
-    .btn-sm { padding: 4px 8px; font-size: 11px; }
+    body { font-size: 12px; }
+    .app { min-height: 100vh; }
+    .main { 
+      padding: 8px;
+      max-width: 100%;
+    }
+    
+    .topbar { 
+      flex-direction: column;
+      padding: 6px;
+      gap: 8px;
+    }
+    .logo { 
+      font-size: 12px;
+      margin-bottom: 0;
+    }
+    .topbar-stats { 
+      width: 100%;
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 4px;
+      margin-left: 0 !important;
+    }
+    .tstat { 
+      padding: 6px;
+      min-height: 48px;
+      gap: 2px;
+      font-size: 11px;
+    }
+    .tstat-label { font-size: 8px; margin-bottom: 2px; }
+    .tstat-val { font-size: 13px; }
+    
+    .nav { 
+      padding: 4px;
+      gap: 1px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .nav-btn { 
+      padding: 5px 8px;
+      font-size: 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      border-radius: 3px;
+    }
+    
+    .card { 
+      border-radius: 3px;
+      margin-bottom: 8px;
+    }
+    .card-header { 
+      padding: 8px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 4px;
+    }
+    .card-title { 
+      font-size: 10px;
+      font-weight: 700;
+    }
+    
+    #perfFilterBar { 
+      flex-direction: column !important;
+      gap: 4px !important;
+      width: 100%;
+    }
+    #perfInstFilter { 
+      margin-left: 0 !important;
+      border-left: none !important;
+      padding-left: 0 !important;
+      width: 100%;
+      gap: 4px !important;
+      flex-wrap: wrap;
+    }
+    
+    .kpi-grid { 
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .kpi { 
+      padding: 8px;
+      border-radius: 3px;
+    }
+    .kpi-label { 
+      font-size: 8px;
+      margin-bottom: 2px;
+      letter-spacing: 0.05em;
+    }
+    .kpi-value { 
+      font-size: 16px;
+      line-height: 1.1;
+      font-weight: 700;
+    }
+    .kpi-sub { 
+      font-size: 9px;
+      margin-top: 2px;
+    }
+    
+    .filter-bar { 
+      gap: 4px;
+      padding: 6px;
+      flex-wrap: wrap;
+    }
+    .filter-btn { 
+      padding: 5px 8px;
+      font-size: 10px;
+      min-height: 30px;
+      border-radius: 3px;
+    }
+    
+    table { 
+      font-size: 11px;
+      width: 100%;
+    }
+    th { 
+      padding: 6px;
+      font-size: 8px;
+      font-weight: 700;
+    }
+    td { 
+      padding: 6px;
+      font-size: 10px;
+    }
+    .empty-row td { 
+      padding: 12px;
+      font-size: 11px;
+    }
+    
+    .badge { 
+      font-size: 8px;
+      padding: 2px 4px;
+    }
+    
+    .chart-wrap { 
+      height: 220px !important;
+      width: 100%;
+    }
+    .tbl-wrap { 
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    .pos { 
+      font-size: 12px;
+      font-weight: 700;
+    }
+    
+    .btn { 
+      padding: 6px 10px;
+      font-size: 11px;
+      border-radius: 3px;
+    }
+    .btn-sm { 
+      padding: 4px 8px;
+      font-size: 10px;
+    }
+  }
+
+  @media (max-width: 360px) {
+    .topbar-stats { grid-template-columns: 1fr !important; }
+    .kpi-grid { grid-template-columns: 1fr; }
+    .nav-btn { padding: 4px 6px; font-size: 9px; }
   }
 
 
