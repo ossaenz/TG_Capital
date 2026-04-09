@@ -1275,7 +1275,17 @@ function importRecords(rawRows, fileName, batchId) {
 // ════════════════════════════════════════════════════════
 
 function buildPositions() {
-  const sorted = [...db.transactions].sort((a, b) => (a.date || a.rawDate).localeCompare(b.date || b.rawDate));
+  // Opens must always sort before closes on the same date
+  const ACTION_ORDER = {
+    'Sell to Open': 0, 'Buy to Open': 0, 'Buy': 0,
+    'Buy to Close': 1, 'Sell to Close': 1, 'Expired': 1, 'Assigned': 1, 'Sell': 1,
+  };
+  const sorted = [...db.transactions].sort((a, b) => {
+    const dateA = a.date || a.rawDate, dateB = b.date || b.rawDate;
+    const dateCmp = dateA.localeCompare(dateB);
+    if (dateCmp !== 0) return dateCmp;
+    return (ACTION_ORDER[a.action] ?? 2) - (ACTION_ORDER[b.action] ?? 2);
+  });
 
   const openLots  = {};  // optionSymbol → [{txn, qty, openAmount, openFees, openPrice}]
   const stockLots = {};  // ticker       → [{txn, qty, costBasis, openFees, openPrice}]
@@ -1336,7 +1346,7 @@ function buildPositions() {
         closeCost: t.amount || 0,          // total net debit paid on close
         closeFees: t.fees || 0,
         grossPnl, fees: totalFees,
-        netPnl: grossPnl - totalFees,
+        netPnl: grossPnl,
         via: 'closed', closeAction: t.action, closeTxn: t,
       });
     }
@@ -1378,7 +1388,7 @@ function buildPositions() {
         closePrice: 0,
         closeCost: 0, closeFees: 0,
         grossPnl, fees: totalFees,
-        netPnl: grossPnl - totalFees,
+        netPnl: grossPnl,
         via: 'expired', closeAction: 'Expired', closeTxn: t,
       });
     }
@@ -1420,7 +1430,7 @@ function buildPositions() {
         closePrice: t.strike || 0,
         closeCost: 0, closeFees: 0,
         grossPnl, fees: totalFees,
-        netPnl: grossPnl - totalFees,
+        netPnl: grossPnl,
         via: 'assigned', closeAction: 'Assigned', closeTxn: t,
       });
     }
@@ -1476,7 +1486,7 @@ function buildPositions() {
         closePrice: t.price || 0,
         closeCost: proceeds, closeFees: t.fees || 0,
         grossPnl, fees: totalFees,
-        netPnl: grossPnl - totalFees,
+        netPnl: grossPnl,
         via: 'sold', closeAction: 'Sell', closeTxn: t,
       });
     }
