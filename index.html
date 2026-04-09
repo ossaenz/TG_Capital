@@ -454,6 +454,129 @@ function createEmptyDB() {
   return { transactions: [], importBatches: [], version: 3 };
 }
 
+function coerceJSONToDB(parsed, sourceName) {
+  if (parsed && Array.isArray(parsed.transactions)) {
+    return sanitizeDB(parsed);
+  }
+
+  const temp = createEmptyDB();
+  const batchId = 'batch_open_' + Date.now();
+
+  const rawRows = Array.isArray(parsed?.BrokerageTransactions)
+    ? parsed.BrokerageTransactions
+    : (Array.isArray(parsed) ? parsed : null);
+
+  if (rawRows) {
+    const imported = [];
+    for (const raw of rawRows) {
+      if (!raw || (!raw['Action'] && !raw['Symbol'])) continue;
+      const t = normalizeRow(raw, batchId);
+      if (!t.symbol && !t.action) continue;
+      imported.push(t);
+    }
+    temp.transactions = dedupeTransactions(imported);
+    temp.importBatches.push({
+      id: batchId,
+      fileName: sourceName,
+      importedAt: new Date().toISOString(),
+      total: rawRows.length,
+      added: temp.transactions.length,
+      dupes: Math.max(0, rawRows.length - temp.transactions.length),
+    });
+    return sanitizeDB(temp);
+  }
+
+  // Legacy Money Bags export compatibility.
+  if (parsed && Array.isArray(parsed.optionTrades)) {
+    const txns = [];
+    for (const trade of parsed.optionTrades) {
+      if (trade?.stoDate && trade?.fullSymbol) {
+        const sym = sanitizeSymbol(trade.fullSymbol, 'Sell to Open');
+        const opt = parseOptionSymbol(sym);
+        txns.push(sanitizeTransaction({
+          rawDate: trade.stoDate,
+          date: parseDate(trade.stoDate),
+          action: 'Sell to Open',
+          symbol: sym,
+          description: 'Legacy option open',
+          quantity: 1,
+          price: trade.stoPrice ?? null,
+          fees: trade.stoFees || 0,
+          amount: trade.stoAmt ?? null,
+          instrument: classifyInstrument(sym, 'Sell to Open'),
+          optionType: opt ? opt.optionType : null,
+          underlying: opt ? opt.underlying : null,
+          strike: opt ? opt.strike : null,
+          expiry: opt ? opt.expiry : null,
+          direction: 'short',
+          batchId,
+        }));
+      }
+
+      if (trade?.btcDate && trade?.fullSymbol) {
+        const sym = sanitizeSymbol(trade.fullSymbol, 'Buy to Close');
+        const opt = parseOptionSymbol(sym);
+        txns.push(sanitizeTransaction({
+          rawDate: trade.btcDate,
+          date: parseDate(trade.btcDate),
+          action: 'Buy to Close',
+          symbol: sym,
+          description: 'Legacy option close',
+          quantity: 1,
+          price: trade.btcPrice ?? null,
+          fees: trade.btcFees || 0,
+          amount: trade.btcAmt ?? null,
+          instrument: classifyInstrument(sym, 'Buy to Close'),
+          optionType: opt ? opt.optionType : null,
+          underlying: opt ? opt.underlying : null,
+          strike: opt ? opt.strike : null,
+          expiry: opt ? opt.expiry : null,
+          direction: 'short',
+          batchId,
+        }));
+      }
+    }
+
+    if (Array.isArray(parsed.dividends)) {
+      for (const div of parsed.dividends) {
+        const sym = sanitizeSymbol(div?.symbol, 'Cash Dividend');
+        if (!sym || !div?.date) continue;
+        txns.push(sanitizeTransaction({
+          rawDate: div.date,
+          date: parseDate(div.date),
+          action: 'Cash Dividend',
+          symbol: sym,
+          description: 'Legacy ETF dividend',
+          quantity: null,
+          price: null,
+          fees: 0,
+          amount: Number(div.amount || 0),
+          instrument: classifyInstrument(sym, 'Cash Dividend'),
+          optionType: null,
+          underlying: sym,
+          strike: null,
+          expiry: null,
+          direction: null,
+          batchId,
+        }));
+      }
+    }
+
+    temp.transactions = dedupeTransactions(txns);
+    temp.importBatches.push({
+      id: batchId,
+      fileName: sourceName + ' (legacy)',
+      importedAt: new Date().toISOString(),
+      total: txns.length,
+      added: temp.transactions.length,
+      dupes: Math.max(0, txns.length - temp.transactions.length),
+    });
+    return sanitizeDB(temp);
+  }
+
+  return null;
+}
+
 function loadStorageMeta() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_META_KEY) || '{}');
@@ -538,8 +661,9 @@ async function openDataFile() {
     const file  = await handle.getFile();
     const text  = await file.text();
     const parsed = JSON.parse(text);
-    if (!parsed.transactions) throw new Error('Not a valid TGCapital data file.');
-    db = sanitizeDB(parsed);
+    const coerced = coerceJSONToDB(parsed, handle.name);
+    if (!coerced) throw new Error('Not a valid TGCapital data file.');
+    db = coerced;
     storageMeta.preferredBackend = 'file';
     storageMeta.localFileName = handle.name || null;
     saveStorageMeta();
@@ -1577,6 +1701,8 @@ function renderDashboard() {
 }
 
 let closedFilter = 'all';
+let posFilter = 'all';
+
 function filterClosed(f, btn) {
   closedFilter = f;
   document.querySelectorAll('#view-closed .filter-btn').forEach(b => b.classList.remove('active'));
