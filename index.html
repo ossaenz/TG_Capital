@@ -282,7 +282,6 @@
           <button class="filter-btn" onclick="filterClosed('btc',this)">Bought to Close</button>
           <button class="filter-btn" onclick="filterClosed('expired',this)">Expired Worthless</button>
           <button class="filter-btn" onclick="filterClosed('assigned',this)">Assigned</button>
-          <button class="filter-btn" onclick="filterClosed('sold',this)">Stock Sold</button>
           <button class="filter-btn" onclick="filterClosed('wins',this)">Wins</button>
           <button class="filter-btn" onclick="filterClosed('losses',this)">Losses</button>
         </div>
@@ -1798,7 +1797,9 @@ function filterClosed(f, btn) {
 }
 
 function renderClosedPositions() {
-  const { closedTrades } = buildPositions();
+  // Only show option round-trips (trades that have a strike price)
+  const { closedTrades: allClosed } = buildPositions();
+  const closedTrades = allClosed.filter(t => t.instrument === 'option');
   const search = (document.getElementById('closedSearch').value || '').toLowerCase();
 
   // KPIs
