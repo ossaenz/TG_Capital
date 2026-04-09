@@ -214,6 +214,7 @@
 <!-- NAV -->
 <div class="nav">
   <button class="nav-btn active" onclick="showView('dashboard')">Dashboard</button>
+  <button class="nav-btn" onclick="showView('performance')">Performance</button>
   <button class="nav-btn" onclick="showView('positions')">Open Positions</button>
   <button class="nav-btn" onclick="showView('closed')">Closed Positions</button>
   <button class="nav-btn" onclick="showView('trades')">Trade Log</button>
@@ -262,6 +263,45 @@
     <div class="tbl-wrap"><table id="recentTable">
       <thead><tr><th>Close Date</th><th>Symbol</th><th>Type</th><th>Open Date</th><th class="r">Premium / Cost</th><th class="r">Closed For</th><th>How Closed</th><th class="r">Fees</th><th class="r">Net P&L</th></tr></thead>
       <tbody><tr class="empty-row"><td colspan="7">No trades loaded. Import a Schwab CSV or JSON file.</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- ===== PERFORMANCE ===== -->
+<div class="view" id="view-performance">
+  <div class="card" style="margin-bottom:16px;">
+    <div class="card-header">
+      <span class="card-title">Period Performance (Closed Option Trades)</span>
+      <div class="filter-bar" style="padding:0;background:transparent;border:none;gap:6px;">
+        <button class="filter-btn active" id="perf-daily" onclick="setPerformancePeriod('daily', this)">Daily</button>
+        <button class="filter-btn" id="perf-weekly" onclick="setPerformancePeriod('weekly', this)">Weekly</button>
+        <button class="filter-btn" id="perf-monthly" onclick="setPerformancePeriod('monthly', this)">Monthly</button>
+        <button class="filter-btn" id="perf-yearly" onclick="setPerformancePeriod('yearly', this)">Yearly</button>
+      </div>
+    </div>
+    <div style="padding:12px 16px;font-family:var(--mono);font-size:11px;color:var(--text2);" id="perfSummarySub">—</div>
+  </div>
+
+  <div class="kpi-grid" id="perfKpiGrid" style="margin-bottom:16px;">
+    <div class="kpi"><div class="kpi-label">Current Daily P&L</div><div class="kpi-value pos n" id="perf-day-pnl">—</div><div class="kpi-sub" id="perf-day-sub">—</div></div>
+    <div class="kpi"><div class="kpi-label">Current Weekly P&L</div><div class="kpi-value pos n" id="perf-week-pnl">—</div><div class="kpi-sub" id="perf-week-sub">—</div></div>
+    <div class="kpi"><div class="kpi-label">Current Monthly P&L</div><div class="kpi-value pos n" id="perf-month-pnl">—</div><div class="kpi-sub" id="perf-month-sub">—</div></div>
+    <div class="kpi"><div class="kpi-label">Current Yearly P&L</div><div class="kpi-value pos n" id="perf-year-pnl">—</div><div class="kpi-sub" id="perf-year-sub">—</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">Performance History</span></div>
+    <div class="tbl-wrap"><table id="performanceTable">
+      <thead><tr>
+        <th>Period</th>
+        <th class="r">Closed Trades</th>
+        <th class="r">Wins</th>
+        <th class="r">Losses</th>
+        <th class="r">Win Rate</th>
+        <th class="r">Net P&amp;L</th>
+        <th class="r">Avg / Trade</th>
+      </tr></thead>
+      <tbody><tr class="empty-row"><td colspan="7">No closed trades yet.</td></tr></tbody>
     </table></div>
   </div>
 </div>
@@ -1985,6 +2025,129 @@ function dirBadge(d) {
   return d === 'short' ? '<span class="badge badge-short">SHORT</span>' : '<span class="badge badge-long">LONG</span>';
 }
 
+let performancePeriod = 'daily';
+
+function isoWeekParts(dateObj) {
+  const d = new Date(Date.UTC(dateObj.getUTCFullYear(), dateObj.getUTCMonth(), dateObj.getUTCDate()));
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return { year: d.getUTCFullYear(), week: weekNo };
+}
+
+function periodKey(dateStr, granularity) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T00:00:00Z');
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  if (granularity === 'daily') return `${y}-${m}-${day}`;
+  if (granularity === 'weekly') {
+    const w = isoWeekParts(d);
+    return `${w.year}-W${String(w.week).padStart(2, '0')}`;
+  }
+  if (granularity === 'monthly') return `${y}-${m}`;
+  return String(y);
+}
+
+function periodLabel(key, granularity) {
+  if (!key) return '—';
+  if (granularity === 'daily') return key;
+  if (granularity === 'weekly') return key;
+  if (granularity === 'monthly') {
+    const [y, m] = key.split('-');
+    const d = new Date(Date.UTC(Number(y), Number(m) - 1, 1));
+    return d.toLocaleString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  }
+  return key;
+}
+
+function bucketPerformance(closedTrades, granularity) {
+  const buckets = new Map();
+  for (const t of closedTrades) {
+    const key = periodKey(t.closeDate, granularity);
+    if (!key) continue;
+    if (!buckets.has(key)) {
+      buckets.set(key, { key, pnl: 0, count: 0, wins: 0, losses: 0 });
+    }
+    const b = buckets.get(key);
+    const pnl = t.netPnl || 0;
+    b.pnl += pnl;
+    b.count += 1;
+    if (pnl > 0) b.wins += 1;
+    if (pnl < 0) b.losses += 1;
+  }
+  return [...buckets.values()].sort((a, b) => b.key.localeCompare(a.key));
+}
+
+function currentPeriodMetrics(closedTrades, granularity) {
+  const now = new Date();
+  const utcNow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const key = periodKey(utcNow.toISOString().slice(0, 10), granularity);
+  const bucket = bucketPerformance(closedTrades, granularity).find(b => b.key === key);
+  return {
+    key,
+    pnl: bucket ? bucket.pnl : 0,
+    count: bucket ? bucket.count : 0,
+    wins: bucket ? bucket.wins : 0,
+    losses: bucket ? bucket.losses : 0,
+  };
+}
+
+function setPerformancePeriod(period, btn) {
+  performancePeriod = period;
+  document.querySelectorAll('#view-performance .filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderPerformance();
+}
+
+function renderPerformance() {
+  const { optionClosed } = computeStats();
+
+  const day = currentPeriodMetrics(optionClosed, 'daily');
+  const week = currentPeriodMetrics(optionClosed, 'weekly');
+  const month = currentPeriodMetrics(optionClosed, 'monthly');
+  const year = currentPeriodMetrics(optionClosed, 'yearly');
+
+  const setKpi = (prefix, m, granularity) => {
+    const el = document.getElementById(prefix + '-pnl');
+    el.textContent = fmt$(m.pnl);
+    el.className = 'kpi-value pos ' + pnlClass(m.pnl);
+    document.getElementById(prefix + '-sub').textContent = `${periodLabel(m.key, granularity)} · ${m.count} trades`;
+  };
+  setKpi('perf-day', day, 'daily');
+  setKpi('perf-week', week, 'weekly');
+  setKpi('perf-month', month, 'monthly');
+  setKpi('perf-year', year, 'yearly');
+
+  const rows = bucketPerformance(optionClosed, performancePeriod);
+  const tbody = document.querySelector('#performanceTable tbody');
+  document.getElementById('perfSummarySub').textContent = rows.length
+    ? `Showing ${performancePeriod} performance across ${rows.length} periods`
+    : `No data for ${performancePeriod} performance yet`;
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No closed trades yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const wr = r.count > 0 ? (r.wins / r.count) * 100 : 0;
+    const avg = r.count > 0 ? r.pnl / r.count : 0;
+    return `<tr>
+      <td>${periodLabel(r.key, performancePeriod)}</td>
+      <td class="r">${r.count}</td>
+      <td class="r" style="color:var(--green)">${r.wins}</td>
+      <td class="r" style="color:var(--red)">${r.losses}</td>
+      <td class="r" style="color:${wr >= 50 ? 'var(--green)' : 'var(--red)'}">${wr.toFixed(1)}%</td>
+      <td class="r"><span class="pos ${pnlClass(r.pnl)}">${fmt$(r.pnl)}</span></td>
+      <td class="r"><span class="pos ${pnlClass(avg)}">${fmt$(avg)}</span></td>
+    </tr>`;
+  }).join('');
+}
+
 function renderDashboard() {
   const stats = computeStats();
   const { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions, optionClosed, washFlags } = stats;
@@ -2428,7 +2591,8 @@ function showView(id) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const btns = document.querySelectorAll('.nav-btn');
   btns.forEach(b => { if (b.getAttribute('onclick').includes(id)) b.classList.add('active'); });
-  if (id === 'positions') renderPositions();
+  if (id === 'performance') renderPerformance();
+  else if (id === 'positions') renderPositions();
   else if (id === 'closed') renderClosedPositions();
   else if (id === 'trades') renderTradeTable();
   else if (id === 'washsales') renderWashSales();
@@ -2439,6 +2603,7 @@ function showView(id) {
 
 function refreshAll() {
   renderDashboard();
+  renderPerformance();
   renderClosedPositions();
   renderPositions();
   renderTradeTable();
