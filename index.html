@@ -455,22 +455,58 @@ function createEmptyDB() {
 }
 
 function coerceJSONToDB(parsed, sourceName) {
-  if (parsed && Array.isArray(parsed.transactions)) {
-    return sanitizeDB(parsed);
+  const container = parsed?.db || parsed?.data || parsed?.payload || parsed?.appData || parsed;
+
+  if (container && Array.isArray(container.transactions)) {
+    return sanitizeDB(container);
   }
 
   const temp = createEmptyDB();
   const batchId = 'batch_open_' + Date.now();
 
-  const rawRows = Array.isArray(parsed?.BrokerageTransactions)
-    ? parsed.BrokerageTransactions
-    : (Array.isArray(parsed) ? parsed : null);
+  const toSchwabLikeRow = (row) => {
+    if (!row || typeof row !== 'object') return null;
+
+    const date = row['Date'] ?? row.date ?? row.tradeDate ?? row.transactionDate ?? '';
+    const action = row['Action'] ?? row.action ?? row.type ?? row.activity ?? '';
+    const symbol = row['Symbol'] ?? row.symbol ?? row.ticker ?? row.underlying ?? '';
+    const description = row['Description'] ?? row.description ?? row.desc ?? '';
+    const quantity = row['Quantity'] ?? row.quantity ?? row.qty ?? '';
+    const price = row['Price'] ?? row.price ?? '';
+    const fees = row['Fees & Comm'] ?? row.fees ?? row.commission ?? row.fee ?? '';
+    const amount = row['Amount'] ?? row.amount ?? row.netAmount ?? '';
+
+    if (!action && !symbol) return null;
+    return {
+      Date: String(date || ''),
+      Action: String(action || ''),
+      Symbol: String(symbol || ''),
+      Description: String(description || ''),
+      Quantity: quantity,
+      Price: price,
+      'Fees & Comm': fees,
+      Amount: amount,
+    };
+  };
+
+  const rawRows = Array.isArray(container?.BrokerageTransactions)
+    ? container.BrokerageTransactions
+    : Array.isArray(container?.transactions)
+      ? container.transactions
+      : Array.isArray(container?.rows)
+        ? container.rows
+        : Array.isArray(container?.items)
+          ? container.items
+          : Array.isArray(parsed)
+            ? parsed
+            : null;
 
   if (rawRows) {
     const imported = [];
     for (const raw of rawRows) {
-      if (!raw || (!raw['Action'] && !raw['Symbol'])) continue;
-      const t = normalizeRow(raw, batchId);
+      const normalized = toSchwabLikeRow(raw);
+      if (!normalized) continue;
+      const t = normalizeRow(normalized, batchId);
       if (!t.symbol && !t.action) continue;
       imported.push(t);
     }
@@ -487,9 +523,9 @@ function coerceJSONToDB(parsed, sourceName) {
   }
 
   // Legacy Money Bags export compatibility.
-  if (parsed && Array.isArray(parsed.optionTrades)) {
+  if (container && Array.isArray(container.optionTrades)) {
     const txns = [];
-    for (const trade of parsed.optionTrades) {
+    for (const trade of container.optionTrades) {
       if (trade?.stoDate && trade?.fullSymbol) {
         const sym = sanitizeSymbol(trade.fullSymbol, 'Sell to Open');
         const opt = parseOptionSymbol(sym);
@@ -537,8 +573,8 @@ function coerceJSONToDB(parsed, sourceName) {
       }
     }
 
-    if (Array.isArray(parsed.dividends)) {
-      for (const div of parsed.dividends) {
+    if (Array.isArray(container.dividends)) {
+      for (const div of container.dividends) {
         const sym = sanitizeSymbol(div?.symbol, 'Cash Dividend');
         if (!sym || !div?.date) continue;
         txns.push(sanitizeTransaction({
