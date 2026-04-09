@@ -483,6 +483,8 @@ let appConfig = null;
 let gapiClientReady = false;
 let driveTokenClient = null;
 let driveAccessToken = null;
+let driveTokenPendingReject = null;
+let driveTokenPendingTimer = null;
 
 function createEmptyDB() {
   return { transactions: [], importBatches: [], version: 3 };
@@ -862,6 +864,10 @@ function waitForGoogleGlobals() {
 async function ensureGoogleDriveReady() {
   if (gapiClientReady && driveTokenClient) return;
 
+  if (window.location.protocol === 'file:') {
+    throw new Error('Google Drive sync requires http://localhost or https:// (file:// is not supported by Google OAuth).');
+  }
+
   if (!appConfig) {
     const res = await fetch('config.json', { cache: 'no-cache' });
     if (!res.ok) throw new Error('Missing config.json with client_id');
@@ -883,23 +889,67 @@ async function ensureGoogleDriveReady() {
   driveTokenClient = window.google.accounts.oauth2.initTokenClient({
     client_id: appConfig.client_id,
     scope: DRIVE_SCOPE,
+    ux_mode: 'popup',
+    error_callback: (err) => {
+      if (driveTokenPendingTimer) {
+        clearTimeout(driveTokenPendingTimer);
+        driveTokenPendingTimer = null;
+      }
+      const reject = driveTokenPendingReject;
+      driveTokenPendingReject = null;
+      if (reject) {
+        const kind = err?.type || 'popup_error';
+        reject(new Error('Drive sign-in failed: ' + kind));
+      }
+    },
     callback: () => {},
   });
+}
+
+function mapDriveAuthError(code) {
+  if (!code) return 'Unknown authentication error';
+  if (code === 'popup_closed_by_user') return 'Sign-in popup was closed before completion';
+  if (code === 'popup_failed_to_open') return 'Browser blocked the sign-in popup';
+  if (code === 'access_denied') return 'Google account access was denied';
+  return String(code);
 }
 
 async function requestDriveToken(prompt) {
   await ensureGoogleDriveReady();
   return new Promise((resolve, reject) => {
+    driveTokenPendingReject = reject;
+    if (driveTokenPendingTimer) clearTimeout(driveTokenPendingTimer);
+    driveTokenPendingTimer = setTimeout(() => {
+      if (driveTokenPendingReject === reject) {
+        driveTokenPendingReject = null;
+        reject(new Error('Drive sign-in timed out. Check popup blockers and try Connect Drive again.'));
+      }
+    }, 25000);
+
     driveTokenClient.callback = (resp) => {
+      if (driveTokenPendingTimer) {
+        clearTimeout(driveTokenPendingTimer);
+        driveTokenPendingTimer = null;
+      }
+      driveTokenPendingReject = null;
       if (resp && resp.error) {
-        reject(new Error(resp.error));
+        reject(new Error(mapDriveAuthError(resp.error)));
         return;
       }
       driveAccessToken = resp.access_token;
       window.gapi.client.setToken({ access_token: driveAccessToken });
       resolve(driveAccessToken);
     };
-    driveTokenClient.requestAccessToken({ prompt: prompt || '' });
+    try {
+      driveTokenClient.requestAccessToken({ prompt: prompt || '' });
+    } catch (err) {
+      if (driveTokenPendingTimer) {
+        clearTimeout(driveTokenPendingTimer);
+        driveTokenPendingTimer = null;
+      }
+      driveTokenPendingReject = null;
+      reject(new Error('Drive sign-in could not start: ' + (err?.message || err)));
+    }
   });
 }
 
