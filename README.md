@@ -5,6 +5,14 @@ This repo is a static single-file app (`index.html`). It uses the Google Identit
 Quick goals completed by this repo:
 - Client ID is loaded at runtime from `config.json` (not committed).
 - `.gitignore` prevents accidental commits of exported data and `config.json`.
+- Trade data is never persisted in browser localStorage.
+- localStorage is used only for backend location metadata (last selected file/Drive link info).
+- Data can sync to Google Drive `appDataFolder` and deduplicates on import + merge.
+
+Current behavior
+- File backend: Use `Open File` and `Save` to work with `tgcapital-data.json`.
+- Drive backend: Use `Connect Drive` once, then `Save`/`Sync Drive` for push/pull.
+- Dedup: Duplicate transactions are skipped during import and de-duplicated when merging file/Drive datasets.
 
 Setup steps — Google Cloud (OAuth) and GitHub Pages
 1) Create OAuth Client
