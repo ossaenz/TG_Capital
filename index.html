@@ -1593,21 +1593,23 @@ function computeStats() {
   const { openPositions, closedTrades } = buildPositions();
   const washFlags = detectWashSales();
 
-  const realized = closedTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
+  // Realized P&L is option-only (strike-based round-trips) to avoid
+  // distorting totals when stock cost basis is outside the loaded date range.
+  const optionClosed = closedTrades.filter(t => t.instrument === 'option');
+  const realized = optionClosed.reduce((s, t) => s + (t.netPnl || 0), 0);
   const fees = db.transactions.reduce((s, t) => s + (t.fees || 0), 0);
   const premiumCollected = db.transactions
     .filter(t => t.action === 'Sell to Open')
     .reduce((s, t) => s + Math.abs(t.amount || 0), 0);
   const assigned = db.transactions.filter(t => t.action === 'Assigned').length;
 
-  const optionClosed = closedTrades.filter(t => t.instrument === 'option');
   const wins = optionClosed.filter(t => (t.netPnl || 0) > 0);
   const losses_arr = optionClosed.filter(t => (t.netPnl || 0) < 0);
   const winRate = optionClosed.length > 0 ? wins.length / optionClosed.length : null;
   const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.netPnl, 0) / wins.length : 0;
   const avgLoss = losses_arr.length > 0 ? losses_arr.reduce((s, t) => s + t.netPnl, 0) / losses_arr.length : 0;
 
-  return { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions, closedTrades, washFlags };
+  return { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions, closedTrades, optionClosed, washFlags };
 }
 
 // ════════════════════════════════════════════════════════
@@ -1732,7 +1734,7 @@ function dirBadge(d) {
 
 function renderDashboard() {
   const stats = computeStats();
-  const { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions, closedTrades, washFlags } = stats;
+  const { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions, optionClosed, washFlags } = stats;
 
   document.getElementById('kpi-realized').textContent = fmt$(realized);
   document.getElementById('kpi-realized').className = 'kpi-value pos ' + pnlClass(realized);
@@ -1752,8 +1754,8 @@ function renderDashboard() {
   document.getElementById('ts-total').textContent = db.transactions.length;
   document.getElementById('ts-wr').textContent = winRate !== null ? (winRate * 100).toFixed(1) + '%' : '—';
 
-  // Recent closed trades table — full detail
-  const recent = [...closedTrades].sort((a, b) => (b.closeDate || '').localeCompare(a.closeDate || '')).slice(0, 30);
+  // Recent closed trades table — option round-trips only
+  const recent = [...optionClosed].sort((a, b) => (b.closeDate || '').localeCompare(a.closeDate || '')).slice(0, 30);
   const tbody = document.querySelector('#recentTable tbody');
   if (recent.length === 0) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="9">No closed trades yet.</td></tr>';
