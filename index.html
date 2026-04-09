@@ -146,7 +146,16 @@
       align-items: stretch;
     }
     .topbar > [style*="display:flex"] {
-      display: none !important;
+      display: flex !important;
+      flex-wrap: wrap;
+      gap: 4px;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .topbar .btn {
+      padding: 5px 8px;
+      font-size: 10px;
+      flex-shrink: 0;
     }
     .logo { font-size: 12px; margin-bottom: 0; }
     .topbar-stats { 
@@ -251,7 +260,16 @@
       gap: 4px;
     }
     .topbar > [style*="display:flex"] {
-      display: none !important;
+      display: flex !important;
+      flex-wrap: wrap;
+      gap: 3px;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .topbar .btn {
+      padding: 4px 6px;
+      font-size: 9px;
+      flex-shrink: 0;
     }
     .logo { 
       font-size: 11px;
