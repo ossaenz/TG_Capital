@@ -594,13 +594,35 @@
     <div class="kpi"><div class="kpi-label">Current Yearly P&L</div><div class="kpi-value pos n" id="perf-year-pnl">—</div><div class="kpi-sub" id="perf-year-sub">—</div></div>
   </div>
 
-  <div class="card" style="margin-bottom:16px;background:var(--bg2);border:1px solid var(--border);">
-    <div class="card-header"><span class="card-title">Date Range Filter</span></div>
-    <div style="padding:12px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-      <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Start Date</label><input type="date" id="perfDateStart" style="width:140px;" onchange="setPerformanceDateRange()" /></div>
-      <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">End Date</label><input type="date" id="perfDateEnd" style="width:140px;" onchange="setPerformanceDateRange()" /></div>
-      <button class="btn btn-sm" onclick="resetPerformanceDateRange()" style="align-self:flex-end;background:var(--bg3);color:var(--text1);border:1px solid var(--border);">Reset</button>
-      <span style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text2);" id="perfDateRangeLabel">All dates</span>
+  <div class="card" style="margin-bottom:16px;background:linear-gradient(160deg, var(--bg2), var(--bg1));border:1px solid var(--border);">
+    <div class="card-header"><span class="card-title">Quick Filters</span></div>
+    <div style="padding:12px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Year</label>
+        <select id="perfYearSelect" onchange="applyPerformanceFilter()" style="width:100px;padding:6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
+          <option value="">All Years</option>
+          <option value="2026">2026</option>
+          <option value="2025">2025</option>
+          <option value="2024">2024</option>
+          <option value="2023">2023</option>
+          <option value="2022">2022</option>
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Start</label>
+        <input type="date" id="perfDateStart" style="width:130px;padding:6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" />
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">End</label>
+        <input type="date" id="perfDateEnd" style="width:130px;padding:6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" />
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Symbol</label>
+        <input type="text" id="perfSymfilter" placeholder="e.g. SPY" style="width:80px;padding:6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" />
+      </div>
+      <button class="btn btn-sm" onclick="applyPerformanceFilter()" style="align-self:flex-end;background:var(--accent);color:#fff;border:none;">Apply</button>
+      <button class="btn btn-sm" onclick="resetPerformanceFilter()" style="align-self:flex-end;background:var(--bg3);color:var(--text1);border:1px solid var(--border);">Reset</button>
+      <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text2);" id="perfFilterLabel">All filters active</span>
     </div>
   </div>
 
@@ -2234,6 +2256,7 @@ let performancePeriod = 'daily';
 let performanceInstruments = 'options-only';
 let performanceDateStart = null;
 let performanceDateEnd = null;
+let performanceSymbolFilter = '';
 
 function renderCharts(closedTrades) {
   // P&L curve (cumulative, by date)
@@ -2433,33 +2456,53 @@ function setPerformanceInstruments(instruments, btn) {
   renderPerformance();
 }
 
-function setPerformanceDateRange() {
-  const startEl = document.getElementById('perfDateStart');
-  const endEl = document.getElementById('perfDateEnd');
-  performanceDateStart = startEl.value ? startEl.value : null;
-  performanceDateEnd = endEl.value ? endEl.value : null;
-  updatePerformanceDateRangeLabel();
+function applyPerformanceFilter() {
+  const yearSel = document.getElementById('perfYearSelect').value;
+  const startDate = document.getElementById('perfDateStart').value;
+  const endDate = document.getElementById('perfDateEnd').value;
+  const symbolInput = document.getElementById('perfSymfilter').value.toUpperCase().trim();
+  
+  // Apply year filter if selected
+  if (yearSel) {
+    performanceDateStart = `${yearSel}-01-01`;
+    performanceDateEnd = `${yearSel}-12-31`;
+  } else {
+    performanceDateStart = startDate || null;
+    performanceDateEnd = endDate || null;
+  }
+  performanceSymbolFilter = symbolInput;
+  
+  updatePerformanceFilterLabel();
   renderPerformance();
 }
 
-function resetPerformanceDateRange() {
+function resetPerformanceFilter() {
   performanceDateStart = null;
   performanceDateEnd = null;
+  performanceSymbolFilter = '';
+  document.getElementById('perfYearSelect').value = '';
   document.getElementById('perfDateStart').value = '';
   document.getElementById('perfDateEnd').value = '';
-  updatePerformanceDateRangeLabel();
+  document.getElementById('perfSymfilter').value = '';
+  updatePerformanceFilterLabel();
   renderPerformance();
 }
 
-function updatePerformanceDateRangeLabel() {
-  const label = document.getElementById('perfDateRangeLabel');
+function updatePerformanceFilterLabel() {
+  const label = document.getElementById('perfFilterLabel');
+  const parts = [];
+  
   if (performanceDateStart || performanceDateEnd) {
-    const start = performanceDateStart ? performanceDateStart : '(earliest)';
-    const end = performanceDateEnd ? performanceDateEnd : '(latest)';
-    label.textContent = `${start} to ${end}`;
-  } else {
-    label.textContent = 'All dates';
+    const start = performanceDateStart || '–';
+    const end = performanceDateEnd || '–';
+    parts.push(`${start} to ${end}`);
   }
+  
+  if (performanceSymbolFilter) {
+    parts.push(`Symbol: ${performanceSymbolFilter}`);
+  }
+  
+  label.textContent = parts.length > 0 ? parts.join(' | ') : 'All filters active';
 }
 
 function renderPerformance() {
@@ -2480,6 +2523,15 @@ function renderPerformance() {
       if (performanceDateStart && closeDate < performanceDateStart) return false;
       if (performanceDateEnd && closeDate > performanceDateEnd) return false;
       return true;
+    });
+  }
+
+  // Filter trades by symbol
+  if (performanceSymbolFilter) {
+    filteredTrades = filteredTrades.filter(t => {
+      const symbol = (t.symbol || '').toUpperCase();
+      const underlying = (t.underlying || '').toUpperCase();
+      return symbol.includes(performanceSymbolFilter) || underlying.includes(performanceSymbolFilter);
     });
   }
 
