@@ -2726,7 +2726,7 @@ function computeStatsByDateRange(dateStart, dateEnd) {
   }
   
   const optionClosed = tradesDirty.filter(t => t.instrument === 'option');
-  const realized = tradesDirty.reduce((s, t) => s + (t.netPnl || 0), 0);
+  let realized = tradesDirty.reduce((s, t) => s + (t.netPnl || 0), 0);
   
   // Filter transactions for fees and premium
   let filteredTxns = db.transactions;
@@ -2746,6 +2746,14 @@ function computeStatsByDateRange(dateStart, dateEnd) {
   
   // Count assignments from filtered transactions
   const assigned = filteredTxns.filter(t => t.action === 'Assigned').length;
+  
+  // In "all" mode, include dividends in realized P&L
+  if (dashboardInstruments === 'all') {
+    const dividends = filteredTxns
+      .filter(t => t.action === 'Cash Dividend')
+      .reduce((s, t) => s + (t.amount || 0), 0);
+    realized += dividends;
+  }
 
   const wins = optionClosed.filter(t => (t.netPnl || 0) > 0);
   const losses_arr = optionClosed.filter(t => (t.netPnl || 0) < 0);
