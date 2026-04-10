@@ -809,7 +809,7 @@
             <div class="import-zone-title">Drop Schwab export here</div>
             <div class="import-zone-sub">Supports CSV and JSON exports<br>from thinkorswim / Schwab account history</div>
           </div>
-          <input type="file" id="fileInput" accept=".csv,.json" style="display:none" onchange="handleFileSelect(event)">
+          <input type="file" id="fileInput" accept=".csv,.json" style="display:none" onchange="handleFileSelect(event)" multiple>
           <div id="importLog" class="import-log" style="display:none"></div>
         </div>
       </div>
@@ -3021,14 +3021,89 @@ function renderAudit() {
 function handleDrop(ev) {
   ev.preventDefault();
   document.getElementById('dropZone').classList.remove('drag');
-  const file = ev.dataTransfer.files[0];
-  if (file) processFile(file);
+  const files = Array.from(ev.dataTransfer.files);
+  if (files.length > 0) processBatch(files);
 }
 
 function handleFileSelect(ev) {
-  const file = ev.target.files[0];
-  if (file) processFile(file);
+  const files = Array.from(ev.target.files);
+  if (files.length > 0) processBatch(files);
   ev.target.value = '';
+}
+
+function processBatch(files) {
+  const log = document.getElementById('importLog');
+  log.innerHTML = '';
+  log.style.display = 'block';
+  
+  addLog(`[${new Date().toLocaleTimeString()}] Starting batch import: ${files.length} file(s)`, 'info');
+  
+  let totalAdded = 0, totalDupes = 0, totalRows = 0;
+  const parentBatchId = 'batch_' + Date.now();
+  
+  // Process files sequentially
+  const processNext = (index) => {
+    if (index >= files.length) {
+      // All files processed
+      addLog(``, '');
+      addLog(`Batch complete!`, 'ok');
+      addLog(`Total: ${totalRows} rows, ${totalAdded} imported, ${totalDupes} dupes skipped`, 'ok');
+      addLog(`Database now has: ${db.transactions.length} transactions`, 'info');
+      if (fileHandle) {
+        addLog('Auto-saving to ' + fileHandle.name + '…', 'info');
+      } else if (storageMeta.driveFileId) {
+        addLog('Auto-saving to Google Drive…', 'info');
+      }
+      refreshAll();
+      addLog('All views refreshed.', 'ok');
+      return;
+    }
+    
+    const file = files[index];
+    processFileForBatch(file, parentBatchId, (added, dupes, rows) => {
+      totalAdded += added;
+      totalDupes += dupes;
+      totalRows += rows;
+      processNext(index + 1);
+    });
+  };
+  
+  processNext(0);
+}
+
+function processFileForBatch(file, parentBatchId, callback) {
+  addLog(`Processing: ${file.name}`, 'info');
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const content = e.target.result;
+    let rawRows = [];
+    try {
+      if (file.name.endsWith('.json')) {
+        const data = JSON.parse(content);
+        rawRows = data.BrokerageTransactions || (Array.isArray(data) ? data : []);
+        addLog(`  ✓ JSON: ${rawRows.length} transactions`, 'ok');
+      } else {
+        rawRows = parseCSV(content);
+        addLog(`  ✓ CSV: ${rawRows.length} rows`, 'ok');
+      }
+    } catch (err) {
+      addLog(`  ✗ Parse error: ${err.message}`, 'err');
+      callback(0, 0, 0);
+      return;
+    }
+    
+    const { added, dupes, total } = importRecords(rawRows, file.name, parentBatchId);
+    addLog(`  → ${added} new, ${dupes} dupes skipped`, added > 0 ? 'ok' : 'warn');
+    callback(added, dupes, total);
+  };
+  
+  reader.onerror = () => {
+    addLog(`  ✗ Failed to read file`, 'err');
+    callback(0, 0, 0);
+  };
+  
+  reader.readAsText(file);
 }
 
 function addLog(msg, cls = '') {
