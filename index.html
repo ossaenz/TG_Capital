@@ -594,6 +594,16 @@
     <div class="kpi"><div class="kpi-label">Current Yearly P&L</div><div class="kpi-value pos n" id="perf-year-pnl">—</div><div class="kpi-sub" id="perf-year-sub">—</div></div>
   </div>
 
+  <div class="card" style="margin-bottom:16px;background:var(--bg2);border:1px solid var(--border);">
+    <div class="card-header"><span class="card-title">Date Range Filter</span></div>
+    <div style="padding:12px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+      <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Start Date</label><input type="date" id="perfDateStart" style="width:140px;" onchange="setPerformanceDateRange()" /></div>
+      <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">End Date</label><input type="date" id="perfDateEnd" style="width:140px;" onchange="setPerformanceDateRange()" /></div>
+      <button class="btn btn-sm" onclick="resetPerformanceDateRange()" style="align-self:flex-end;background:var(--bg3);color:var(--text1);border:1px solid var(--border);">Reset</button>
+      <span style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text2);" id="perfDateRangeLabel">All dates</span>
+    </div>
+  </div>
+
   <div class="card" style="margin-bottom:20px;">
     <div class="card-header"><span class="card-title">Cumulative P&L by Period</span></div>
     <div style="padding:16px;"><div class="chart-wrap"><canvas id="performanceChart" role="img" aria-label="Cumulative P&L by time period">Performance chart</canvas></div></div>
@@ -2222,6 +2232,8 @@ let pnlChartInst = null, symbolChartInst = null, typeChartInst = null;
 let performanceChartInst = null;
 let performancePeriod = 'daily';
 let performanceInstruments = 'options-only';
+let performanceDateStart = null;
+let performanceDateEnd = null;
 
 function renderCharts(closedTrades) {
   // P&L curve (cumulative, by date)
@@ -2421,6 +2433,35 @@ function setPerformanceInstruments(instruments, btn) {
   renderPerformance();
 }
 
+function setPerformanceDateRange() {
+  const startEl = document.getElementById('perfDateStart');
+  const endEl = document.getElementById('perfDateEnd');
+  performanceDateStart = startEl.value ? startEl.value : null;
+  performanceDateEnd = endEl.value ? endEl.value : null;
+  updatePerformanceDateRangeLabel();
+  renderPerformance();
+}
+
+function resetPerformanceDateRange() {
+  performanceDateStart = null;
+  performanceDateEnd = null;
+  document.getElementById('perfDateStart').value = '';
+  document.getElementById('perfDateEnd').value = '';
+  updatePerformanceDateRangeLabel();
+  renderPerformance();
+}
+
+function updatePerformanceDateRangeLabel() {
+  const label = document.getElementById('perfDateRangeLabel');
+  if (performanceDateStart || performanceDateEnd) {
+    const start = performanceDateStart ? performanceDateStart : '(earliest)';
+    const end = performanceDateEnd ? performanceDateEnd : '(latest)';
+    label.textContent = `${start} to ${end}`;
+  } else {
+    label.textContent = 'All dates';
+  }
+}
+
 function renderPerformance() {
   const { optionClosed } = computeStats();
   
@@ -2430,6 +2471,16 @@ function renderPerformance() {
     // Include all closed trades (options + stock/ETF)
     const allTrades = db.trades.filter(t => t.status === 'closed' && t.closeDate && t.netPnl !== undefined);
     filteredTrades = [...optionClosed, ...allTrades.filter(t => !t.type || t.type !== 'option')];
+  }
+
+  // Filter trades by date range
+  if (performanceDateStart || performanceDateEnd) {
+    filteredTrades = filteredTrades.filter(t => {
+      const closeDate = t.closeDate || '';
+      if (performanceDateStart && closeDate < performanceDateStart) return false;
+      if (performanceDateEnd && closeDate > performanceDateEnd) return false;
+      return true;
+    });
   }
 
   const day = currentPeriodMetrics(filteredTrades, 'daily');
@@ -2451,8 +2502,11 @@ function renderPerformance() {
   const rows = bucketPerformance(filteredTrades, performancePeriod);
   const tbody = document.querySelector('#performanceTable tbody');
   const instLabel = performanceInstruments === 'all' ? 'all instruments' : 'options';
+  const dateRangeInfo = (performanceDateStart || performanceDateEnd) 
+    ? ` (${performanceDateStart || '–'}  to  ${performanceDateEnd || '–'})`
+    : '';
   document.getElementById('perfSummarySub').textContent = rows.length
-    ? `Showing ${performancePeriod} performance (${instLabel}) across ${rows.length} periods`
+    ? `Showing ${performancePeriod} performance (${instLabel}) across ${rows.length} periods${dateRangeInfo}`
     : `No data for ${performancePeriod} performance yet`;
 
   if (!rows.length) {
