@@ -538,11 +538,6 @@
         <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Year</label>
         <select id="dashboardYearSelect" onchange="applyDashboardFilter()" style="width:100px;padding:6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
           <option value="">All Years</option>
-          <option value="2026">2026</option>
-          <option value="2025">2025</option>
-          <option value="2024">2024</option>
-          <option value="2023">2023</option>
-          <option value="2022">2022</option>
         </select>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;">
@@ -629,11 +624,6 @@
         <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Year</label>
         <select id="perfYearSelect" onchange="applyPerformanceFilter()" style="width:100px;padding:6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
           <option value="">All Years</option>
-          <option value="2026">2026</option>
-          <option value="2025">2025</option>
-          <option value="2024">2024</option>
-          <option value="2023">2023</option>
-          <option value="2022">2022</option>
         </select>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;">
@@ -2290,6 +2280,48 @@ let performanceSymbolFilter = '';
 let dashboardDateStart = null;
 let dashboardDateEnd = null;
 
+function populateYearSelects() {
+  // Determine year range: from oldest data to current year
+  const allDates = [
+    ...db.transactions.map(t => t.date || ''),
+    ...db.trades?.map(t => t.openDate || '') || [],
+    ...db.trades?.map(t => t.closeDate || '') || []
+  ].filter(d => d);
+  
+  let minYear = new Date().getUTCFullYear();
+  let maxYear = new Date().getUTCFullYear();
+  
+  if (allDates.length > 0) {
+    const years = allDates.map(d => parseInt(d.substring(0, 4))).filter(y => !isNaN(y));
+    if (years.length > 0) {
+      minYear = Math.min(...years);
+      maxYear = Math.max(...years);
+    }
+  }
+  
+  // Generate years from minYear to maxYear (inclusive), in descending order
+  const years = [];
+  for (let y = maxYear; y >= minYear; y--) {
+    years.push(y);
+  }
+  
+  // Populate both selects
+  [document.getElementById('dashboardYearSelect'), document.getElementById('perfYearSelect')].forEach(select => {
+    if (!select) return;
+    // Keep 'All Years' option, remove old options
+    const allYearsOption = select.querySelector('option[value=""]');
+    while (select.options.length > 1) select.remove(1);
+    
+    // Add year options
+    for (const year of years) {
+      const option = document.createElement('option');
+      option.value = String(year);
+      option.textContent = String(year);
+      select.appendChild(option);
+    }
+  });
+}
+
 function renderCharts(closedTrades) {
   // P&L curve (cumulative, by date)
   const sorted = [...closedTrades].sort((a, b) => (a.closeDate || '').localeCompare(b.closeDate || ''));
@@ -3307,6 +3339,7 @@ function showView(id) {
 }
 
 function refreshAll() {
+  populateYearSelects();
   renderDashboard();
   renderPerformance();
   renderClosedPositions();
