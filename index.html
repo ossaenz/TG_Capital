@@ -531,6 +531,34 @@
 
 <!-- ===== DASHBOARD ===== -->
 <div class="view active" id="view-dashboard">
+  <div class="card" style="margin-bottom:16px;background:linear-gradient(160deg, var(--bg2), var(--bg1));border:1px solid var(--border);">
+    <div class="card-header"><span class="card-title">Quick Filters</span></div>
+    <div style="padding:12px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Year</label>
+        <select id="dashboardYearSelect" onchange="applyDashboardFilter()" style="width:100px;padding:6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
+          <option value="">All Years</option>
+          <option value="2026">2026</option>
+          <option value="2025">2025</option>
+          <option value="2024">2024</option>
+          <option value="2023">2023</option>
+          <option value="2022">2022</option>
+        </select>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Start</label>
+        <input type="date" id="dashboardDateStart" style="width:130px;padding:6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" />
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">End</label>
+        <input type="date" id="dashboardDateEnd" style="width:130px;padding:6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" />
+      </div>
+      <button class="btn btn-sm" onclick="applyDashboardFilter()" style="align-self:flex-end;background:var(--accent);color:#fff;border:none;">Apply</button>
+      <button class="btn btn-sm" onclick="resetDashboardFilter()" style="align-self:flex-end;background:var(--bg3);color:var(--text1);border:1px solid var(--border);">Reset</button>
+      <span style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text2);" id="dashboardFilterLabel">Viewing: All Years</span>
+    </div>
+  </div>
+
   <div class="kpi-grid" id="kpiGrid">
     <div class="kpi"><div class="kpi-label">Realized P&L</div><div class="kpi-value pos n" id="kpi-realized">$0</div><div class="kpi-sub">Closed option trades</div></div>
     <div class="kpi"><div class="kpi-label">Total Premium Collected</div><div class="kpi-value pos g" id="kpi-premium">$0</div><div class="kpi-sub">STO / Sell to Open</div></div>
@@ -2258,6 +2286,10 @@ let performanceDateStart = null;
 let performanceDateEnd = null;
 let performanceSymbolFilter = '';
 
+// Dashboard filtering
+let dashboardDateStart = null;
+let dashboardDateEnd = null;
+
 function renderCharts(closedTrades) {
   // P&L curve (cumulative, by date)
   const sorted = [...closedTrades].sort((a, b) => (a.closeDate || '').localeCompare(b.closeDate || ''));
@@ -2505,6 +2537,92 @@ function updatePerformanceFilterLabel() {
   label.textContent = parts.length > 0 ? parts.join(' | ') : 'All filters active';
 }
 
+function applyDashboardFilter() {
+  const yearSel = document.getElementById('dashboardYearSelect').value;
+  const startDate = document.getElementById('dashboardDateStart').value;
+  const endDate = document.getElementById('dashboardDateEnd').value;
+  
+  if (yearSel) {
+    dashboardDateStart = `${yearSel}-01-01`;
+    dashboardDateEnd = `${yearSel}-12-31`;
+  } else {
+    dashboardDateStart = startDate || null;
+    dashboardDateEnd = endDate || null;
+  }
+  
+  updateDashboardFilterLabel();
+  renderDashboard();
+}
+
+function resetDashboardFilter() {
+  dashboardDateStart = null;
+  dashboardDateEnd = null;
+  document.getElementById('dashboardYearSelect').value = '';
+  document.getElementById('dashboardDateStart').value = '';
+  document.getElementById('dashboardDateEnd').value = '';
+  updateDashboardFilterLabel();
+  renderDashboard();
+}
+
+function updateDashboardFilterLabel() {
+  const label = document.getElementById('dashboardFilterLabel');
+  if (dashboardDateStart && dashboardDateEnd) {
+    label.textContent = `Viewing: ${dashboardDateStart} to ${dashboardDateEnd}`;
+  } else if (dashboardDateStart) {
+    label.textContent = `Viewing: from ${dashboardDateStart}`;
+  } else if (dashboardDateEnd) {
+    label.textContent = `Viewing: until ${dashboardDateEnd}`;
+  } else {
+    label.textContent = 'Viewing: All Years';
+  }
+}
+
+function computeStatsByDateRange(dateStart, dateEnd) {
+  const { openPositions, closedTrades } = buildPositions();
+  
+  // Filter closed trades by date range
+  let filteredTrades = closedTrades;
+  if (dateStart || dateEnd) {
+    filteredTrades = closedTrades.filter(t => {
+      const closeDate = t.closeDate || '';
+      if (dateStart && closeDate < dateStart) return false;
+      if (dateEnd && closeDate > dateEnd) return false;
+      return true;
+    });
+  }
+  
+  const washFlags = detectWashSales();
+  const optionClosed = filteredTrades.filter(t => t.instrument === 'option');
+  const realized = optionClosed.reduce((s, t) => s + (t.netPnl || 0), 0);
+  
+  // Filter transactions for fees and premium
+  let filteredTxns = db.transactions;
+  if (dateStart || dateEnd) {
+    filteredTxns = db.transactions.filter(t => {
+      const tDate = t.date || '';
+      if (dateStart && tDate < dateStart) return false;
+      if (dateEnd && tDate > dateEnd) return false;
+      return true;
+    });
+  }
+  
+  const fees = filteredTxns.reduce((s, t) => s + (t.fees || 0), 0);
+  const premiumCollected = filteredTxns
+    .filter(t => t.action === 'Sell to Open')
+    .reduce((s, t) => s + Math.abs(t.amount || 0), 0);
+  
+  // Count assignments from filtered transactions
+  const assigned = filteredTxns.filter(t => t.action === 'Assigned').length;
+
+  const wins = optionClosed.filter(t => (t.netPnl || 0) > 0);
+  const losses_arr = optionClosed.filter(t => (t.netPnl || 0) < 0);
+  const winRate = optionClosed.length > 0 ? wins.length / optionClosed.length : null;
+  const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.netPnl, 0) / wins.length : 0;
+  const avgLoss = losses_arr.length > 0 ? losses_arr.reduce((s, t) => s + t.netPnl, 0) / losses_arr.length : 0;
+
+  return { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions, closedTrades: filteredTrades, optionClosed, washFlags };
+}
+
 function renderPerformance() {
   const { optionClosed } = computeStats();
   
@@ -2660,7 +2778,7 @@ function renderPerformanceChart(rows) {
 }
 
 function renderDashboard() {
-  const stats = computeStats();
+  const stats = computeStatsByDateRange(dashboardDateStart, dashboardDateEnd);
   const { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions, optionClosed, washFlags } = stats;
 
   document.getElementById('kpi-realized').textContent = fmt$(realized);
