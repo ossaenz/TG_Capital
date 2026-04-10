@@ -2234,9 +2234,12 @@ function buildPositions() {
 // ════════════════════════════════════════════════════════
 // WASH SALE DETECTION
 // ════════════════════════════════════════════════════════
-function detectWashSales() {
-  const sorted = [...db.transactions].sort((a, b) => (a.date || a.rawDate).localeCompare(b.date || b.rawDate));
+function detectWashSales(txnsToCheck) {
+  // If no txns provided, use all transactions
+  const txns = txnsToCheck || db.transactions;
+  const sorted = [...txns].sort((a, b) => (a.date || a.rawDate).localeCompare(b.date || b.rawDate));
   const flags = [];
+  const seenPairs = new Set();  // Dedupe by (underlying, lossDate)
 
   // Collect loss events (BTC where amount < 0 AND more than premium received, or Sell stock at loss)
   const losses = sorted.filter(t => {
@@ -2271,6 +2274,10 @@ function detectWashSales() {
 
     for (const rep of repurchases) {
       const days = Math.round(Math.abs((new Date(rep.date) - lossDate) / 86400000));
+      const pairKey = `${lossUnderlying}|${loss.date}`;
+      if (seenPairs.has(pairKey)) continue;  // Skip duplicate loss-underlying pairs
+      seenPairs.add(pairKey);
+      
       flags.push({
         symbol: lossUnderlying,
         lossDate: loss.date,
@@ -2683,17 +2690,18 @@ function computeStatsByDateRange(dateStart, dateEnd) {
     });
   }
   
-  const washFlags = detectWashSales();
-  // Filter wash flags by date range
-  let filteredWashFlags = washFlags;
+  // Filter transactions for wash detection
+  let txnsForWash = db.transactions;
   if (dateStart || dateEnd) {
-    filteredWashFlags = washFlags.filter(flag => {
-      const lossDate = flag.lossDate || '';
-      if (dateStart && lossDate < dateStart) return false;
-      if (dateEnd && lossDate > dateEnd) return false;
+    txnsForWash = db.transactions.filter(t => {
+      const tDate = t.date || '';
+      if (dateStart && tDate < dateStart) return false;
+      if (dateEnd && tDate > dateEnd) return false;
       return true;
     });
   }
+  
+  const washFlags = detectWashSales(txnsForWash);
   
   const optionClosed = filteredTrades.filter(t => t.instrument === 'option');
   const realized = optionClosed.reduce((s, t) => s + (t.netPnl || 0), 0);
@@ -2723,7 +2731,7 @@ function computeStatsByDateRange(dateStart, dateEnd) {
   const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.netPnl, 0) / wins.length : 0;
   const avgLoss = losses_arr.length > 0 ? losses_arr.reduce((s, t) => s + t.netPnl, 0) / losses_arr.length : 0;
 
-  return { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions: filteredOpenPositions, closedTrades: filteredTrades, optionClosed, washFlags: filteredWashFlags };
+  return { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions: filteredOpenPositions, closedTrades: filteredTrades, optionClosed, washFlags };
 }
 
 function renderPerformance() {
