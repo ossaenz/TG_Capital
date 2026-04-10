@@ -548,6 +548,10 @@
         <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">End</label>
         <input type="date" id="dashboardDateEnd" style="width:130px;padding:6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" />
       </div>
+      <span style="border-left:1px solid var(--border);padding-left:8px;display:flex;gap:4px;align-items:flex-end;">
+        <button class="filter-btn active" id="dash-opts-only" onclick="setDashboardInstruments('options-only', this)" style="font-size:11px;padding:4px 8px;background:var(--accent-dim);color:#a8c8f8;border:1px solid var(--accent);border-radius:3px;cursor:pointer;">Options Only</button>
+        <button class="filter-btn" id="dash-all-inst" onclick="setDashboardInstruments('all', this)" style="font-size:11px;padding:4px 8px;background:var(--bg3);color:var(--text1);border:1px solid var(--border);border-radius:3px;cursor:pointer;">All Instruments</button>
+      </span>
       <button class="btn btn-sm" onclick="applyDashboardFilter()" style="align-self:flex-end;background:var(--accent);color:#fff;border:none;">Apply</button>
       <button class="btn btn-sm" onclick="resetDashboardFilter()" style="align-self:flex-end;background:var(--bg3);color:var(--text1);border:1px solid var(--border);">Reset</button>
       <span style="margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text2);" id="dashboardFilterLabel">Viewing: All Years</span>
@@ -2335,6 +2339,7 @@ let performanceSymbolFilter = '';
 // Dashboard filtering
 let dashboardDateStart = null;
 let dashboardDateEnd = null;
+let dashboardInstruments = 'options-only';  // 'options-only' or 'all'
 
 function populateYearSelects() {
   // Determine year range: from oldest data to current year
@@ -2665,6 +2670,13 @@ function updateDashboardFilterLabel() {
   }
 }
 
+function setDashboardInstruments(instruments, btn) {
+  dashboardInstruments = instruments;
+  document.querySelectorAll('#dash-opts-only, #dash-all-inst').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderDashboard();
+}
+
 function computeStatsByDateRange(dateStart, dateEnd) {
   const { openPositions, closedTrades } = buildPositions();
   
@@ -2690,21 +2702,20 @@ function computeStatsByDateRange(dateStart, dateEnd) {
     });
   }
   
-  // Filter transactions for wash detection
-  let txnsForWash = db.transactions;
-  if (dateStart || dateEnd) {
-    txnsForWash = db.transactions.filter(t => {
-      const tDate = t.date || '';
-      if (dateStart && tDate < dateStart) return false;
-      if (dateEnd && tDate > dateEnd) return false;
-      return true;
-    });
-  }
-  
   const washFlags = detectWashSales(txnsForWash);
   
-  const optionClosed = filteredTrades.filter(t => t.instrument === 'option');
-  const realized = optionClosed.reduce((s, t) => s + (t.netPnl || 0), 0);
+  // Calculate P&L based on instrument filter
+  let tradesDirty = filteredTrades;
+  if (dashboardInstruments === 'all') {
+    // Include all closed trades (options + stock/ETF)
+    tradesDirty = filteredTrades;  // Already has both
+  } else {
+    // Option only
+    tradesDirty = filteredTrades.filter(t => t.instrument === 'option');
+  }
+  
+  const optionClosed = tradesDirty.filter(t => t.instrument === 'option');
+  const realized = tradesDirty.reduce((s, t) => s + (t.netPnl || 0), 0);
   
   // Filter transactions for fees and premium
   let filteredTxns = db.transactions;
@@ -2890,10 +2901,19 @@ function renderPerformanceChart(rows) {
 
 function renderDashboard() {
   const stats = computeStatsByDateRange(dashboardDateStart, dashboardDateEnd);
-  const { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions, optionClosed, washFlags } = stats;
+  const { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions, closedTrades, optionClosed, washFlags } = stats;
 
+  const instLabel = dashboardInstruments === 'all' ? 'All instruments' : 'Closed options';
+  
   document.getElementById('kpi-realized').textContent = fmt$(realized);
   document.getElementById('kpi-realized').className = 'kpi-value pos ' + pnlClass(realized);
+  // Update the sub-label to show which mode
+  const realiziedRKpi = document.querySelector('#kpi-realized').closest('.kpi');
+  if (realiziedRKpi) {
+    const subEl = realiziedRKpi.querySelector('.kpi-sub');
+    if (subEl) subEl.textContent = instLabel;
+  }
+  
   document.getElementById('kpi-premium').textContent = fmt$(premiumCollected);
   document.getElementById('kpi-fees').textContent = fmt$(-fees);
   document.getElementById('kpi-wr').textContent = winRate !== null ? (winRate * 100).toFixed(1) + '%' : '—%';
@@ -2910,8 +2930,12 @@ function renderDashboard() {
   document.getElementById('ts-total').textContent = db.transactions.length;
   document.getElementById('ts-wr').textContent = winRate !== null ? (winRate * 100).toFixed(1) + '%' : '—';
 
-  // Recent closed trades table — option round-trips only
-  const recent = [...optionClosed].sort((a, b) => (b.closeDate || '').localeCompare(a.closeDate || '')).slice(0, 30);
+  // Render recent closed trades (filtered by instrument if needed)
+  let recentTrades = closedTrades;
+  if (dashboardInstruments === 'options-only') {
+    recentTrades = optionClosed;
+  }
+  const recent = [...recentTrades].sort((a, b) => (b.closeDate || '').localeCompare(a.closeDate || '')).slice(0, 30);
   const tbody = document.querySelector('#recentTable tbody');
   if (recent.length === 0) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="9">No closed trades yet.</td></tr>';
