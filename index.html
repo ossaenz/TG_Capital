@@ -1265,6 +1265,16 @@ async function openDataFile() {
     const parsed = JSON.parse(text);
     const coerced = coerceJSONToDB(parsed, handle.name);
     if (!coerced) throw new Error('Not a valid TGCapital data file.');
+    
+    // Confirm before replacing database
+    const currentRecords = db.transactions?.length || 0;
+    const newRecords = coerced.transactions?.length || 0;
+    const msg = `Replace current data (${currentRecords} records) with "${handle.name}" (${newRecords} records)?\n\nThis cannot be undone unless you have saved backups.`;
+    if (!confirm(msg)) {
+      setFsStatus('Cancelled: File open aborted', 'var(--amber)');
+      return;
+    }
+    
     db = coerced;
     storageMeta.preferredBackend = 'file';
     storageMeta.localFileName = handle.name || null;
