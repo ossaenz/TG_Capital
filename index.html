@@ -2672,7 +2672,29 @@ function computeStatsByDateRange(dateStart, dateEnd) {
     });
   }
   
+  // Filter open positions by date range (opened on or after dateStart)
+  let filteredOpenPositions = openPositions;
+  if (dateStart || dateEnd) {
+    filteredOpenPositions = openPositions.filter(pos => {
+      const openDate = pos.openDate || '';
+      if (dateStart && openDate < dateStart) return false;
+      if (dateEnd && openDate > dateEnd) return false;
+      return true;
+    });
+  }
+  
   const washFlags = detectWashSales();
+  // Filter wash flags by date range
+  let filteredWashFlags = washFlags;
+  if (dateStart || dateEnd) {
+    filteredWashFlags = washFlags.filter(flag => {
+      const lossDate = flag.lossDate || '';
+      if (dateStart && lossDate < dateStart) return false;
+      if (dateEnd && lossDate > dateEnd) return false;
+      return true;
+    });
+  }
+  
   const optionClosed = filteredTrades.filter(t => t.instrument === 'option');
   const realized = optionClosed.reduce((s, t) => s + (t.netPnl || 0), 0);
   
@@ -2701,7 +2723,7 @@ function computeStatsByDateRange(dateStart, dateEnd) {
   const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.netPnl, 0) / wins.length : 0;
   const avgLoss = losses_arr.length > 0 ? losses_arr.reduce((s, t) => s + t.netPnl, 0) / losses_arr.length : 0;
 
-  return { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions, closedTrades: filteredTrades, optionClosed, washFlags };
+  return { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions: filteredOpenPositions, closedTrades: filteredTrades, optionClosed, washFlags: filteredWashFlags };
 }
 
 function renderPerformance() {
