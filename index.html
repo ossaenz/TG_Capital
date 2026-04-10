@@ -3039,7 +3039,6 @@ function processBatch(files) {
   addLog(`[${new Date().toLocaleTimeString()}] Starting batch import: ${files.length} file(s)`, 'info');
   
   let totalAdded = 0, totalDupes = 0, totalRows = 0;
-  const parentBatchId = 'batch_' + Date.now();
   
   // Process files sequentially
   const processNext = (index) => {
@@ -3060,7 +3059,9 @@ function processBatch(files) {
     }
     
     const file = files[index];
-    processFileForBatch(file, parentBatchId, (added, dupes, rows) => {
+    // Each file gets its own unique batchId
+    const fileBatchId = 'batch_' + Date.now() + '_' + index;
+    processFileForBatch(file, fileBatchId, (added, dupes, rows) => {
       totalAdded += added;
       totalDupes += dupes;
       totalRows += rows;
