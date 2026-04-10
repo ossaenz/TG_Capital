@@ -2702,6 +2702,17 @@ function computeStatsByDateRange(dateStart, dateEnd) {
     });
   }
   
+  // Filter transactions for wash detection FIRST (before using it)
+  let txnsForWash = db.transactions;
+  if (dateStart || dateEnd) {
+    txnsForWash = db.transactions.filter(t => {
+      const tDate = t.date || '';
+      if (dateStart && tDate < dateStart) return false;
+      if (dateEnd && tDate > dateEnd) return false;
+      return true;
+    });
+  }
+  
   const washFlags = detectWashSales(txnsForWash);
   
   // Calculate P&L based on instrument filter
