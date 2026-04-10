@@ -2051,7 +2051,7 @@ function buildPositions() {
         closeCost: t.amount || 0,          // total net debit paid on close
         closeFees: t.fees || 0,
         grossPnl, fees: totalFees,
-        netPnl: grossPnl,
+        netPnl: grossPnl - totalFees,
         via: 'closed', closeAction: t.action, closeTxn: t,
       });
     }
@@ -2093,7 +2093,7 @@ function buildPositions() {
         closePrice: 0,
         closeCost: 0, closeFees: 0,
         grossPnl, fees: totalFees,
-        netPnl: grossPnl,
+        netPnl: grossPnl - totalFees,
         via: 'expired', closeAction: 'Expired', closeTxn: t,
       });
     }
@@ -2135,7 +2135,7 @@ function buildPositions() {
         closePrice: t.strike || 0,
         closeCost: 0, closeFees: 0,
         grossPnl, fees: totalFees,
-        netPnl: grossPnl,
+        netPnl: grossPnl - totalFees,
         via: 'assigned', closeAction: 'Assigned', closeTxn: t,
       });
     }
@@ -2191,7 +2191,7 @@ function buildPositions() {
         closePrice: t.price || 0,
         closeCost: proceeds, closeFees: t.fees || 0,
         grossPnl, fees: totalFees,
-        netPnl: grossPnl,
+        netPnl: grossPnl - totalFees,
         via: 'sold', closeAction: 'Sell', closeTxn: t,
       });
     }
