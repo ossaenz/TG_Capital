@@ -2311,9 +2311,11 @@ function computeStats() {
   const optionClosed = closedTrades.filter(t => t.instrument === 'option');
   const realized = optionClosed.reduce((s, t) => s + (t.netPnl || 0), 0);
   const fees = db.transactions.reduce((s, t) => s + (t.fees || 0), 0);
-  const premiumCollected = db.transactions
-    .filter(t => t.action === 'Sell to Open')
-    .reduce((s, t) => s + Math.abs(t.amount || 0), 0);
+  // Premium collected: only from closed/expired/assigned option positions
+  // NOT from all STOs (many of which are still open)
+  const premiumCollected = closedTrades
+    .filter(t => t.instrument === 'option')
+    .reduce((s, t) => s + Math.max(0, t.openCredit || 0), 0);
   const assigned = db.transactions.filter(t => t.action === 'Assigned').length;
 
   const wins = optionClosed.filter(t => (t.netPnl || 0) > 0);
@@ -2740,9 +2742,11 @@ function computeStatsByDateRange(dateStart, dateEnd) {
   }
   
   const fees = filteredTxns.reduce((s, t) => s + (t.fees || 0), 0);
-  const premiumCollected = filteredTxns
-    .filter(t => t.action === 'Sell to Open')
-    .reduce((s, t) => s + Math.abs(t.amount || 0), 0);
+  
+  // Premium collected: sum of openCredit from CLOSED option positions only
+  // (These are STOs/similar that were opened and closed within the date range)
+  const optionTrades = tradesDirty.filter(t => t.instrument === 'option');
+  const premiumCollected = optionTrades.reduce((s, t) => s + Math.max(0, t.openCredit || 0), 0);
   
   // Count assignments from filtered transactions
   const assigned = filteredTxns.filter(t => t.action === 'Assigned').length;
