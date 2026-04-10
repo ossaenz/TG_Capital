@@ -1255,34 +1255,73 @@ async function writeToDisk(data) {
 async function openDataFile() {
   if (!FS_SUPPORTED) { alert('File System Access API requires Chrome/Edge 86+. Use the Export button instead.'); return; }
   try {
-    const [handle] = await window.showOpenFilePicker({
-      types: [{ description: 'TGCapital Data', accept: { 'application/json': ['.json'] } }],
-      multiple: false,
+    const handles = await window.showOpenFilePicker({
+      types: [{ description: 'TGCapital Data & CSV', accept: { 'application/json': ['.json'], 'text/csv': ['.csv'] } }],
+      multiple: true,
     });
-    fileHandle = handle;
-    const file  = await handle.getFile();
-    const text  = await file.text();
-    const parsed = JSON.parse(text);
-    const coerced = coerceJSONToDB(parsed, handle.name);
-    if (!coerced) throw new Error('Not a valid TGCapital data file.');
     
-    // Confirm before replacing database
-    const currentRecords = db.transactions?.length || 0;
-    const newRecords = coerced.transactions?.length || 0;
-    const msg = `Replace current data (${currentRecords} records) with "${handle.name}" (${newRecords} records)?\n\nThis cannot be undone unless you have saved backups.`;
-    if (!confirm(msg)) {
-      setFsStatus('Cancelled: File open aborted', 'var(--amber)');
-      return;
-    }
+    if (handles.length === 0) return;
     
-    db = coerced;
-    storageMeta.preferredBackend = 'file';
-    storageMeta.localFileName = handle.name || null;
-    saveStorageMeta();
-    unsaved = false;
-    setFsStatus('✓ Opened: ' + handle.name, 'var(--green)');
-    refreshAll();
-    addLog('Loaded data file: ' + handle.name + ' (' + db.transactions.length + ' records)', 'ok');
+    addLog(``, '');
+    addLog(`Opening ${handles.length} file(s)...`, 'info');
+    
+    let totalAdded = 0, totalDupes = 0, totalRows = 0;
+    
+    // Process files sequentially
+    const processNext = (index) => {
+      if (index >= handles.length) {
+        addLog(``, '');
+        addLog(`All files processed!`, 'ok');
+        addLog(`Total: ${totalRows} rows, ${totalAdded} imported, ${totalDupes} dupes skipped`, 'ok');
+        addLog(`Database now has: ${db.transactions.length} transactions`, 'info');
+        storageMeta.preferredBackend = 'file';
+        saveStorageMeta();
+        unsaved = true;
+        refreshAll();
+        return;
+      }
+      
+      const handle = handles[index];
+      handle.getFile().then(async file => {
+        const text = await file.text();
+        const fileName = handle.name;
+        
+        try {
+          // Determine if CSV or JSON
+          if (fileName.endsWith('.csv')) {
+            const rows = parseCSV(text);
+            const { added, dupes } = importRecords(rows, fileName, 'batch_' + Date.now() + '_' + index);
+            totalAdded += added;
+            totalDupes += dupes;
+            totalRows += rows.length;
+            addLog(`✓ ${fileName}: ${rows.length} rows (${added} new, ${dupes} dupes)`, 'ok');
+          } else {
+            const parsed = JSON.parse(text);
+            const coerced = coerceJSONToDB(parsed, fileName);
+            if (!coerced) throw new Error('Invalid format');
+            // Merge: append transactions not already present
+            const beforeCount = db.transactions.length;
+            for (const txn of coerced.transactions || []) {
+              const exists = db.transactions.some(t => t.date === txn.date && t.action === txn.action && t.amount === txn.amount);
+              if (!exists) {
+                db.transactions.push(txn);
+                totalAdded++;
+              } else {
+                totalDupes++;
+              }
+            }
+            totalRows += coerced.transactions?.length || 0;
+            addLog(`✓ ${fileName}: ${coerced.transactions?.length || 0} records (${totalAdded - (beforeCount > 0 ? totalAdded - (coerced.transactions?.length || 0) : totalAdded)} new, ${totalDupes} dupes)`, 'ok');
+          }
+        } catch (err) {
+          addLog(`✗ ${fileName}: ${err.message}`, 'err');
+        }
+        
+        processNext(index + 1);
+      });
+    };
+    
+    processNext(0);
   } catch (err) {
     if (err.name !== 'AbortError') setFsStatus('⚠ ' + err.message, 'var(--red)');
   }
