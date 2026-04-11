@@ -484,6 +484,99 @@
   /* ── Status bar (below nav) ── */
   .status-bar { padding: 4px 20px; background: var(--bg1); border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 11px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .status-bar:empty { display: none; }
+
+  /* ════════════════════════════════════════════════════════
+     REPORTS VIEW
+  ════════════════════════════════════════════════════════ */
+  .rpt-filter-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; padding:14px 16px; background:var(--bg2); border-bottom:1px solid var(--border); }
+  .rpt-filter-bar label { font-size:10px; color:var(--text2); font-weight:700; letter-spacing:0.1em; text-transform:uppercase; display:block; margin-bottom:4px; }
+  .rpt-filter-bar input, .rpt-filter-bar select { width:130px; }
+  .rpt-filter-bar input[type=date] { width:145px; }
+  .rpt-actions { display:flex; gap:8px; margin-left:auto; align-items:center; flex-wrap:wrap; }
+
+  .rpt-body { padding:20px; }
+
+  /* Summary KPI strip */
+  .rpt-kpi-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:24px; }
+  .rpt-kpi { background:var(--bg2); border:1px solid var(--border); border-radius:var(--r); padding:14px 16px; }
+  .rpt-kpi-label { font-size:10px; font-family:var(--mono); color:var(--text2); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:5px; }
+  .rpt-kpi-val { font-family:var(--mono); font-size:20px; font-weight:700; }
+  .rpt-kpi-sub { font-size:11px; color:var(--text2); margin-top:3px; }
+
+  /* Section headers */
+  .rpt-section { margin-bottom:32px; }
+  .rpt-section-hdr { display:flex; align-items:center; justify-content:space-between; padding:10px 0 8px 0; border-bottom:2px solid var(--border-hi); margin-bottom:12px; }
+  .rpt-section-title { font-family:var(--mono); font-size:12px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:var(--text1); }
+  .rpt-section-count { font-family:var(--mono); font-size:11px; color:var(--text2); }
+
+  /* Report table — tighter and more printable */
+  .rpt-tbl { width:100%; border-collapse:collapse; font-size:12px; }
+  .rpt-tbl th { padding:7px 10px; background:var(--bg3); border:1px solid var(--border-hi); font-family:var(--mono); font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--text2); white-space:nowrap; }
+  .rpt-tbl td { padding:7px 10px; border:1px solid var(--border); font-size:12px; }
+  .rpt-tbl tbody tr:hover td { background:var(--bg3); }
+  .rpt-tbl tfoot td { padding:8px 10px; background:var(--bg2); border:1px solid var(--border-hi); font-family:var(--mono); font-weight:700; font-size:12px; }
+  .rpt-tbl .r { text-align:right; }
+  .rpt-tbl .c { text-align:center; }
+
+  /* Ticker summary alternating rows */
+  .rpt-tbl.summary tbody tr:nth-child(even) td { background:var(--bg2); }
+  .rpt-tbl.summary tbody tr:hover td { background:var(--bg3); }
+
+  /* Print: report page header (hidden on screen) */
+  .rpt-print-header { display:none; }
+
+  /* ────────────────────────────────────────────────────────
+     @media print — clean accountant-ready output
+  ──────────────────────────────────────────────────────── */
+  @media print {
+    /* Hide all app chrome */
+    .topbar, .nav, .status-bar,
+    .rpt-filter-bar, .rpt-actions,
+    #view-dashboard, #view-performance, #view-positions,
+    #view-closed, #view-trades, #view-washsales,
+    #view-import, #view-audit { display:none !important; }
+
+    /* Make report fill the page */
+    body { background:#fff !important; color:#000 !important; font-family:'Arial', sans-serif; font-size:11pt; }
+    .main { padding:0 !important; max-width:100% !important; }
+    #view-reports { display:block !important; }
+    .rpt-body { padding:0 !important; }
+
+    /* Show print header */
+    .rpt-print-header { display:block; border-bottom:2px solid #000; margin-bottom:18pt; padding-bottom:10pt; }
+    .rpt-print-header h1 { font-size:18pt; font-weight:700; margin:0 0 4pt 0; }
+    .rpt-print-header .rpt-ph-meta { font-size:9pt; color:#444; }
+
+    /* KPI strip */
+    .rpt-kpi-row { display:flex; flex-wrap:wrap; gap:12pt; margin-bottom:18pt; }
+    .rpt-kpi { border:1px solid #ccc; background:#f8f8f8 !important; padding:8pt 12pt; flex:1 1 120pt; min-width:100pt; page-break-inside:avoid; }
+    .rpt-kpi-label { font-size:7pt; color:#555; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:3pt; }
+    .rpt-kpi-val { font-size:14pt; font-weight:700; color:#000; }
+    .rpt-kpi-sub { font-size:8pt; color:#666; }
+
+    /* Section headers */
+    .rpt-section-hdr { border-bottom:1.5pt solid #000; padding-bottom:4pt; margin-bottom:8pt; }
+    .rpt-section-title { font-size:10pt; color:#000; letter-spacing:0.08em; }
+    .rpt-section-count { font-size:9pt; color:#555; }
+
+    /* Tables */
+    .rpt-tbl { border-collapse:collapse; width:100%; font-size:9pt; margin-bottom:18pt; page-break-inside:auto; }
+    .rpt-tbl th { background:#e8e8e8 !important; color:#000 !important; border:1pt solid #999 !important; padding:5pt 7pt; font-size:8pt; }
+    .rpt-tbl td { border:1pt solid #ccc !important; padding:4pt 7pt; color:#000 !important; background:#fff !important; }
+    .rpt-tbl tbody tr:nth-child(even) td { background:#f9f9f9 !important; }
+    .rpt-tbl tfoot td { background:#e8e8e8 !important; border:1pt solid #999 !important; padding:5pt 7pt; font-weight:700; }
+    .rpt-tbl tbody tr:hover td { background:inherit !important; }
+
+    /* Color overrides — use text labels in print, not colors */
+    .pos.g, .pos.r, .pos.n { color:#000 !important; }
+
+    /* Page setup */
+    @page { margin:15mm 12mm; size:landscape; }
+    .rpt-section { page-break-inside:avoid; }
+
+    /* Hide page-specific elements */
+    .rpt-no-print { display:none !important; }
+  }
 </style>
 </head>
 <body>
@@ -492,17 +585,10 @@
 <!-- TOP BAR -->
 <div class="topbar">
   <div class="logo">TGCapital<span>.io</span></div>
-  <div style="display:flex;gap:8px;align-items:center;margin-left:16px;">
-    <button class="btn btn-sm" id="btnOpenFile" onclick="openDataFile()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Open a TGCapital .json data file from disk">📂 Open File</button>
-    <button class="btn btn-sm" id="btnSaveFile" onclick="saveDataFile()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);" title="Save all data to disk">💾 Save</button>
-    <button class="btn btn-sm" id="btnCfgSave" onclick="saveLocalConfigFile()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Save app configuration to local disk">⚙ Save Config</button>
-    <button class="btn btn-sm" id="btnCfgOpen" onclick="openLocalConfigFile()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Load app configuration from local disk">⚙ Open Config</button>
-    <button class="btn btn-sm" id="btnLocalDiskMode" onclick="toggleLocalDiskMode()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);" title="When ON, local disk is preferred and Google Drive sync is disabled">Local Disk Mode: OFF</button>
-    <button class="btn btn-sm" id="btnDriveConnect" onclick="connectGoogleDrive()" style="background:var(--accent-dim);color:#a8c8f8;border:1px solid var(--accent);" title="Connect Google Drive appDataFolder">☁ Connect Drive</button>
-    <button class="btn btn-sm" id="btnDriveAuto" onclick="toggleAutoDriveConnect()" style="background:var(--accent-dim);color:#a8c8f8;border:1px solid var(--accent);" title="When ON, app auto-connects to Drive and restores data on startup">Auto Drive: ON</button>
-    <button class="btn btn-sm" id="btnDriveSave" onclick="syncToGoogleDrive('manual')" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Save (upload) current data to Google Drive">☁↑ Save to Drive</button>
-    <button class="btn btn-sm" id="btnDriveSync" onclick="syncFromGoogleDrive()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Restore (download) data from Google Drive">☁↓ Restore from Drive</button>
-    <span id="backendBadge" style="font-family:var(--mono);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;padding:3px 7px;border-radius:3px;border:1px solid var(--border);color:var(--text2);background:var(--bg3);white-space:nowrap">Backend: none</span>
+  <div style="display:flex;gap:8px;align-items:center;margin-left:20px;">
+    <button class="btn btn-sm" id="btnSaveFile" onclick="saveDataFile()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);font-weight:700;" title="Save all data to disk">💾 Save</button>
+    <button class="btn btn-sm" onclick="showView('import')" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Import data or manage storage">⬆ Import Data</button>
+    <span id="backendBadge" style="font-family:var(--mono);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;padding:3px 8px;border-radius:3px;border:1px solid var(--border);color:var(--text2);background:var(--bg0);white-space:nowrap;cursor:default;" title="Current storage backend">Backend: none</span>
   </div>
   <div class="topbar-stats" id="topbarStats">
     <div class="tstat"><div class="tstat-label">Realized P&L</div><div class="tstat-val" id="ts-realized" style="color:var(--text2)">—</div></div>
@@ -522,6 +608,7 @@
   <button class="nav-btn" onclick="showView('washsales')">Wash Sales</button>
   <button class="nav-btn" onclick="showView('import')">Import</button>
   <button class="nav-btn" onclick="showView('audit')">Audit Trail</button>
+  <button class="nav-btn" onclick="showView('reports')" style="margin-left:auto;background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent);">&#9112; Reports</button>
 </div>
 
 <!-- STATUS BAR -->
@@ -799,43 +886,82 @@
 <!-- ===== IMPORT ===== -->
 <div class="view" id="view-import">
   <div class="import-grid">
+
+    <!-- LEFT COLUMN -->
     <div>
-      <div class="section-title">Data File</div>
+
+      <!-- ── Storage & Sync ─────────────────────────── -->
+      <div class="section-title">Storage &amp; Sync</div>
       <div class="card" style="margin-bottom:16px;">
-        <div style="padding:16px 20px;">
-          <div style="font-size:13px;color:var(--text1);margin-bottom:12px;line-height:1.6">
-            TGCapital saves your trading data to either a local <span style="font-family:var(--mono);color:var(--accent)">tgcapital-data.json</span> file or Google Drive appDataFolder.
-            Browser localStorage only keeps storage location metadata, not your trade ledger.
+        <div style="padding:16px 20px;display:flex;flex-direction:column;gap:16px;">
+
+          <!-- Local file row -->
+          <div>
+            <div style="font-size:10px;font-family:var(--mono);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px;">Local File</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <button class="btn btn-primary btn-sm" id="btnOpenFile" onclick="openDataFile()" title="Open an existing TGCapital .json data file">📂 Open File</button>
+              <button class="btn btn-sm" id="btnSaveFile2" onclick="saveDataFile()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);" title="Save all trade data to disk">💾 Save / Save As…</button>
+              <button class="btn btn-sm" id="btnLocalDiskMode" onclick="toggleLocalDiskMode()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="When ON, local disk is preferred and Google Drive sync is disabled">Local Disk: OFF</button>
+              <button class="btn btn-sm" onclick="exportJSON()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Download data as JSON (browser fallback)">⬇ Export JSON</button>
+            </div>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <button class="btn btn-primary btn-sm" onclick="openDataFile()">📂 Open existing data file</button>
-            <button class="btn btn-sm" onclick="saveDataFile()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);">💾 Save / Save As…</button>
-            <button class="btn btn-sm" onclick="connectGoogleDrive()" style="background:var(--accent-dim);color:#a8c8f8;border:1px solid var(--accent);">☁ Connect Google Drive</button>
-            <button class="btn btn-sm" onclick="syncFromGoogleDrive()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);">⇅ Pull from Drive</button>
-            <button class="btn btn-sm" onclick="exportJSON()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);">⬇ Export JSON (fallback)</button>
+
+          <div style="height:1px;background:var(--border);"></div>
+
+          <!-- Drive row -->
+          <div>
+            <div style="font-size:10px;font-family:var(--mono);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px;">Google Drive</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <button class="btn btn-sm" id="btnDriveConnect" onclick="connectGoogleDrive()" style="background:var(--accent-dim);color:#a8c8f8;border:1px solid var(--accent);" title="Sign in and link your Google Drive appDataFolder">☁ Connect Drive</button>
+              <button class="btn btn-sm" id="btnDriveAuto" onclick="toggleAutoDriveConnect()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Auto-connect to Drive on startup">Auto-connect: ON</button>
+              <button class="btn btn-sm" id="btnDriveSave" onclick="syncToGoogleDrive('manual')" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Upload current data to Drive now">☁↑ Push to Drive</button>
+              <button class="btn btn-sm" id="btnDriveSync" onclick="syncFromGoogleDrive()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Download latest data from Drive">☁↓ Pull from Drive</button>
+            </div>
           </div>
-          <div style="margin-top:12px;font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.8">
-            <div>① First time: import your Schwab CSV/JSON below, then save to file or connect Google Drive.</div>
-            <div>② Next time: open your saved file or click <strong style="color:var(--accent)">☁ Connect Google Drive</strong> to load your synced data.</div>
-            <div>③ After each new Schwab import: data auto-saves to the connected backend (file handle or Drive).</div>
-            <div style="color:var(--amber);margin-top:6px;">⚠ Local file save needs Chrome/Edge 86+. Drive sync works on modern browsers with popup auth enabled.</div>
+
+          <div style="height:1px;background:var(--border);"></div>
+
+          <!-- Config row -->
+          <div>
+            <div style="font-size:10px;font-family:var(--mono);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text2);margin-bottom:8px;">App Config</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <button class="btn btn-sm" id="btnCfgOpen" onclick="openLocalConfigFile()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Load app configuration from local disk">⚙ Load Config</button>
+              <button class="btn btn-sm" id="btnCfgSave" onclick="saveLocalConfigFile()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Save app configuration to local disk">⚙ Save Config</button>
+            </div>
           </div>
+
+          <!-- Status -->
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg0);border-radius:4px;border:1px solid var(--border);">
+            <span style="font-size:11px;font-family:var(--mono);color:var(--text2);">Storage:</span>
+            <span id="backendBadge2" style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text1);">—</span>
+          </div>
+
+          <!-- How-to note -->
+          <div style="font-size:11px;color:var(--text2);line-height:1.8;border-top:1px solid var(--border);padding-top:12px;">
+            <span style="color:var(--accent);font-family:var(--mono);">①</span> First time: import Schwab data below → Save or Connect Drive.<br>
+            <span style="color:var(--accent);font-family:var(--mono);">②</span> Next time: Open File or Connect Drive to restore your ledger.<br>
+            <span style="color:var(--accent);font-family:var(--mono);">③</span> After each import: data auto-saves to the active backend.
+          </div>
+
         </div>
       </div>
 
+      <!-- ── Import Schwab data ──────────────────────── -->
       <div class="section-title">Import Schwab CSV / JSON</div>
       <div class="card">
         <div style="padding:20px;">
           <div class="import-zone" id="dropZone" onclick="document.getElementById('fileInput').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDrop(event)">
             <div class="import-zone-icon">⬆</div>
             <div class="import-zone-title">Drop Schwab export here</div>
-            <div class="import-zone-sub">Supports CSV and JSON exports<br>from thinkorswim / Schwab account history</div>
+            <div class="import-zone-sub">Supports CSV and JSON exports from Schwab account history<br>Duplicate transactions are automatically ignored</div>
           </div>
           <input type="file" id="fileInput" accept=".csv,.json" style="display:none" onchange="handleFileSelect(event)" multiple>
           <div id="importLog" class="import-log" style="display:none"></div>
         </div>
       </div>
     </div>
+
+    <!-- RIGHT COLUMN -->
     <div>
       <div class="section-title">Import History</div>
       <div class="card">
@@ -844,10 +970,12 @@
           <tbody><tr class="empty-row"><td colspan="6">No imports yet.</td></tr></tbody>
         </table></div>
       </div>
-      <div style="margin-top:12px;">
-        <button class="btn btn-danger btn-sm" onclick="clearAllData()">Clear All Data</button>
+      <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-danger btn-sm" onclick="clearAllData()">🗑 Clear All Data</button>
+        <button class="btn btn-sm" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border);" onclick="debugExportDB()">Debug: Export DB</button>
       </div>
     </div>
+
   </div>
 </div>
 
@@ -865,6 +993,200 @@
     </table></div>
   </div>
 </div>
+
+<!-- ===== REPORTS ===== -->
+<div class="view" id="view-reports">
+
+  <!-- Print-only header (hidden on screen) -->
+  <div class="rpt-print-header">
+    <h1>TGCapital — Trading Report</h1>
+    <div class="rpt-ph-meta" id="rptPrintMeta"></div>
+  </div>
+
+  <!-- Filter bar (hidden on print) -->
+  <div class="rpt-filter-bar rpt-no-print">
+    <div>
+      <label>Date From</label>
+      <input type="date" id="rptDateFrom" onchange="renderReports()">
+    </div>
+    <div>
+      <label>Date To</label>
+      <input type="date" id="rptDateTo" onchange="renderReports()">
+    </div>
+    <div>
+      <label>Ticker</label>
+      <input type="text" id="rptTicker" placeholder="e.g. SPY, PLTR" oninput="renderReports()" style="width:120px">
+    </div>
+    <div>
+      <label>Instrument</label>
+      <select id="rptInstrument" onchange="renderReports()">
+        <option value="all">All</option>
+        <option value="option">Options</option>
+        <option value="stock">Stocks / ETFs</option>
+      </select>
+    </div>
+    <div>
+      <label>Close Type</label>
+      <select id="rptCloseType" onchange="renderReports()">
+        <option value="all">All</option>
+        <option value="closed">Buy to Close</option>
+        <option value="expired">Expired</option>
+        <option value="assigned">Assigned</option>
+        <option value="sold">Stock Sold</option>
+      </select>
+    </div>
+    <div>
+      <label>Result</label>
+      <select id="rptResult" onchange="renderReports()">
+        <option value="all">All</option>
+        <option value="wins">Wins</option>
+        <option value="losses">Losses</option>
+      </select>
+    </div>
+    <div class="rpt-actions">
+      <button class="btn btn-sm" onclick="rptQuickRange('ytd')" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">YTD</button>
+      <button class="btn btn-sm" onclick="rptQuickRange('q1')"  style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">Q1</button>
+      <button class="btn btn-sm" onclick="rptQuickRange('q2')"  style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">Q2</button>
+      <button class="btn btn-sm" onclick="rptQuickRange('q3')"  style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">Q3</button>
+      <button class="btn btn-sm" onclick="rptQuickRange('q4')"  style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">Q4</button>
+      <button class="btn btn-sm" onclick="rptQuickRange('all')" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">All Time</button>
+      <span style="width:1px;height:22px;background:var(--border);display:inline-block;margin:0 4px"></span>
+      <button class="btn btn-sm" onclick="rptExportDetailCSV()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)">&#8659; Detail CSV</button>
+      <button class="btn btn-sm" onclick="rptExportSummaryCSV()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)">&#8659; Summary CSV</button>
+      <button class="btn btn-sm" onclick="window.print()" style="background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent)">&#9112; Print</button>
+    </div>
+  </div>
+
+  <div class="rpt-body">
+
+    <!-- KPI strip -->
+    <div class="rpt-kpi-row" id="rptKpiRow"></div>
+
+    <!-- Section 1: Trade Detail -->
+    <div class="rpt-section" id="rptSectionDetail">
+      <div class="rpt-section-hdr">
+        <span class="rpt-section-title">Closed Trade Detail</span>
+        <span class="rpt-section-count" id="rptDetailCount"></span>
+      </div>
+      <div class="scroll-x">
+        <table class="rpt-tbl" id="rptDetailTable">
+          <thead><tr>
+            <th>Close Date</th>
+            <th>Open Date</th>
+            <th>Underlying</th>
+            <th>Instrument</th>
+            <th>Type</th>
+            <th class="r">Strike</th>
+            <th>Expiry</th>
+            <th class="r">Qty</th>
+            <th class="r">Open Price</th>
+            <th class="r">Premium / Cost</th>
+            <th class="r">Close Price</th>
+            <th class="r">Close Amount</th>
+            <th>Outcome</th>
+            <th class="r">Fees</th>
+            <th class="r">Net P&amp;L</th>
+          </tr></thead>
+          <tbody></tbody>
+          <tfoot><tr id="rptDetailFoot">
+            <td colspan="9" class="r" style="font-size:10px;color:var(--text2)">TOTALS</td>
+            <td class="r" id="rptFootPremium"></td>
+            <td></td>
+            <td class="r" id="rptFootClose"></td>
+            <td></td>
+            <td class="r" id="rptFootFees"></td>
+            <td class="r" id="rptFootNet"></td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Section 2: Summary by Ticker -->
+    <div class="rpt-section" id="rptSectionSummary">
+      <div class="rpt-section-hdr">
+        <span class="rpt-section-title">Summary by Underlying</span>
+        <span class="rpt-section-count" id="rptSummaryCount"></span>
+      </div>
+      <div class="scroll-x">
+        <table class="rpt-tbl summary" id="rptSummaryTable">
+          <thead><tr>
+            <th>Underlying</th>
+            <th class="r">Trades</th>
+            <th class="r">Wins</th>
+            <th class="r">Losses</th>
+            <th class="r">Win Rate</th>
+            <th class="r">Premium Coll.</th>
+            <th class="r">Total Fees</th>
+            <th class="r">Gross P&amp;L</th>
+            <th class="r">Net P&amp;L</th>
+            <th class="r">% of Total</th>
+          </tr></thead>
+          <tbody></tbody>
+          <tfoot><tr id="rptSummaryFoot">
+            <td>TOTAL</td>
+            <td class="r" id="rptSumFootTrades"></td>
+            <td class="r" id="rptSumFootWins"></td>
+            <td class="r" id="rptSumFootLosses"></td>
+            <td class="r" id="rptSumFootWR"></td>
+            <td class="r" id="rptSumFootPrem"></td>
+            <td class="r" id="rptSumFootFees"></td>
+            <td class="r" id="rptSumFootGross"></td>
+            <td class="r" id="rptSumFootNet"></td>
+            <td class="r">100%</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Section 3: Income (Dividends / Interest / ADR Fees) -->
+    <div class="rpt-section" id="rptSectionIncome">
+      <div class="rpt-section-hdr">
+        <span class="rpt-section-title">Income &amp; Other Cash Events</span>
+        <span class="rpt-section-count" id="rptIncomeCount"></span>
+      </div>
+      <div class="scroll-x">
+        <table class="rpt-tbl" id="rptIncomeTable">
+          <thead><tr>
+            <th>Date</th>
+            <th>Symbol</th>
+            <th>Type</th>
+            <th>Description</th>
+            <th class="r">Amount</th>
+          </tr></thead>
+          <tbody></tbody>
+          <tfoot><tr>
+            <td colspan="4" class="r" style="font-size:10px;color:var(--text2)">TOTAL INCOME</td>
+            <td class="r" id="rptIncomeTotal"></td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Section 4: Wash Sale Flags -->
+    <div class="rpt-section" id="rptSectionWash">
+      <div class="rpt-section-hdr">
+        <span class="rpt-section-title">Potential Wash Sale Flags</span>
+        <span class="rpt-section-count" id="rptWashCount"></span>
+      </div>
+      <div class="scroll-x">
+        <table class="rpt-tbl" id="rptWashTable">
+          <thead><tr>
+            <th>Underlying</th>
+            <th>Loss Date</th>
+            <th class="r">Loss Amount</th>
+            <th>Repurchase Date</th>
+            <th class="r">Days Apart</th>
+            <th>Repurchase Action</th>
+            <th class="c">Risk</th>
+            <th>Note</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /rpt-body -->
+</div><!-- /view-reports -->
 
 </div><!-- /main -->
 </div><!-- /app -->
@@ -1303,17 +1625,20 @@ async function openDataFile() {
             const parsed = JSON.parse(text);
             const coerced = coerceJSONToDB(parsed, fileName);
             if (!coerced) throw new Error('Invalid format');
-            // Merge: append transactions not already present
+            // Merge: append transactions not already present (use strict ID-based dedup)
             const beforeCount = db.transactions.length;
+            const existingIds = new Set(db.transactions.map(t => t.id));
             for (const txn of coerced.transactions || []) {
-              const exists = db.transactions.some(t => t.date === txn.date && t.action === txn.action && t.amount === txn.amount);
-              if (!exists) {
-                db.transactions.push(txn);
-                totalAdded++;
-              } else {
+              if (existingIds.has(txn.id)) {
                 totalDupes++;
+              } else {
+                db.transactions.push(txn);
+                existingIds.add(txn.id);
+                totalAdded++;
               }
             }
+            // CRITICAL: Deduplicate after JSON merge (matches CSV import behavior)
+            db.transactions = dedupeTransactions(db.transactions);
             totalRows += coerced.transactions?.length || 0;
             addLog(`✓ ${fileName}: ${coerced.transactions?.length || 0} records (${totalAdded - (beforeCount > 0 ? totalAdded - (coerced.transactions?.length || 0) : totalAdded)} new, ${totalDupes} dupes)`, 'ok');
           }
@@ -1450,6 +1775,13 @@ function updateBackendBadge() {
   el.style.color = fg;
   el.style.background = bg;
   el.style.borderColor = border;
+
+  // Mirror to the Import tab status row (strips the "Backend: " prefix for cleaner look)
+  const el2 = document.getElementById('backendBadge2');
+  if (el2) {
+    el2.textContent = label.replace('Backend: ', '') || '—';
+    el2.style.color = fg;
+  }
 }
 
 function waitForGoogleGlobals() {
@@ -2035,6 +2367,9 @@ function buildPositions() {
       }
 
       const avgOpenPrice = matchedTotal > 0 ? openPriceWtd / matchedTotal : 0;
+      // grossPnl = openCredit + closeAmount. Both figures from Schwab's Amount column,
+      // which is already net of fees — so grossPnl IS the net P&L. fees is tracked
+      // separately for display/reporting but must NOT be subtracted again.
       const grossPnl = openCredit + (t.amount || 0);
       const totalFees = openFeesAlloc + (t.fees || 0);
 
@@ -2051,7 +2386,7 @@ function buildPositions() {
         closeCost: t.amount || 0,          // total net debit paid on close
         closeFees: t.fees || 0,
         grossPnl, fees: totalFees,
-        netPnl: grossPnl - totalFees,
+        netPnl: grossPnl,                  // Amount is already net of fees — no double-subtract
         via: 'closed', closeAction: t.action, closeTxn: t,
       });
     }
@@ -2093,7 +2428,7 @@ function buildPositions() {
         closePrice: 0,
         closeCost: 0, closeFees: 0,
         grossPnl, fees: totalFees,
-        netPnl: grossPnl - totalFees,
+        netPnl: grossPnl,                  // Amount already net of fees
         via: 'expired', closeAction: 'Expired', closeTxn: t,
       });
     }
@@ -2135,7 +2470,7 @@ function buildPositions() {
         closePrice: t.strike || 0,
         closeCost: 0, closeFees: 0,
         grossPnl, fees: totalFees,
-        netPnl: grossPnl - totalFees,
+        netPnl: grossPnl,                  // Amount already net of fees
         via: 'assigned', closeAction: 'Assigned', closeTxn: t,
       });
     }
@@ -2174,10 +2509,20 @@ function buildPositions() {
         if (lot.qty <= 0) lots.shift();
       }
 
+      // Only record stock P&L if we have a matched buy lot.
+      // Skip if unmatched (carry-in holdings from before loaded data).
+      if (matchedTotal <= 0) {
+        console.log(`SKIP unmatched: ${t.symbol} sell on ${t.date} qty=${t.quantity}`);
+        continue;
+      }
+
       const avgOpenPrice = matchedTotal > 0 ? openPriceWtd / matchedTotal : 0;
-      const proceeds  = Math.abs(t.amount || 0);
+      const sellQty = Math.abs(t.quantity || 0) || matchedTotal;
+      const matchedFrac = Math.min(1, matchedTotal / sellQty);
+      const proceeds = Math.abs(t.amount || 0) * matchedFrac;
+      const closeFeesAlloc = (t.fees || 0) * matchedFrac;
       const grossPnl  = proceeds - totalCost;
-      const totalFees = openFeesAlloc + (t.fees || 0);
+      const totalFees = openFeesAlloc + closeFeesAlloc;
 
       closedTrades.push({
         symbol: t.symbol, underlying: t.symbol,
@@ -2189,9 +2534,9 @@ function buildPositions() {
         openCredit: -totalCost,
         openFees: openFeesAlloc,
         closePrice: t.price || 0,
-        closeCost: proceeds, closeFees: t.fees || 0,
+        closeCost: proceeds, closeFees: closeFeesAlloc,
         grossPnl, fees: totalFees,
-        netPnl: grossPnl - totalFees,
+        netPnl: grossPnl,                  // Amount already net of fees
         via: 'sold', closeAction: 'Sell', closeTxn: t,
       });
     }
@@ -2199,6 +2544,15 @@ function buildPositions() {
 
   // ── BUILD OPEN POSITIONS ──────────────────────────────
   const openPositions = [];
+
+  // DEBUG: Log what stock trades made it into closedTrades
+  const stockTrades = closedTrades.filter(t => t.instrument !== 'option');
+  if (stockTrades.length > 0) {
+    console.log('%c=== STOCK TRADES IN closedTrades ===', 'color: #ff6b6b; font-weight: bold');
+    stockTrades.forEach((t, i) => {
+      console.log(`${i}: ${t.symbol} qty=${t.qty} openDate=${t.openDate} closeDate=${t.closeDate} netPnl=${t.netPnl}`);
+    });
+  }
 
   for (const [sym, lots] of Object.entries(openLots)) {
     for (const lot of lots) {
@@ -2682,6 +3036,10 @@ function setDashboardInstruments(instruments, btn) {
 function computeStatsByDateRange(dateStart, dateEnd) {
   const { openPositions, closedTrades } = buildPositions();
   
+  // Count stock trades
+  const stockTrades = closedTrades.filter(t => t.instrument !== 'option');
+  const stockPnl = stockTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
+  
   // Filter closed trades by date range
   let filteredTrades = closedTrades;
   if (dateStart || dateEnd) {
@@ -2721,7 +3079,17 @@ function computeStatsByDateRange(dateStart, dateEnd) {
   let tradesDirty = filteredTrades;
   if (dashboardInstruments === 'all') {
     // Include all closed trades (options + stock/ETF)
-    tradesDirty = filteredTrades;  // Already has both
+    // BUT: for stocks, only include those with valid openDate (matched trades)
+    // Skip stocks with undefined openDate (carry-in/unmatched positions)
+    tradesDirty = filteredTrades.filter(t => {
+      if (t.instrument === 'option') return true;  // All options OK
+      // For stocks: must have openDate (matched) AND both dates within range
+      if (t.instrument !== 'option') {
+        if (!t.openDate) return false;  // No open date = unmatched, exclude
+        if (dateStart && t.openDate < dateStart) return false;  // Buy before period
+      }
+      return true;
+    });
   } else {
     // Option only
     tradesDirty = filteredTrades.filter(t => t.instrument === 'option');
@@ -2764,6 +3132,22 @@ function computeStatsByDateRange(dateStart, dateEnd) {
   const winRate = optionClosed.length > 0 ? wins.length / optionClosed.length : null;
   const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.netPnl, 0) / wins.length : 0;
   const avgLoss = losses_arr.length > 0 ? losses_arr.reduce((s, t) => s + t.netPnl, 0) / losses_arr.length : 0;
+
+  // DEBUG: Log composition of realized P&L
+  const optPnl = tradesDirty.filter(t => t.instrument === 'option').reduce((s,t)=>s+(t.netPnl||0),0);
+  const stkPnl = tradesDirty.filter(t => t.instrument !== 'option').reduce((s,t)=>s+(t.netPnl||0),0);
+  const divPnl = filteredTxns.filter(t => t.action === 'Cash Dividend').reduce((s,t)=>s+(t.amount||0),0);
+  const stkCount = tradesDirty.filter(t => t.instrument !== 'option').length;
+  
+  if (dashboardInstruments === 'all') {
+    console.clear();
+    console.log('%c=== ALL INSTRUMENTS P&L ===', 'color: #84cc16; font-weight: bold; font-size: 14px');
+    console.log(`Options: $${optPnl.toFixed(2)} (${tradesDirty.filter(t => t.instrument === 'option').length} trades)`);
+    console.log(`Stocks:  $${stkPnl.toFixed(2)} (${stkCount} trades)`);
+    console.log(`Divs:    $${divPnl.toFixed(2)}`);
+    console.log(`TOTAL:   $${realized.toFixed(2)}`);
+    console.log('Stock trades:', tradesDirty.filter(t => t.instrument !== 'option').map(t => ({sym: t.symbol, qty: t.qty, pnl: t.netPnl})));
+  }
 
   return { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions: filteredOpenPositions, closedTrades: filteredTrades, optionClosed, washFlags };
 }
@@ -3445,6 +3829,16 @@ function clearAllData() {
   setFsStatus('No file linked', 'var(--text2)');
 }
 
+function debugExportDB() {
+  console.clear();
+  console.log('%c=== DATABASE EXPORT ===', 'color: #ff6b6b; font-weight: bold; font-size: 16px');
+  console.log('Total transactions:', db.transactions.length);
+  console.log('Full DB:', JSON.parse(JSON.stringify(db)));
+  const stocks = db.transactions.filter(t => !t.symbol || (t.symbol && !t.symbol.includes('C') && !t.symbol.includes('P')));
+  console.log('Stock-like transactions:', stocks);
+  alert('Database exported to console. Press F12 to view.');
+}
+
 // ════════════════════════════════════════════════════════
 // VIEW ROUTING
 // ════════════════════════════════════════════════════════
@@ -3462,6 +3856,7 @@ function showView(id) {
   else if (id === 'import') renderImportHistory();
   else if (id === 'audit') renderAudit();
   else if (id === 'dashboard') renderDashboard();
+  else if (id === 'reports') renderReports();
 }
 
 function refreshAll() {
@@ -3474,6 +3869,8 @@ function refreshAll() {
   renderWashSales();
   renderImportHistory();
   renderAudit();
+  // Only re-render Reports if it's currently visible (avoids slow render when hidden)
+  if (document.getElementById('view-reports').classList.contains('active')) renderReports();
 }
 
 // ════════════════════════════════════════════════════════
@@ -4132,6 +4529,396 @@ if (FS_SUPPORTED) {
   }
 } else {
   setFsStatus('Local file save requires Chrome/Edge. Use Drive sync or Export JSON.', 'var(--text2)');
+}
+
+// ════════════════════════════════════════════════════════
+// REPORTS VIEW
+// ════════════════════════════════════════════════════════
+
+// ── State ──────────────────────────────────────────────
+let rptState = {
+  dateFrom:   '',
+  dateTo:     '',
+  ticker:     '',
+  instrument: 'all',
+  closeType:  'all',
+  result:     'all',
+};
+
+// Sync filter controls → state, then re-render
+function renderReports() {
+  rptState.dateFrom   = document.getElementById('rptDateFrom').value   || '';
+  rptState.dateTo     = document.getElementById('rptDateTo').value     || '';
+  rptState.ticker     = (document.getElementById('rptTicker').value    || '').trim().toUpperCase();
+  rptState.instrument = document.getElementById('rptInstrument').value || 'all';
+  rptState.closeType  = document.getElementById('rptCloseType').value  || 'all';
+  rptState.result     = document.getElementById('rptResult').value     || 'all';
+  _renderReportsWithState();
+}
+
+// Quick-range preset buttons
+function rptQuickRange(range) {
+  const now = new Date();
+  const y   = now.getFullYear();
+  let from = '', to = '';
+  if (range === 'ytd') { from = `${y}-01-01`; to = now.toISOString().slice(0, 10); }
+  else if (range === 'q1') { from = `${y}-01-01`; to = `${y}-03-31`; }
+  else if (range === 'q2') { from = `${y}-04-01`; to = `${y}-06-30`; }
+  else if (range === 'q3') { from = `${y}-07-01`; to = `${y}-09-30`; }
+  else if (range === 'q4') { from = `${y}-10-01`; to = `${y}-12-31`; }
+  else if (range === 'all') { from = ''; to = ''; }
+  document.getElementById('rptDateFrom').value = from;
+  document.getElementById('rptDateTo').value   = to;
+  renderReports();
+}
+
+// ── Core compute ───────────────────────────────────────
+function _rptGetFilteredTrades() {
+  const { closedTrades } = buildPositions();
+  const { dateFrom, dateTo, ticker, instrument, closeType, result } = rptState;
+
+  return closedTrades.filter(t => {
+    const cd = t.closeDate || '';
+    if (dateFrom && cd < dateFrom) return false;
+    if (dateTo   && cd > dateTo)   return false;
+
+    if (ticker) {
+      const sym = (t.symbol || '').toUpperCase();
+      const und = (t.underlying || '').toUpperCase();
+      if (!sym.includes(ticker) && !und.includes(ticker)) return false;
+    }
+
+    if (instrument === 'option' && t.instrument !== 'option') return false;
+    if (instrument === 'stock'  && t.instrument === 'option') return false;
+
+    if (closeType !== 'all' && t.via !== closeType) return false;
+
+    if (result === 'wins'   && (t.netPnl || 0) <= 0) return false;
+    if (result === 'losses' && (t.netPnl || 0) >= 0) return false;
+
+    return true;
+  });
+}
+
+function _rptGetFilteredIncome() {
+  const INCOME_ACTIONS = new Set(['Cash Dividend','Pr Yr Cash Div','Pr Yr Non-Qual Div','Credit Interest','ADR Mgmt Fee']);
+  const { dateFrom, dateTo, ticker } = rptState;
+
+  return db.transactions.filter(t => {
+    if (!INCOME_ACTIONS.has(t.action)) return false;
+    const d = t.date || '';
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo   && d > dateTo)   return false;
+    if (ticker) {
+      const sym = (t.symbol || '').toUpperCase();
+      if (!sym.includes(ticker)) return false;
+    }
+    return true;
+  }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+}
+
+function _rptGetFilteredWash() {
+  const { dateFrom, dateTo, ticker } = rptState;
+  let txns = db.transactions;
+  if (dateFrom || dateTo) {
+    txns = txns.filter(t => {
+      const d = t.date || '';
+      if (dateFrom && d < dateFrom) return false;
+      if (dateTo   && d > dateTo)   return false;
+      return true;
+    });
+  }
+  let flags = detectWashSales(txns);
+  if (ticker) flags = flags.filter(f => (f.symbol || '').toUpperCase().includes(ticker));
+  return flags;
+}
+
+// ── Main renderer ──────────────────────────────────────
+function _renderReportsWithState() {
+  const trades  = _rptGetFilteredTrades();
+  const income  = _rptGetFilteredIncome();
+  const wash    = _rptGetFilteredWash();
+
+  // ── Update print header meta
+  const { dateFrom, dateTo } = rptState;
+  const rangeLabel = (dateFrom || dateTo)
+    ? `Period: ${dateFrom || 'start'} to ${dateTo || 'present'}`
+    : 'Period: All Available Data';
+  document.getElementById('rptPrintMeta').innerHTML =
+    `${rangeLabel} &nbsp;|&nbsp; Generated: ${new Date().toLocaleDateString('en-US', {year:'numeric',month:'long',day:'numeric'})}` +
+    (rptState.ticker ? ` &nbsp;|&nbsp; Ticker filter: ${rptState.ticker}` : '');
+
+  // ── Aggregates
+  const totalPnl      = trades.reduce((s, t) => s + (t.netPnl || 0), 0);
+  const totalGross    = trades.reduce((s, t) => s + (t.grossPnl || 0), 0);
+  const totalFees     = trades.reduce((s, t) => s + (t.fees || 0), 0);
+  const totalPremium  = trades.filter(t => t.instrument === 'option').reduce((s, t) => s + Math.max(0, t.openCredit || 0), 0);
+  const totalIncome   = income.reduce((s, t) => s + (t.amount || 0), 0);
+  const wins          = trades.filter(t => (t.netPnl || 0) > 0);
+  const losses        = trades.filter(t => (t.netPnl || 0) < 0);
+  const winRate       = trades.length > 0 ? wins.length / trades.length : null;
+  const avgWin        = wins.length   > 0 ? wins.reduce((s, t) => s + t.netPnl, 0)   / wins.length   : null;
+  const avgLoss       = losses.length > 0 ? losses.reduce((s, t) => s + t.netPnl, 0) / losses.length : null;
+
+  // ── KPI Strip
+  const kpiData = [
+    { label: 'Realized P&L',       val: totalPnl,     sub: `${trades.length} closed trades`,  color: totalPnl >= 0 ? 'var(--green)' : 'var(--red)' },
+    { label: 'Premium Collected',  val: totalPremium, sub: 'Options only',                    color: 'var(--text0)' },
+    { label: 'Total Fees Paid',    val: -totalFees,   sub: 'Embedded in amounts',             color: 'var(--red)' },
+    { label: 'Income (Divs/Int)',  val: totalIncome,  sub: `${income.length} events`,         color: 'var(--teal)' },
+    { label: 'Win Rate',           val: null,         sub: `${wins.length}W / ${losses.length}L`, color: winRate !== null && winRate >= 0.5 ? 'var(--green)' : 'var(--red)',
+      rawText: winRate !== null ? (winRate * 100).toFixed(1) + '%' : '—' },
+    { label: 'Avg Win / Avg Loss', val: null,         sub: `per trade`,                       color: 'var(--text0)',
+      rawText: (avgWin !== null ? fmt$(avgWin) : '—') + ' / ' + (avgLoss !== null ? fmt$(avgLoss) : '—') },
+    { label: 'Gross P&L',          val: totalGross,   sub: 'Before fee adjustment',           color: totalGross >= 0 ? 'var(--green)' : 'var(--red)' },
+    { label: 'Wash Sale Flags',    val: null,         sub: 'Review required',                 color: wash.length > 0 ? 'var(--amber)' : 'var(--text2)',
+      rawText: String(wash.length) },
+  ];
+  document.getElementById('rptKpiRow').innerHTML = kpiData.map(k => `
+    <div class="rpt-kpi">
+      <div class="rpt-kpi-label">${k.label}</div>
+      <div class="rpt-kpi-val" style="color:${k.color}">${k.rawText !== undefined ? k.rawText : fmt$(k.val)}</div>
+      <div class="rpt-kpi-sub">${k.sub}</div>
+    </div>`).join('');
+
+  // ── Detail table
+  const sortedTrades = [...trades].sort((a, b) => (b.closeDate || '').localeCompare(a.closeDate || ''));
+  document.getElementById('rptDetailCount').textContent = `${sortedTrades.length} trade${sortedTrades.length !== 1 ? 's' : ''}`;
+
+  const detailRows = sortedTrades.map(t => {
+    const pnlCls  = (t.netPnl || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+    const grossCls= (t.grossPnl || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+    const outcomeLabel = t.via === 'expired' ? 'Expired' : t.via === 'assigned' ? 'Assigned' : t.via === 'sold' ? 'Sold' : 'BTC';
+    const instLabel    = t.instrument === 'option' ? (t.optionType === 'put' ? 'PUT' : 'CALL') : (t.instrument || '').toUpperCase();
+    const openPriceStr = t.instrument === 'option'
+      ? (t.openPrice ? '$' + t.openPrice.toFixed(2) : '—')
+      : (t.openPrice ? '$' + t.openPrice.toFixed(2) : '—');
+    const closePriceStr = t.via === 'expired' ? '$0.00'
+      : t.via === 'assigned' ? (t.strike ? '$' + t.strike.toFixed(2) : '—')
+      : (t.closePrice ? '$' + t.closePrice.toFixed(2) : '—');
+    const closeAmtStr = t.via === 'expired' ? '$0.00'
+      : t.via === 'assigned' ? '(stock recv.)'
+      : fmt$(t.closeCost);
+    return `<tr>
+      <td style="font-family:var(--mono)">${t.closeDate || '—'}</td>
+      <td style="font-family:var(--mono);color:var(--text2)">${t.openDate || '—'}</td>
+      <td style="font-family:var(--mono);font-weight:700">${t.underlying || t.symbol || '—'}</td>
+      <td>${instLabel}</td>
+      <td style="color:var(--text2);font-size:11px">${t.optionType ? t.optionType.toUpperCase() : (t.instrument || '')}</td>
+      <td class="r">${t.strike != null ? '$' + t.strike.toFixed(2) : '—'}</td>
+      <td style="font-family:var(--mono);font-size:11px">${t.expiry || '—'}</td>
+      <td class="r">${t.qty || 1}</td>
+      <td class="r">${openPriceStr}</td>
+      <td class="r" style="color:var(--green)">${fmt$(Math.abs(t.openCredit || 0))}</td>
+      <td class="r">${closePriceStr}</td>
+      <td class="r">${closeAmtStr}</td>
+      <td style="font-size:11px">${outcomeLabel}</td>
+      <td class="r" style="color:var(--red)">${t.fees > 0 ? '-' + fmt$(t.fees) : '—'}</td>
+      <td class="r" style="font-weight:700;color:${pnlCls}">${fmt$(t.netPnl)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="15" style="text-align:center;color:var(--text2);padding:20px">No trades match the selected filters.</td></tr>';
+
+  document.querySelector('#rptDetailTable tbody').innerHTML = detailRows;
+
+  // Detail footer
+  document.getElementById('rptFootPremium').innerHTML = `<strong>${fmt$(totalPremium)}</strong>`;
+  document.getElementById('rptFootClose').innerHTML   = `<strong>${fmt$(trades.reduce((s, t) => s + Math.abs(t.closeCost || 0), 0))}</strong>`;
+  document.getElementById('rptFootFees').innerHTML    = `<strong style="color:var(--red)">-${fmt$(totalFees)}</strong>`;
+  document.getElementById('rptFootNet').innerHTML     = `<strong style="color:${totalPnl >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(totalPnl)}</strong>`;
+
+  // ── Summary by underlying
+  const byUnderlying = {};
+  for (const t of trades) {
+    const k = t.underlying || (t.symbol || '').split(' ')[0];
+    if (!byUnderlying[k]) byUnderlying[k] = { trades: 0, wins: 0, losses: 0, premium: 0, fees: 0, gross: 0, net: 0 };
+    const g = byUnderlying[k];
+    g.trades++;
+    if ((t.netPnl || 0) > 0) g.wins++;
+    if ((t.netPnl || 0) < 0) g.losses++;
+    g.premium += t.instrument === 'option' ? Math.max(0, t.openCredit || 0) : 0;
+    g.fees    += t.fees || 0;
+    g.gross   += t.grossPnl || 0;
+    g.net     += t.netPnl || 0;
+  }
+
+  const summaryRows = Object.entries(byUnderlying)
+    .sort((a, b) => Math.abs(b[1].net) - Math.abs(a[1].net));
+
+  document.getElementById('rptSummaryCount').textContent = `${summaryRows.length} underlying${summaryRows.length !== 1 ? 's' : ''}`;
+
+  const sumBody = summaryRows.map(([sym, g]) => {
+    const wr    = g.trades > 0 ? (g.wins / g.trades * 100).toFixed(1) + '%' : '—';
+    const pct   = totalPnl !== 0 ? (g.net / totalPnl * 100).toFixed(1) + '%' : '—';
+    const netCls= g.net >= 0 ? 'var(--green)' : 'var(--red)';
+    const grCls = g.gross >= 0 ? 'var(--green)' : 'var(--red)';
+    return `<tr>
+      <td style="font-family:var(--mono);font-weight:700">${sym}</td>
+      <td class="r">${g.trades}</td>
+      <td class="r" style="color:var(--green)">${g.wins}</td>
+      <td class="r" style="color:var(--red)">${g.losses}</td>
+      <td class="r" style="color:${g.wins / g.trades >= 0.5 ? 'var(--green)' : 'var(--red)'}">${wr}</td>
+      <td class="r">${fmt$(g.premium)}</td>
+      <td class="r" style="color:var(--red)">${g.fees > 0 ? '-' + fmt$(g.fees) : '—'}</td>
+      <td class="r" style="color:${grCls}">${fmt$(g.gross)}</td>
+      <td class="r" style="font-weight:700;color:${netCls}">${fmt$(g.net)}</td>
+      <td class="r" style="color:var(--text2)">${pct}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:20px">No data.</td></tr>';
+
+  document.querySelector('#rptSummaryTable tbody').innerHTML = sumBody;
+
+  // Summary footer
+  const totalTrades = summaryRows.reduce((s, [,g]) => s + g.trades, 0);
+  const totalWins   = summaryRows.reduce((s, [,g]) => s + g.wins,   0);
+  const totalLosses = summaryRows.reduce((s, [,g]) => s + g.losses, 0);
+  const totalSumPrem= summaryRows.reduce((s, [,g]) => s + g.premium,0);
+  const totalSumFees= summaryRows.reduce((s, [,g]) => s + g.fees,   0);
+  const totalSumGrs = summaryRows.reduce((s, [,g]) => s + g.gross,  0);
+  const totalSumNet = summaryRows.reduce((s, [,g]) => s + g.net,    0);
+  const totalWR     = totalTrades > 0 ? (totalWins / totalTrades * 100).toFixed(1) + '%' : '—';
+
+  document.getElementById('rptSumFootTrades').innerHTML  = `<strong>${totalTrades}</strong>`;
+  document.getElementById('rptSumFootWins').innerHTML    = `<strong style="color:var(--green)">${totalWins}</strong>`;
+  document.getElementById('rptSumFootLosses').innerHTML  = `<strong style="color:var(--red)">${totalLosses}</strong>`;
+  document.getElementById('rptSumFootWR').innerHTML      = `<strong>${totalWR}</strong>`;
+  document.getElementById('rptSumFootPrem').innerHTML    = `<strong>${fmt$(totalSumPrem)}</strong>`;
+  document.getElementById('rptSumFootFees').innerHTML    = `<strong style="color:var(--red)">-${fmt$(totalSumFees)}</strong>`;
+  document.getElementById('rptSumFootGross').innerHTML   = `<strong style="color:${totalSumGrs >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(totalSumGrs)}</strong>`;
+  document.getElementById('rptSumFootNet').innerHTML     = `<strong style="color:${totalSumNet >= 0 ? 'var(--green)' : 'var(--red)'}">${fmt$(totalSumNet)}</strong>`;
+
+  // ── Income table
+  const INCOME_TYPE_LABELS = {
+    'Cash Dividend':      'Dividend',
+    'Pr Yr Cash Div':     'Prior Yr Div',
+    'Pr Yr Non-Qual Div': 'Prior Yr Non-Qual',
+    'Credit Interest':    'Interest',
+    'ADR Mgmt Fee':       'ADR Fee',
+  };
+  document.getElementById('rptIncomeCount').textContent = `${income.length} event${income.length !== 1 ? 's' : ''}`;
+
+  document.querySelector('#rptIncomeTable tbody').innerHTML = income.map(t => {
+    const amtCls = (t.amount || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+    return `<tr>
+      <td style="font-family:var(--mono)">${t.date || '—'}</td>
+      <td style="font-family:var(--mono);font-weight:700">${t.symbol || '—'}</td>
+      <td>${INCOME_TYPE_LABELS[t.action] || t.action}</td>
+      <td style="color:var(--text2);font-size:11px">${(t.description || '').substring(0, 60)}</td>
+      <td class="r" style="color:${amtCls};font-weight:700">${fmt$(t.amount)}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text2);padding:20px">No income events in this period.</td></tr>';
+
+  document.getElementById('rptIncomeTotal').innerHTML =
+    `<strong style="color:${totalIncome >= 0 ? 'var(--teal)' : 'var(--red)'}">${fmt$(totalIncome)}</strong>`;
+
+  // ── Wash sales table
+  document.getElementById('rptWashCount').textContent =
+    wash.length > 0 ? `${wash.length} potential violation${wash.length !== 1 ? 's' : ''}` : 'None detected';
+
+  document.querySelector('#rptWashTable tbody').innerHTML = wash.map(f => {
+    const riskColor = f.risk === 'HIGH' ? 'var(--red)' : f.risk === 'MEDIUM' ? 'var(--amber)' : 'var(--text2)';
+    const note = f.risk === 'HIGH'
+      ? 'Loss & repurchase within 7 days — likely disallowed'
+      : f.risk === 'MEDIUM'
+      ? 'Loss & repurchase 8–14 days apart — review required'
+      : 'Loss & repurchase 15–30 days apart — monitor';
+    return `<tr>
+      <td style="font-family:var(--mono);font-weight:700">${f.symbol}</td>
+      <td style="font-family:var(--mono)">${f.lossDate}</td>
+      <td class="r" style="color:var(--red)">${fmt$(f.lossAmount)}</td>
+      <td style="font-family:var(--mono)">${f.repDate}</td>
+      <td class="r">${f.daysApart}d</td>
+      <td style="color:var(--text1)">${f.repAction}</td>
+      <td class="c" style="color:${riskColor};font-family:var(--mono);font-weight:700">${f.risk}</td>
+      <td style="font-size:11px;color:var(--text2)">${note}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:20px">No wash sale flags in this period.</td></tr>';
+
+  // Store for CSV export
+  window._rptData = { trades: sortedTrades, summaryRows, income, wash, totalPnl, totalFees, totalIncome };
+}
+
+// ── CSV Export ─────────────────────────────────────────
+function _rptDownloadCSV(filename, rows) {
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function _csvCell(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function rptExportDetailCSV() {
+  const d = window._rptData;
+  if (!d || !d.trades.length) { alert('No data to export. Apply filters first.'); return; }
+
+  const { dateFrom, dateTo } = rptState;
+  const rows = [
+    ['TGCapital Trading Report — Detail'],
+    [`Period: ${dateFrom || 'start'} to ${dateTo || 'present'}`, `Generated: ${new Date().toLocaleDateString()}`],
+    [],
+    ['Close Date','Open Date','Underlying','Symbol','Instrument','Option Type','Strike','Expiry','Qty',
+     'Open Price','Premium / Cost Basis','Close Price','Close Amount','Outcome','Fees','Net P&L','Gross P&L'].map(_csvCell).join(','),
+    ...d.trades.map(t => [
+      t.closeDate || '',
+      t.openDate  || '',
+      t.underlying || (t.symbol || '').split(' ')[0],
+      t.symbol    || '',
+      t.instrument|| '',
+      t.optionType|| '',
+      t.strike    != null ? t.strike.toFixed(2) : '',
+      t.expiry    || '',
+      t.qty       || 1,
+      t.openPrice != null ? t.openPrice.toFixed(4) : '',
+      (t.openCredit || 0).toFixed(2),
+      t.closePrice != null ? t.closePrice.toFixed(4) : '',
+      (t.closeCost  || 0).toFixed(2),
+      t.via       || '',
+      (t.fees     || 0).toFixed(2),
+      (t.netPnl   || 0).toFixed(2),
+      (t.grossPnl || 0).toFixed(2),
+    ].map(_csvCell).join(',')),
+    [],
+    ['', '', '', '', '', '', '', '', '', '', '', '', '', 'TOTAL FEES', d.trades.reduce((s,t) => s+(t.fees||0),0).toFixed(2),
+     d.trades.reduce((s,t) => s+(t.netPnl||0),0).toFixed(2),
+     d.trades.reduce((s,t) => s+(t.grossPnl||0),0).toFixed(2)].map(_csvCell).join(','),
+  ];
+  const dateTag = (dateFrom || dateTo) ? `_${(dateFrom||'').replace(/-/g,'')}-${(dateTo||'').replace(/-/g,'')}` : '';
+  _rptDownloadCSV(`TGCapital_TradeDetail${dateTag}.csv`, rows);
+}
+
+function rptExportSummaryCSV() {
+  const d = window._rptData;
+  if (!d || !d.summaryRows.length) { alert('No data to export. Apply filters first.'); return; }
+
+  const { dateFrom, dateTo } = rptState;
+  const totalNet = d.summaryRows.reduce((s, [,g]) => s + g.net, 0);
+  const rows = [
+    ['TGCapital Trading Report — Summary by Underlying'],
+    [`Period: ${dateFrom || 'start'} to ${dateTo || 'present'}`, `Generated: ${new Date().toLocaleDateString()}`],
+    [],
+    ['Underlying','Trades','Wins','Losses','Win Rate','Premium Collected','Total Fees','Gross P&L','Net P&L','% of Total'].map(_csvCell).join(','),
+    ...d.summaryRows.map(([sym, g]) => {
+      const wr  = g.trades > 0 ? (g.wins / g.trades * 100).toFixed(1) + '%' : '0%';
+      const pct = totalNet !== 0 ? (g.net / totalNet * 100).toFixed(1) + '%' : '—';
+      return [sym, g.trades, g.wins, g.losses, wr,
+              g.premium.toFixed(2), g.fees.toFixed(2), g.gross.toFixed(2), g.net.toFixed(2), pct].map(_csvCell).join(',');
+    }),
+    [],
+    // Income section
+    [''],
+    ['Income & Cash Events'],
+    ['Date','Symbol','Type','Description','Amount'].map(_csvCell).join(','),
+    ...d.income.map(t => [t.date||'', t.symbol||'', t.action||'', t.description||'', (t.amount||0).toFixed(2)].map(_csvCell).join(',')),
+    ['','','','Total Income', d.income.reduce((s,t) => s+(t.amount||0),0).toFixed(2)].map(_csvCell).join(','),
+  ];
+  const dateTag = (dateFrom || dateTo) ? `_${(dateFrom||'').replace(/-/g,'')}-${(dateTo||'').replace(/-/g,'')}` : '';
+  _rptDownloadCSV(`TGCapital_Summary${dateTag}.csv`, rows);
 }
 
 // Initial render

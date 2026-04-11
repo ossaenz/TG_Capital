@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/osaenz/Downloads/**)",
+      "Bash(node -e ':*)"
+    ]
+  }
+}
