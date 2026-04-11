@@ -95,6 +95,58 @@
   .kpi-value { font-family: var(--mono); font-size: 22px; font-weight: 700; line-height: 1; }
   .kpi-sub { font-size: 11px; color: var(--text2); margin-top: 4px; }
 
+  /* ── Dashboard KPI groups ── */
+  .dash-group { margin-bottom: 20px; }
+  .dash-group-label {
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--text2); margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .dash-group-label::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+  .dash-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 10px;
+  }
+  .dash-kpi {
+    background: var(--bg1); border: 1px solid var(--border);
+    border-radius: var(--r); padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 4px;
+    position: relative; overflow: hidden;
+  }
+  .dash-kpi::before {
+    content: ''; position: absolute; top: 0; left: 0;
+    width: 3px; height: 100%; background: var(--kpi-accent, var(--border));
+    border-radius: var(--r) 0 0 var(--r);
+  }
+  .dash-kpi.accent-green  { --kpi-accent: var(--green); }
+  .dash-kpi.accent-red    { --kpi-accent: var(--red); }
+  .dash-kpi.accent-amber  { --kpi-accent: var(--amber); }
+  .dash-kpi.accent-blue   { --kpi-accent: var(--accent); }
+  .dash-kpi.accent-teal   { --kpi-accent: var(--teal); }
+  .dash-kpi.accent-purple { --kpi-accent: var(--purple); }
+  .dash-kpi-label {
+    font-family: var(--mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--text2);
+  }
+  .dash-kpi-value {
+    font-family: var(--mono); font-size: 20px; font-weight: 700; line-height: 1.1;
+    color: var(--text0);
+  }
+  .dash-kpi-value.lg { font-size: 24px; }
+  .dash-kpi-sub {
+    font-size: 11px; color: var(--text2); line-height: 1.3;
+  }
+  .dash-kpi-split {
+    display: flex; gap: 12px; margin-top: 2px;
+  }
+  .dash-kpi-split-item { display: flex; flex-direction: column; gap: 1px; }
+  .dash-kpi-split-val { font-family: var(--mono); font-size: 13px; font-weight: 700; }
+  .dash-kpi-split-lbl { font-size: 10px; color: var(--text2); }
+
   /* ── Table ── */
   .tbl-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -3036,10 +3088,6 @@ function setDashboardInstruments(instruments, btn) {
 function computeStatsByDateRange(dateStart, dateEnd) {
   const { openPositions, closedTrades } = buildPositions();
   
-  // Count stock trades
-  const stockTrades = closedTrades.filter(t => t.instrument !== 'option');
-  const stockPnl = stockTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
-  
   // Filter closed trades by date range
   let filteredTrades = closedTrades;
   if (dateStart || dateEnd) {
@@ -3133,23 +3181,62 @@ function computeStatsByDateRange(dateStart, dateEnd) {
   const avgWin = wins.length > 0 ? wins.reduce((s, t) => s + t.netPnl, 0) / wins.length : 0;
   const avgLoss = losses_arr.length > 0 ? losses_arr.reduce((s, t) => s + t.netPnl, 0) / losses_arr.length : 0;
 
-  // DEBUG: Log composition of realized P&L
-  const optPnl = tradesDirty.filter(t => t.instrument === 'option').reduce((s,t)=>s+(t.netPnl||0),0);
-  const stkPnl = tradesDirty.filter(t => t.instrument !== 'option').reduce((s,t)=>s+(t.netPnl||0),0);
-  const divPnl = filteredTxns.filter(t => t.action === 'Cash Dividend').reduce((s,t)=>s+(t.amount||0),0);
-  const stkCount = tradesDirty.filter(t => t.instrument !== 'option').length;
-  
-  if (dashboardInstruments === 'all') {
-    console.clear();
-    console.log('%c=== ALL INSTRUMENTS P&L ===', 'color: #84cc16; font-weight: bold; font-size: 14px');
-    console.log(`Options: $${optPnl.toFixed(2)} (${tradesDirty.filter(t => t.instrument === 'option').length} trades)`);
-    console.log(`Stocks:  $${stkPnl.toFixed(2)} (${stkCount} trades)`);
-    console.log(`Divs:    $${divPnl.toFixed(2)}`);
-    console.log(`TOTAL:   $${realized.toFixed(2)}`);
-    console.log('Stock trades:', tradesDirty.filter(t => t.instrument !== 'option').map(t => ({sym: t.symbol, qty: t.qty, pnl: t.netPnl})));
-  }
+  // ── Extended stats ────────────────────────────────────
+  // P&L breakdown
+  const optionPnl = optionClosed.reduce((s, t) => s + (t.netPnl || 0), 0);
+  const stockPnl  = tradesDirty.filter(t => t.instrument !== 'option').reduce((s, t) => s + (t.netPnl || 0), 0);
+  const dividendTotal = filteredTxns
+    .filter(t => ['Cash Dividend','Pr Yr Cash Div','Pr Yr Non-Qual Div'].includes(t.action))
+    .reduce((s, t) => s + (t.amount || 0), 0);
+  const interestTotal = filteredTxns
+    .filter(t => t.action === 'Credit Interest')
+    .reduce((s, t) => s + (t.amount || 0), 0);
+  const dividendCount = filteredTxns.filter(t => ['Cash Dividend','Pr Yr Cash Div','Pr Yr Non-Qual Div','Credit Interest'].includes(t.action)).length;
 
-  return { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions: filteredOpenPositions, closedTrades: filteredTrades, optionClosed, washFlags };
+  // Option close-type breakdown
+  const expiredTrades  = optionClosed.filter(t => t.via === 'expired');
+  const btcTrades      = optionClosed.filter(t => t.via === 'closed');
+  const assignedTrades = optionClosed.filter(t => t.via === 'assigned');
+  const expiredPnl     = expiredTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
+  const btcPnl         = btcTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
+
+  // Assignment breakdown by type
+  const assignedPuts  = assignedTrades.filter(t => t.optionType === 'put');
+  const assignedCalls = assignedTrades.filter(t => t.optionType === 'call');
+  // Effective cost basis for put assignments: strike × qty × 100 − premium received
+  const putAssignmentExposure = assignedPuts.reduce((s, t) => s + ((t.strike || 0) * (t.qty || 1) * 100), 0);
+  const putPremiumOffset      = assignedPuts.reduce((s, t) => s + (t.openCredit || 0), 0);
+  const effectiveCostBasis    = putAssignmentExposure - putPremiumOffset;
+
+  // Profit factor (gross wins / abs gross losses — options only)
+  const grossWins   = wins.reduce((s, t) => s + (t.netPnl || 0), 0);
+  const grossLosses = Math.abs(losses_arr.reduce((s, t) => s + (t.netPnl || 0), 0));
+  const profitFactor = grossLosses > 0 ? grossWins / grossLosses : null;
+
+  // Avg holding period (calendar days, options only)
+  const holdingDays = optionClosed
+    .filter(t => t.openDate && t.closeDate)
+    .map(t => Math.round((new Date(t.closeDate) - new Date(t.openDate)) / 86400000));
+  const avgHoldDays = holdingDays.length > 0 ? holdingDays.reduce((s, d) => s + d, 0) / holdingDays.length : null;
+
+  // Best and worst single trade (options)
+  const bestTrade  = optionClosed.length > 0 ? optionClosed.reduce((best, t) => (t.netPnl || 0) > (best.netPnl || 0) ? t : best) : null;
+  const worstTrade = optionClosed.length > 0 ? optionClosed.reduce((worst, t) => (t.netPnl || 0) < (worst.netPnl || 0) ? t : worst) : null;
+
+  // Max premium at risk (open put positions: strike × qty × 100)
+  const openPuts = filteredOpenPositions.filter(p => p.optionType === 'put');
+  const premiumAtRisk = openPuts.reduce((s, p) => s + ((p.strike || 0) * (p.qty || 1) * 100), 0);
+
+  return {
+    realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss,
+    openPositions: filteredOpenPositions, closedTrades: filteredTrades, optionClosed, washFlags,
+    // Extended
+    optionPnl, stockPnl, dividendTotal, interestTotal, dividendCount,
+    expiredTrades, btcTrades, assignedTrades, expiredPnl, btcPnl,
+    assignedPuts, assignedCalls, putAssignmentExposure, putPremiumOffset, effectiveCostBasis,
+    profitFactor, avgHoldDays, bestTrade, worstTrade, premiumAtRisk,
+    grossWins, grossLosses,
+  };
 }
 
 function renderPerformance() {
