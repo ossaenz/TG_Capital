@@ -697,15 +697,186 @@
     </div>
   </div>
 
-  <div class="kpi-grid" id="kpiGrid">
-    <div class="kpi"><div class="kpi-label">Realized P&L</div><div class="kpi-value pos n" id="kpi-realized">$0</div><div class="kpi-sub">Closed option trades</div></div>
-    <div class="kpi"><div class="kpi-label">Total Premium Collected</div><div class="kpi-value pos g" id="kpi-premium">$0</div><div class="kpi-sub">STO / Sell to Open</div></div>
-    <div class="kpi"><div class="kpi-label">Fees Paid</div><div class="kpi-value pos r" id="kpi-fees">$0</div><div class="kpi-sub">All commissions</div></div>
-    <div class="kpi"><div class="kpi-label">Win Rate</div><div class="kpi-value" id="kpi-wr" style="color:var(--text1)">—%</div><div class="kpi-sub">Closed option trades</div></div>
-    <div class="kpi"><div class="kpi-label">Avg Win / Avg Loss</div><div class="kpi-value" id="kpi-ratio" style="color:var(--text1)">—</div><div class="kpi-sub">P&L per closed trade</div></div>
-    <div class="kpi"><div class="kpi-label">Open Positions</div><div class="kpi-value" id="kpi-open" style="color:var(--teal)">0</div><div class="kpi-sub">Options + stock</div></div>
-    <div class="kpi"><div class="kpi-label">Assigned</div><div class="kpi-value" id="kpi-assigned" style="color:var(--amber)">0</div><div class="kpi-sub">All time</div></div>
-    <div class="kpi"><div class="kpi-label">Potential Wash Sales</div><div class="kpi-value" id="kpi-wash" style="color:var(--red)">0</div><div class="kpi-sub">Flagged for review</div></div>
+  <!-- ── GROUP 1: P&L Summary ─────────────────────────── -->
+  <div class="dash-group">
+    <div class="dash-group-label">P&amp;L Summary</div>
+    <div class="dash-kpi-row">
+
+      <div class="dash-kpi accent-green" style="grid-column: span 2;">
+        <div class="dash-kpi-label">Realized P&amp;L</div>
+        <div class="dash-kpi-value lg" id="kpi-realized">—</div>
+        <div class="dash-kpi-sub" id="kpi-realized-sub">Closed options only</div>
+        <div class="dash-kpi-split" id="kpi-pnl-breakdown" style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px;">
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-opt-pnl">—</span>
+            <span class="dash-kpi-split-lbl">Options</span>
+          </div>
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-stk-pnl">—</span>
+            <span class="dash-kpi-split-lbl">Stock / ETF</span>
+          </div>
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-div-pnl">—</span>
+            <span class="dash-kpi-split-lbl">Dividends</span>
+          </div>
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-int-pnl">—</span>
+            <span class="dash-kpi-split-lbl">Interest</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-kpi accent-green">
+        <div class="dash-kpi-label">Premium Collected</div>
+        <div class="dash-kpi-value" id="kpi-premium">—</div>
+        <div class="dash-kpi-sub">Closed STOs only</div>
+      </div>
+
+      <div class="dash-kpi accent-red">
+        <div class="dash-kpi-label">Fees Paid</div>
+        <div class="dash-kpi-value" id="kpi-fees">—</div>
+        <div class="dash-kpi-sub">All commissions</div>
+      </div>
+
+      <div class="dash-kpi accent-teal">
+        <div class="dash-kpi-label">Dividends &amp; Interest</div>
+        <div class="dash-kpi-value" id="kpi-income">—</div>
+        <div class="dash-kpi-sub" id="kpi-income-sub">—</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── GROUP 2: Options Performance ─────────────────── -->
+  <div class="dash-group">
+    <div class="dash-group-label">Options Performance</div>
+    <div class="dash-kpi-row">
+
+      <div class="dash-kpi accent-blue">
+        <div class="dash-kpi-label">Win Rate</div>
+        <div class="dash-kpi-value" id="kpi-wr">—</div>
+        <div class="dash-kpi-sub" id="kpi-wr-sub">Closed option trades</div>
+      </div>
+
+      <div class="dash-kpi accent-blue">
+        <div class="dash-kpi-label">Profit Factor</div>
+        <div class="dash-kpi-value" id="kpi-pf">—</div>
+        <div class="dash-kpi-sub">Gross wins ÷ gross losses</div>
+      </div>
+
+      <div class="dash-kpi accent-green">
+        <div class="dash-kpi-label">Avg Win</div>
+        <div class="dash-kpi-value" id="kpi-avg-win">—</div>
+        <div class="dash-kpi-sub">Per winning trade</div>
+      </div>
+
+      <div class="dash-kpi accent-red">
+        <div class="dash-kpi-label">Avg Loss</div>
+        <div class="dash-kpi-value" id="kpi-avg-loss">—</div>
+        <div class="dash-kpi-sub">Per losing trade</div>
+      </div>
+
+      <div class="dash-kpi accent-purple">
+        <div class="dash-kpi-label">Avg Hold Period</div>
+        <div class="dash-kpi-value" id="kpi-hold">—</div>
+        <div class="dash-kpi-sub">Calendar days</div>
+      </div>
+
+      <div class="dash-kpi accent-green">
+        <div class="dash-kpi-label">Best Trade</div>
+        <div class="dash-kpi-value" id="kpi-best">—</div>
+        <div class="dash-kpi-sub" id="kpi-best-sub">—</div>
+      </div>
+
+      <div class="dash-kpi accent-red">
+        <div class="dash-kpi-label">Worst Trade</div>
+        <div class="dash-kpi-value" id="kpi-worst">—</div>
+        <div class="dash-kpi-sub" id="kpi-worst-sub">—</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── GROUP 3: How Options Closed ───────────────────── -->
+  <div class="dash-group">
+    <div class="dash-group-label">How Options Closed</div>
+    <div class="dash-kpi-row">
+
+      <div class="dash-kpi accent-green">
+        <div class="dash-kpi-label">Expired Worthless</div>
+        <div class="dash-kpi-value" id="kpi-expired-pnl">—</div>
+        <div class="dash-kpi-split" style="margin-top:4px;">
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-expired-count">—</span>
+            <span class="dash-kpi-split-lbl">trades</span>
+          </div>
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-expired-pct">—</span>
+            <span class="dash-kpi-split-lbl">of closed</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-kpi accent-blue">
+        <div class="dash-kpi-label">Bought to Close</div>
+        <div class="dash-kpi-value" id="kpi-btc-pnl">—</div>
+        <div class="dash-kpi-split" style="margin-top:4px;">
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-btc-count">—</span>
+            <span class="dash-kpi-split-lbl">trades</span>
+          </div>
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-btc-pct">—</span>
+            <span class="dash-kpi-split-lbl">of closed</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dash-kpi accent-amber">
+        <div class="dash-kpi-label">Assigned — Puts</div>
+        <div class="dash-kpi-value" id="kpi-asgn-puts">—</div>
+        <div class="dash-kpi-sub" id="kpi-asgn-puts-sub">Stock received at strike</div>
+      </div>
+
+      <div class="dash-kpi accent-amber">
+        <div class="dash-kpi-label">Assigned — Calls</div>
+        <div class="dash-kpi-value" id="kpi-asgn-calls">—</div>
+        <div class="dash-kpi-sub">Stock called away</div>
+      </div>
+
+      <div class="dash-kpi accent-amber">
+        <div class="dash-kpi-label">Effective Cost Basis</div>
+        <div class="dash-kpi-value" id="kpi-cost-basis">—</div>
+        <div class="dash-kpi-sub">Strike exposure − premium (puts)</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── GROUP 4: Exposure & Risk ──────────────────────── -->
+  <div class="dash-group">
+    <div class="dash-group-label">Exposure &amp; Risk</div>
+    <div class="dash-kpi-row">
+
+      <div class="dash-kpi accent-teal">
+        <div class="dash-kpi-label">Open Positions</div>
+        <div class="dash-kpi-value" id="kpi-open">—</div>
+        <div class="dash-kpi-sub">Options + stock</div>
+      </div>
+
+      <div class="dash-kpi accent-amber">
+        <div class="dash-kpi-label">Max Put Exposure</div>
+        <div class="dash-kpi-value" id="kpi-exposure">—</div>
+        <div class="dash-kpi-sub">Open put notional (strike × 100)</div>
+      </div>
+
+      <div class="dash-kpi accent-red">
+        <div class="dash-kpi-label">Potential Wash Sales</div>
+        <div class="dash-kpi-value" id="kpi-wash">—</div>
+        <div class="dash-kpi-sub">Flagged for review</div>
+      </div>
+
+    </div>
   </div>
 
   <div class="section-title">Cumulative Realized P&L</div>
@@ -3395,40 +3566,130 @@ function renderPerformanceChart(rows) {
 
 function renderDashboard() {
   const stats = computeStatsByDateRange(dashboardDateStart, dashboardDateEnd);
-  const { realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss, openPositions, closedTrades, optionClosed, washFlags } = stats;
+  const {
+    realized, fees, premiumCollected, winRate, openPositions, closedTrades, optionClosed, washFlags,
+    optionPnl, stockPnl, dividendTotal, interestTotal, dividendCount,
+    expiredTrades, btcTrades, assignedTrades, expiredPnl, btcPnl,
+    assignedPuts, assignedCalls, effectiveCostBasis,
+    profitFactor, avgHoldDays, bestTrade, worstTrade, premiumAtRisk,
+    avgWin, avgLoss,
+  } = stats;
 
-  const instLabel = dashboardInstruments === 'all' ? 'All instruments' : 'Closed options';
-  
-  document.getElementById('kpi-realized').textContent = fmt$(realized);
-  document.getElementById('kpi-realized').className = 'kpi-value pos ' + pnlClass(realized);
-  // Update the sub-label to show which mode
-  const realiziedRKpi = document.querySelector('#kpi-realized').closest('.kpi');
-  if (realiziedRKpi) {
-    const subEl = realiziedRKpi.querySelector('.kpi-sub');
-    if (subEl) subEl.textContent = instLabel;
-  }
-  
-  document.getElementById('kpi-premium').textContent = fmt$(premiumCollected);
-  document.getElementById('kpi-fees').textContent = fmt$(-fees);
-  document.getElementById('kpi-wr').textContent = winRate !== null ? (winRate * 100).toFixed(1) + '%' : '—%';
-  document.getElementById('kpi-wr').style.color = winRate > 0.5 ? 'var(--green)' : winRate !== null ? 'var(--red)' : 'var(--text1)';
-  document.getElementById('kpi-ratio').textContent = (avgWin && avgLoss) ? fmt$(avgWin) + ' / ' + fmt$(avgLoss) : '—';
-  document.getElementById('kpi-open').textContent = openPositions.length;
-  document.getElementById('kpi-assigned').textContent = assigned;
-  document.getElementById('kpi-wash').textContent = washFlags.length;
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const setColor = (id, color) => { const el = document.getElementById(id); if (el) el.style.color = color; };
 
-  // Topbar
+  // ── GROUP 1: P&L Summary ──────────────────────────────
+  const instLabel = dashboardInstruments === 'all' ? 'Options + Stock + Dividends' : 'Closed options only';
+  const realizedEl = document.getElementById('kpi-realized');
+  realizedEl.textContent = fmt$(realized);
+  realizedEl.className   = 'dash-kpi-value lg ' + (realized >= 0 ? 'pos g' : 'pos r');
+  set('kpi-realized-sub', instLabel);
+
+  // P&L breakdown sub-row — show in all-instruments mode; hide in options-only
+  const breakdownEl = document.getElementById('kpi-pnl-breakdown');
+  if (breakdownEl) breakdownEl.style.display = dashboardInstruments === 'all' ? 'flex' : 'none';
+  const optPnlEl = document.getElementById('kpi-opt-pnl');
+  if (optPnlEl) { optPnlEl.textContent = fmt$(optionPnl); optPnlEl.style.color = optionPnl >= 0 ? 'var(--green)' : 'var(--red)'; }
+  const stkPnlEl = document.getElementById('kpi-stk-pnl');
+  if (stkPnlEl) { stkPnlEl.textContent = fmt$(stockPnl); stkPnlEl.style.color = stockPnl >= 0 ? 'var(--green)' : 'var(--red)'; }
+  const divPnlEl = document.getElementById('kpi-div-pnl');
+  if (divPnlEl) { divPnlEl.textContent = fmt$(dividendTotal); divPnlEl.style.color = dividendTotal >= 0 ? 'var(--teal)' : 'var(--red)'; }
+  const intPnlEl = document.getElementById('kpi-int-pnl');
+  if (intPnlEl) { intPnlEl.textContent = fmt$(interestTotal); intPnlEl.style.color = 'var(--teal)'; }
+
+  set('kpi-premium', fmt$(premiumCollected));
+  const feesEl = document.getElementById('kpi-fees');
+  feesEl.textContent = fmt$(-fees);
+  feesEl.className = 'dash-kpi-value pos r';
+
+  const incomeTotal = dividendTotal + interestTotal;
+  const incomeEl = document.getElementById('kpi-income');
+  incomeEl.textContent = fmt$(incomeTotal);
+  incomeEl.style.color = incomeTotal >= 0 ? 'var(--teal)' : 'var(--red)';
+  set('kpi-income-sub', dividendCount > 0 ? `${dividendCount} events` : 'No events in period');
+
+  // ── GROUP 2: Options Performance ──────────────────────
+  const wrEl = document.getElementById('kpi-wr');
+  wrEl.textContent = winRate !== null ? (winRate * 100).toFixed(1) + '%' : '—';
+  wrEl.style.color = winRate === null ? 'var(--text2)' : winRate >= 0.5 ? 'var(--green)' : 'var(--red)';
+  set('kpi-wr-sub', optionClosed.length > 0 ? `${optionClosed.filter(t=>(t.netPnl||0)>0).length}W · ${optionClosed.filter(t=>(t.netPnl||0)<0).length}L · ${optionClosed.length} trades` : 'No closed trades');
+
+  const pfEl = document.getElementById('kpi-pf');
+  pfEl.textContent = profitFactor !== null ? profitFactor.toFixed(2) : '—';
+  pfEl.style.color = profitFactor === null ? 'var(--text2)' : profitFactor >= 2 ? 'var(--green)' : profitFactor >= 1 ? 'var(--amber)' : 'var(--red)';
+
+  const avgWinEl = document.getElementById('kpi-avg-win');
+  avgWinEl.textContent = avgWin ? fmt$(avgWin) : '—';
+  avgWinEl.style.color = 'var(--green)';
+  const avgLossEl = document.getElementById('kpi-avg-loss');
+  avgLossEl.textContent = avgLoss ? fmt$(avgLoss) : '—';
+  avgLossEl.style.color = 'var(--red)';
+
+  const holdEl = document.getElementById('kpi-hold');
+  holdEl.textContent = avgHoldDays !== null ? Math.round(avgHoldDays) + 'd' : '—';
+  holdEl.style.color = avgHoldDays !== null ? 'var(--purple)' : 'var(--text2)';
+
+  const bestEl = document.getElementById('kpi-best');
+  bestEl.textContent = bestTrade ? fmt$(bestTrade.netPnl) : '—';
+  bestEl.style.color = bestTrade && (bestTrade.netPnl || 0) > 0 ? 'var(--green)' : 'var(--text2)';
+  set('kpi-best-sub', bestTrade ? (bestTrade.underlying || bestTrade.symbol.split(' ')[0]) + ' · ' + (bestTrade.closeDate || '') : 'No trades');
+
+  const worstEl = document.getElementById('kpi-worst');
+  worstEl.textContent = worstTrade ? fmt$(worstTrade.netPnl) : '—';
+  worstEl.style.color = worstTrade && (worstTrade.netPnl || 0) < 0 ? 'var(--red)' : 'var(--text2)';
+  set('kpi-worst-sub', worstTrade ? (worstTrade.underlying || worstTrade.symbol.split(' ')[0]) + ' · ' + (worstTrade.closeDate || '') : 'No trades');
+
+  // ── GROUP 3: How Options Closed ────────────────────────
+  const total = optionClosed.length;
+  const expiredPnlEl = document.getElementById('kpi-expired-pnl');
+  expiredPnlEl.textContent = fmt$(expiredPnl);
+  expiredPnlEl.style.color = expiredPnl >= 0 ? 'var(--green)' : 'var(--red)';
+  set('kpi-expired-count', expiredTrades.length);
+  set('kpi-expired-pct', total > 0 ? (expiredTrades.length / total * 100).toFixed(0) + '%' : '—');
+
+  const btcPnlEl = document.getElementById('kpi-btc-pnl');
+  btcPnlEl.textContent = fmt$(btcPnl);
+  btcPnlEl.style.color = btcPnl >= 0 ? 'var(--green)' : 'var(--red)';
+  set('kpi-btc-count', btcTrades.length);
+  set('kpi-btc-pct', total > 0 ? (btcTrades.length / total * 100).toFixed(0) + '%' : '—');
+
+  const asgnPutsEl = document.getElementById('kpi-asgn-puts');
+  asgnPutsEl.textContent = assignedPuts.length;
+  asgnPutsEl.style.color = assignedPuts.length > 0 ? 'var(--amber)' : 'var(--text2)';
+  set('kpi-asgn-puts-sub', assignedPuts.length > 0
+    ? `${assignedPuts.map(t => t.underlying || t.symbol.split(' ')[0]).filter((v,i,a)=>a.indexOf(v)===i).join(', ')}`
+    : 'None in period');
+
+  const asgnCallsEl = document.getElementById('kpi-asgn-calls');
+  asgnCallsEl.textContent = assignedCalls.length;
+  asgnCallsEl.style.color = assignedCalls.length > 0 ? 'var(--amber)' : 'var(--text2)';
+
+  const cbEl = document.getElementById('kpi-cost-basis');
+  cbEl.textContent = effectiveCostBasis > 0 ? fmt$(effectiveCostBasis) : assignedPuts.length === 0 ? '—' : '$0';
+  cbEl.style.color = effectiveCostBasis > 0 ? 'var(--amber)' : 'var(--text2)';
+
+  // ── GROUP 4: Exposure & Risk ───────────────────────────
+  const openEl = document.getElementById('kpi-open');
+  openEl.textContent = openPositions.length;
+  openEl.style.color = openPositions.length > 0 ? 'var(--teal)' : 'var(--text2)';
+
+  const expEl = document.getElementById('kpi-exposure');
+  expEl.textContent = premiumAtRisk > 0 ? fmt$(premiumAtRisk) : '—';
+  expEl.style.color = premiumAtRisk > 0 ? 'var(--amber)' : 'var(--text2)';
+
+  const washEl = document.getElementById('kpi-wash');
+  washEl.textContent = washFlags.length;
+  washEl.style.color = washFlags.length > 0 ? 'var(--red)' : 'var(--text2)';
+
+  // ── Topbar ─────────────────────────────────────────────
   document.getElementById('ts-realized').textContent = fmt$(realized);
   document.getElementById('ts-realized').className = 'tstat-val pos ' + pnlClass(realized);
   document.getElementById('ts-open').textContent = openPositions.length;
   document.getElementById('ts-total').textContent = db.transactions.length;
   document.getElementById('ts-wr').textContent = winRate !== null ? (winRate * 100).toFixed(1) + '%' : '—';
 
-  // Render recent closed trades (filtered by instrument if needed)
-  let recentTrades = closedTrades;
-  if (dashboardInstruments === 'options-only') {
-    recentTrades = optionClosed;
-  }
+  // ── Recent closed trades table ─────────────────────────
+  let recentTrades = dashboardInstruments === 'options-only' ? optionClosed : closedTrades;
   const recent = [...recentTrades].sort((a, b) => (b.closeDate || '').localeCompare(a.closeDate || '')).slice(0, 30);
   const tbody = document.querySelector('#recentTable tbody');
   if (recent.length === 0) {
@@ -3436,25 +3697,29 @@ function renderDashboard() {
   } else {
     tbody.innerHTML = recent.map(t => {
       const viaBadge = t.via === 'expired'
-        ? '<span class="badge badge-expired">EXPIRED WORTHLESS</span>'
+        ? '<span class="badge badge-expired">EXPIRED</span>'
         : t.via === 'assigned'
         ? '<span class="badge badge-assigned">ASSIGNED</span>'
+        : t.via === 'sold'
+        ? '<span class="badge badge-stock">SOLD</span>'
         : statusBadge('closed');
       const closedForLabel = t.via === 'expired'
         ? '<span style="color:var(--text2)">$0.00</span>'
         : t.closePrice != null
-        ? fmt$(t.closePrice) + (t.via === 'assigned' ? ' (strike)' : '/contract')
+        ? fmt$(t.closePrice) + (t.via === 'assigned' ? ' (strike)' : t.instrument === 'option' ? '/contract' : '/share')
         : '—';
       return `<tr>
         <td>${t.closeDate || '—'}</td>
-        <td><span style="font-family:var(--mono);font-weight:700">${t.symbol}</span></td>
+        <td><span style="font-family:var(--mono);font-weight:700">${t.underlying || t.symbol.split(' ')[0]}</span>
+          ${t.instrument === 'option' ? `<br><span style="font-size:10px;color:var(--text2);font-family:var(--mono)">${t.optionType === 'put' ? 'PUT' : 'CALL'} $${t.strike} exp ${t.expiry}</span>` : ''}
+        </td>
         <td>${instBadge(t.instrument, t.optionType)}</td>
         <td>${t.openDate || '—'}</td>
-        <td class="r"><span class="pos g">${fmt$(t.openCredit > 0 ? t.openCredit : -t.openCredit)}</span></td>
+        <td class="r"><span class="pos g">${fmt$(Math.abs(t.openCredit || 0))}</span></td>
         <td class="r">${closedForLabel}</td>
         <td>${viaBadge}</td>
-        <td class="r"><span style="color:var(--red)">-${fmt$(t.fees)}</span></td>
-        <td class="r"><span class="pos ${pnlClass(t.netPnl)}">${fmt$(t.netPnl)}</span></td>
+        <td class="r"><span style="color:var(--red)">${t.fees > 0 ? '-' + fmt$(t.fees) : '—'}</span></td>
+        <td class="r"><span class="pos ${pnlClass(t.netPnl)}" style="font-weight:700">${fmt$(t.netPnl)}</span></td>
       </tr>`;
     }).join('');
   }
