@@ -645,7 +645,7 @@
   <div class="topbar-stats" id="topbarStats">
     <div class="tstat"><div class="tstat-label">Realized P&L</div><div class="tstat-val" id="ts-realized" style="color:var(--text2)">—</div></div>
     <div class="tstat"><div class="tstat-label">Open Positions</div><div class="tstat-val" id="ts-open">0</div></div>
-    <div class="tstat"><div class="tstat-label">Total Trades</div><div class="tstat-val" id="ts-total">0</div></div>
+    <div class="tstat"><div class="tstat-label">Closed Trades</div><div class="tstat-val" id="ts-total">0</div></div>
     <div class="tstat"><div class="tstat-label">Win Rate</div><div class="tstat-val" id="ts-wr" style="color:var(--text2)">—</div></div>
   </div>
 </div>
@@ -3685,7 +3685,8 @@ function renderDashboard() {
   document.getElementById('ts-realized').textContent = fmt$(realized);
   document.getElementById('ts-realized').className = 'tstat-val pos ' + pnlClass(realized);
   document.getElementById('ts-open').textContent = openPositions.length;
-  document.getElementById('ts-total').textContent = db.transactions.length;
+  const displayedTrades = dashboardInstruments === 'options-only' ? optionClosed : closedTrades;
+  document.getElementById('ts-total').textContent = displayedTrades.length;
   document.getElementById('ts-wr').textContent = winRate !== null ? (winRate * 100).toFixed(1) + '%' : '—';
 
   // ── Recent closed trades table ─────────────────────────
