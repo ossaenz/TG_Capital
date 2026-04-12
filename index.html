@@ -3632,6 +3632,8 @@ function renderDashboard() {
     assignedPuts, assignedCalls, effectiveCostBasis,
     profitFactor, avgHoldDays, bestTrade, worstTrade, premiumAtRisk,
     avgWin, avgLoss,
+    taxOptions, taxOptionsBase, effectiveOptRate, sec1256Pnl, equityOptPnl,
+    taxStock, STCG_RATE, SEC1256_RATE,
   } = stats;
 
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
