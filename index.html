@@ -776,6 +776,22 @@
         <div class="dash-kpi-sub" style="margin-top:4px;">Short-term (assignments)</div>
       </div>
 
+      <div class="dash-kpi accent-red" data-tip="Estimate only. Qualified dividends (SPY, VYM, etc., held 60+ days) are taxed at 20% LTCG rate. Non-qualified dividends (YieldMax ETFs: TSLY, CONY, ULTY, etc.) and prior-year non-qual divs are taxed as ordinary income at 37%. Consult your CPA.">
+        <div class="dash-kpi-label">Est. Tax — Dividends ⓘ</div>
+        <div class="dash-kpi-value" id="kpi-tax-div">—</div>
+        <div class="dash-kpi-split" style="margin-top:4px;">
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-tax-div-qual">—</span>
+            <span class="dash-kpi-split-lbl">qualified</span>
+          </div>
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-tax-div-nonqual">—</span>
+            <span class="dash-kpi-split-lbl">non-qualified</span>
+          </div>
+        </div>
+        <div class="dash-kpi-sub" style="margin-top:4px;" id="kpi-tax-div-note">20% qual · 37% non-qual</div>
+      </div>
+
     </div>
   </div>
 
@@ -3450,10 +3466,33 @@ function computeStatsByDateRange(dateStart, dateEnd) {
   const taxOptionsBase = (equityOptPnl > 0 ? equityOptPnl : 0) + (sec1256Pnl > 0 ? sec1256Pnl : 0);
 
   // Estimated tax on stock/ETF: short-term (assignments typically held < 1yr)
-  const taxStock     = stockPnl > 0 ? stockPnl * STCG_RATE : 0;
+  const taxStock = stockPnl > 0 ? stockPnl * STCG_RATE : 0;
 
   // Effective blended rate on options (for display)
   const effectiveOptRate = taxOptionsBase > 0 ? taxOptions / taxOptionsBase : STCG_RATE;
+
+  // ── Dividend tax ──────────────────────────────────────
+  // Non-qualified: YieldMax / covered-call ETFs always pay ordinary income,
+  // plus any Pr Yr Non-Qual Div action is explicitly non-qualified.
+  const NONQUAL_ETFS = new Set([
+    'TSLY','CONY','ULTY','AMDY','NVDY','MSFO','GOOGY','AMZY','NFLY',
+    'JPMO','DISO','SQY','HOOD','PYPY','OARK','PLTY','APLY','XOMO',
+    'YMAX','YMAG','LFGY','FIAT','SNOY',
+  ]);
+  const qualDivs = filteredTxns.filter(t =>
+    t.action === 'Cash Dividend' && !NONQUAL_ETFS.has((t.symbol || '').toUpperCase())
+  ).reduce((s, t) => s + (t.amount || 0), 0);
+  const nonQualDivs = filteredTxns.filter(t =>
+    (t.action === 'Pr Yr Non-Qual Div') ||
+    (t.action === 'Cash Dividend' && NONQUAL_ETFS.has((t.symbol || '').toUpperCase())) ||
+    (t.action === 'Pr Yr Cash Div')
+  ).reduce((s, t) => s + (t.amount || 0), 0);
+
+  const taxDivQual    = qualDivs    > 0 ? qualDivs    * LTCG_RATE  : 0;  // 20% qualified
+  const taxDivNonQual = nonQualDivs > 0 ? nonQualDivs * STCG_RATE  : 0;  // 37% ordinary
+  const taxDivTotal   = taxDivQual + taxDivNonQual;
+  const taxDivBase    = (qualDivs > 0 ? qualDivs : 0) + (nonQualDivs > 0 ? nonQualDivs : 0);
+  const effectiveDivRate = taxDivBase > 0 ? taxDivTotal / taxDivBase : 0;
 
   return {
     realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss,
@@ -3466,6 +3505,7 @@ function computeStatsByDateRange(dateStart, dateEnd) {
     grossWins, grossLosses,
     taxOptions, taxOptionsBase, effectiveOptRate, sec1256Pnl, equityOptPnl,
     taxStock, STCG_RATE, SEC1256_RATE,
+    taxDivTotal, taxDivBase, taxDivQual, taxDivNonQual, qualDivs, nonQualDivs, effectiveDivRate, LTCG_RATE,
   };
 }
 
@@ -3634,6 +3674,7 @@ function renderDashboard() {
     avgWin, avgLoss,
     taxOptions, taxOptionsBase, effectiveOptRate, sec1256Pnl, equityOptPnl,
     taxStock, STCG_RATE, SEC1256_RATE,
+    taxDivTotal, taxDivBase, taxDivQual, taxDivNonQual, qualDivs, nonQualDivs, effectiveDivRate, LTCG_RATE,
   } = stats;
 
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -3695,6 +3736,36 @@ function renderDashboard() {
   }
   set('kpi-tax-stock-rate', (STCG_RATE * 100).toFixed(0) + '%');
   set('kpi-tax-stock-base', fmt$(stockPnl > 0 ? stockPnl : 0));
+
+  // ── Dividend tax tile ──────────────────────────────────
+  const taxDivEl = document.getElementById('kpi-tax-div');
+  if (taxDivBase > 0) {
+    taxDivEl.textContent = fmt$(taxDivTotal);
+    taxDivEl.style.color = 'var(--red)';
+  } else {
+    taxDivEl.textContent = (dividendTotal <= 0) ? 'No gain' : '—';
+    taxDivEl.style.color = 'var(--text2)';
+  }
+  // Sub-row: show qualified and non-qualified amounts separately
+  const qualEl = document.getElementById('kpi-tax-div-qual');
+  if (qualEl) {
+    qualEl.textContent = qualDivs > 0 ? fmt$(taxDivQual) : '—';
+    qualEl.style.color = qualDivs > 0 ? 'var(--red)' : 'var(--text2)';
+  }
+  const nonQualEl = document.getElementById('kpi-tax-div-nonqual');
+  if (nonQualEl) {
+    nonQualEl.textContent = nonQualDivs > 0 ? fmt$(taxDivNonQual) : '—';
+    nonQualEl.style.color = nonQualDivs > 0 ? 'var(--red)' : 'var(--text2)';
+  }
+  set('kpi-tax-div-note',
+    qualDivs > 0 && nonQualDivs > 0
+      ? `${fmt$(qualDivs)} qual (${(LTCG_RATE*100).toFixed(0)}%) · ${fmt$(nonQualDivs)} non-qual (${(STCG_RATE*100).toFixed(0)}%)`
+      : qualDivs > 0
+      ? `${fmt$(qualDivs)} qualified · ${(LTCG_RATE*100).toFixed(0)}% rate`
+      : nonQualDivs > 0
+      ? `${fmt$(nonQualDivs)} non-qualified · ${(STCG_RATE*100).toFixed(0)}% rate`
+      : 'No dividend income in period'
+  );
 
   // ── GROUP 2: Options Performance ──────────────────────
   const wrEl = document.getElementById('kpi-wr');
