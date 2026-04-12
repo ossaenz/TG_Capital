@@ -744,6 +744,38 @@
         <div class="dash-kpi-sub" id="kpi-income-sub">—</div>
       </div>
 
+      <div class="dash-kpi accent-red" data-tip="Estimate only. Equity options (SPY, PLTR, etc.) are taxed as short-term capital gains at ordinary income rates. SPX/NDX cash-settled index options qualify for Section 1256 60/40 treatment (~26.8% blended). Consult your CPA.">
+        <div class="dash-kpi-label">Est. Tax — Options ⓘ</div>
+        <div class="dash-kpi-value" id="kpi-tax-options">—</div>
+        <div class="dash-kpi-split" style="margin-top:4px;">
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-tax-options-rate">—</span>
+            <span class="dash-kpi-split-lbl">rate used</span>
+          </div>
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-tax-options-base">—</span>
+            <span class="dash-kpi-split-lbl">taxable P&amp;L</span>
+          </div>
+        </div>
+        <div class="dash-kpi-sub" style="margin-top:4px;" id="kpi-tax-options-note">Short-term ordinary income</div>
+      </div>
+
+      <div class="dash-kpi accent-red" data-tip="Estimate only. Stock/ETF gains from assignments are typically short-term (held under 1 year). Long-term gains (held over 1 year) are taxed at 0%, 15%, or 20%. Consult your CPA.">
+        <div class="dash-kpi-label">Est. Tax — Stock / ETF ⓘ</div>
+        <div class="dash-kpi-value" id="kpi-tax-stock">—</div>
+        <div class="dash-kpi-split" style="margin-top:4px;">
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-tax-stock-rate">—</span>
+            <span class="dash-kpi-split-lbl">rate used</span>
+          </div>
+          <div class="dash-kpi-split-item">
+            <span class="dash-kpi-split-val" id="kpi-tax-stock-base">—</span>
+            <span class="dash-kpi-split-lbl">taxable P&amp;L</span>
+          </div>
+        </div>
+        <div class="dash-kpi-sub" style="margin-top:4px;">Short-term (assignments)</div>
+      </div>
+
     </div>
   </div>
 
@@ -3398,6 +3430,31 @@ function computeStatsByDateRange(dateStart, dateEnd) {
   const openPuts = filteredOpenPositions.filter(p => p.optionType === 'put');
   const premiumAtRisk = openPuts.reduce((s, p) => s + ((p.strike || 0) * (p.qty || 1) * 100), 0);
 
+  // ── Tax estimates ─────────────────────────────────────
+  // Section 1256 instruments (cash-settled index options & futures):
+  // 60% long-term (20%) + 40% short-term (37%) = 26.8% blended at top bracket.
+  const SEC1256_SYMBOLS = new Set(['SPX','SPXW','NDX','NDXP','RUT','VIX','XSP','/ES','/MES','/NQ','/MNQ','/RTY','/M2K']);
+  const STCG_RATE  = 0.37;   // top federal short-term bracket
+  const LTCG_RATE  = 0.20;   // top federal long-term bracket
+  const SEC1256_RATE = (0.60 * LTCG_RATE) + (0.40 * STCG_RATE);  // = 0.268
+
+  // Split option P&L into Sec 1256 vs regular equity options
+  const sec1256Pnl  = optionClosed
+    .filter(t => SEC1256_SYMBOLS.has((t.underlying || '').toUpperCase()))
+    .reduce((s, t) => s + (t.netPnl || 0), 0);
+  const equityOptPnl = optionPnl - sec1256Pnl;
+
+  // Estimated tax on options: Sec 1256 at blended rate, everything else at STCG
+  const taxOptions = (equityOptPnl > 0 ? equityOptPnl * STCG_RATE : 0)
+                   + (sec1256Pnl  > 0 ? sec1256Pnl  * SEC1256_RATE : 0);
+  const taxOptionsBase = (equityOptPnl > 0 ? equityOptPnl : 0) + (sec1256Pnl > 0 ? sec1256Pnl : 0);
+
+  // Estimated tax on stock/ETF: short-term (assignments typically held < 1yr)
+  const taxStock     = stockPnl > 0 ? stockPnl * STCG_RATE : 0;
+
+  // Effective blended rate on options (for display)
+  const effectiveOptRate = taxOptionsBase > 0 ? taxOptions / taxOptionsBase : STCG_RATE;
+
   return {
     realized, fees, premiumCollected, assigned, winRate, avgWin, avgLoss,
     openPositions: filteredOpenPositions, closedTrades: filteredTrades, optionClosed, washFlags,
@@ -3407,6 +3464,8 @@ function computeStatsByDateRange(dateStart, dateEnd) {
     assignedPuts, assignedCalls, putAssignmentExposure, putPremiumOffset, effectiveCostBasis,
     profitFactor, avgHoldDays, bestTrade, worstTrade, premiumAtRisk,
     grossWins, grossLosses,
+    taxOptions, taxOptionsBase, effectiveOptRate, sec1256Pnl, equityOptPnl,
+    taxStock, STCG_RATE, SEC1256_RATE,
   };
 }
 
@@ -3607,6 +3666,33 @@ function renderDashboard() {
   incomeEl.textContent = fmt$(incomeTotal);
   incomeEl.style.color = incomeTotal >= 0 ? 'var(--teal)' : 'var(--red)';
   set('kpi-income-sub', dividendCount > 0 ? `${dividendCount} events` : 'No events in period');
+
+  // ── Tax estimate tiles ─────────────────────────────────
+  const taxOptEl = document.getElementById('kpi-tax-options');
+  if (taxOptionsBase > 0) {
+    taxOptEl.textContent = fmt$(taxOptions);
+    taxOptEl.style.color = 'var(--red)';
+  } else {
+    taxOptEl.textContent = optionPnl <= 0 ? 'No gain' : '—';
+    taxOptEl.style.color = 'var(--text2)';
+  }
+  set('kpi-tax-options-rate', (effectiveOptRate * 100).toFixed(1) + '%');
+  set('kpi-tax-options-base', fmt$(taxOptionsBase));
+  // Note line: mention Sec 1256 if any detected, otherwise plain STCG
+  set('kpi-tax-options-note', sec1256Pnl > 0
+    ? `${(STCG_RATE * 100).toFixed(0)}% STCG · Sec.1256 ${(SEC1256_RATE * 100).toFixed(1)}% blended`
+    : `${(STCG_RATE * 100).toFixed(0)}% short-term (ordinary income)`);
+
+  const taxStkEl = document.getElementById('kpi-tax-stock');
+  if (stockPnl > 0) {
+    taxStkEl.textContent = fmt$(taxStock);
+    taxStkEl.style.color = 'var(--red)';
+  } else {
+    taxStkEl.textContent = stockPnl <= 0 ? 'No gain' : '—';
+    taxStkEl.style.color = 'var(--text2)';
+  }
+  set('kpi-tax-stock-rate', (STCG_RATE * 100).toFixed(0) + '%');
+  set('kpi-tax-stock-base', fmt$(stockPnl > 0 ? stockPnl : 0));
 
   // ── GROUP 2: Options Performance ──────────────────────
   const wrEl = document.getElementById('kpi-wr');
