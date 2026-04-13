@@ -75,7 +75,7 @@
       margin-left: 0;
     }
   }
-  .nav { display: flex; gap: 2px; padding: 8px 20px; background: var(--bg1); border-bottom: 1px solid var(--border); }
+  .nav { display: flex; gap: 2px; padding: 8px 20px; background: var(--bg1); border-bottom: 1px solid var(--border); position: sticky; top: 80px; z-index: 99; }
   .nav-btn { font-family: var(--sans); font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: var(--r); border: none; background: transparent; color: var(--text1); cursor: pointer; transition: all 0.15s; }
   .nav-btn:hover { background: var(--bg3); color: var(--text0); }
   .nav-btn.active { background: var(--bg3); color: var(--accent); border-bottom: 2px solid var(--accent); }
@@ -534,7 +534,7 @@
   .tbl-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
   /* ── Status bar (below nav) ── */
-  .status-bar { padding: 4px 20px; background: var(--bg1); border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 11px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status-bar { padding: 4px 20px; background: var(--bg1); border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 11px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: sticky; top: 126px; z-index: 98; }
   .status-bar:empty { display: none; }
 
   /* ════════════════════════════════════════════════════════
