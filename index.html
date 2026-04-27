@@ -1006,6 +1006,15 @@
     </div>
   </div>
 
+  <div class="card" id="perfSymbolSummary" style="margin-bottom:16px;display:none;">
+    <div class="card-header"><span class="card-title" id="perfSymbolSummaryTitle">Symbol — P&L Summary</span></div>
+    <div class="kpi-grid" style="padding:0 16px 16px;">
+      <div class="kpi"><div class="kpi-label">Options P&L</div><div class="kpi-value pos n" id="pss-options-pnl">—</div><div class="kpi-sub" id="pss-options-sub">—</div></div>
+      <div class="kpi"><div class="kpi-label">Stock / Assignment P&L</div><div class="kpi-value pos n" id="pss-stock-pnl">—</div><div class="kpi-sub" id="pss-stock-sub">—</div></div>
+      <div class="kpi"><div class="kpi-label">Total P&L</div><div class="kpi-value pos n" id="pss-total-pnl">—</div><div class="kpi-sub" id="pss-total-sub">—</div></div>
+    </div>
+  </div>
+
   <div class="card" style="margin-bottom:20px;">
     <div class="card-header"><span class="card-title">Cumulative P&L by Period</span></div>
     <div style="padding:16px;"><div class="chart-wrap"><canvas id="performanceChart" role="img" aria-label="Cumulative P&L by time period">Performance chart</canvas></div></div>
@@ -2962,6 +2971,7 @@ let performanceInstruments = 'options-only';
 let performanceDateStart = null;
 let performanceDateEnd = null;
 let performanceSymbolFilter = '';
+let performanceDefaultYearApplied = false;
 
 // Dashboard filtering
 let dashboardDateStart = null;
@@ -3008,6 +3018,19 @@ function populateYearSelects() {
       select.appendChild(option);
     }
   });
+
+  // Default Performance tab to current year on first load
+  if (!performanceDefaultYearApplied) {
+    const curYear = new Date().getFullYear().toString();
+    const perfSel = document.getElementById('perfYearSelect');
+    if (perfSel && perfSel.querySelector(`option[value="${curYear}"]`)) {
+      perfSel.value = curYear;
+      performanceDateStart = `${curYear}-01-01`;
+      performanceDateEnd = `${curYear}-12-31`;
+      performanceDefaultYearApplied = true;
+      updatePerformanceFilterLabel();
+    }
+  }
 }
 
 function renderCharts(closedTrades) {
@@ -3564,6 +3587,47 @@ function renderPerformance() {
   document.getElementById('perfSummarySub').textContent = rows.length
     ? `Showing ${performancePeriod} performance (${instLabel}) across ${rows.length} periods${dateRangeInfo}`
     : `No data for ${performancePeriod} performance yet`;
+
+  // Symbol summary tile
+  const symTile = document.getElementById('perfSymbolSummary');
+  if (performanceSymbolFilter) {
+    const allClosed = db.trades.filter(t => t.status === 'closed' && t.closeDate && t.netPnl !== undefined);
+    let symTrades = [...optionClosed, ...allClosed.filter(t => !t.type || t.type !== 'option')];
+    if (performanceDateStart || performanceDateEnd) {
+      symTrades = symTrades.filter(t => {
+        const cd = t.closeDate || '';
+        if (performanceDateStart && cd < performanceDateStart) return false;
+        if (performanceDateEnd && cd > performanceDateEnd) return false;
+        return true;
+      });
+    }
+    symTrades = symTrades.filter(t => {
+      const sym = (t.symbol || '').toUpperCase();
+      const und = (t.underlying || '').toUpperCase();
+      return sym.includes(performanceSymbolFilter) || und.includes(performanceSymbolFilter);
+    });
+    const symOptTrades   = symTrades.filter(t => t.instrument === 'option');
+    const symStockTrades = symTrades.filter(t => t.instrument !== 'option');
+    const symOptPnl   = symOptTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
+    const symStockPnl = symStockTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
+    const symTotalPnl = symOptPnl + symStockPnl;
+    document.getElementById('perfSymbolSummaryTitle').textContent = `${performanceSymbolFilter} — P&L Summary`;
+    const optEl = document.getElementById('pss-options-pnl');
+    optEl.textContent = fmt$(symOptPnl);
+    optEl.className = `kpi-value pos ${pnlClass(symOptPnl)}`;
+    document.getElementById('pss-options-sub').textContent = `${symOptTrades.length} option trade${symOptTrades.length !== 1 ? 's' : ''}`;
+    const stockEl = document.getElementById('pss-stock-pnl');
+    stockEl.textContent = fmt$(symStockPnl);
+    stockEl.className = `kpi-value pos ${pnlClass(symStockPnl)}`;
+    document.getElementById('pss-stock-sub').textContent = `${symStockTrades.length} stock trade${symStockTrades.length !== 1 ? 's' : ''}`;
+    const totalEl = document.getElementById('pss-total-pnl');
+    totalEl.textContent = fmt$(symTotalPnl);
+    totalEl.className = `kpi-value pos ${pnlClass(symTotalPnl)}`;
+    document.getElementById('pss-total-sub').textContent = `${symTrades.length} total trade${symTrades.length !== 1 ? 's' : ''}`;
+    symTile.style.display = '';
+  } else {
+    symTile.style.display = 'none';
+  }
 
   if (!rows.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No closed trades yet.</td></tr>';
