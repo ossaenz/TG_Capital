@@ -3539,7 +3539,7 @@ function renderPerformance() {
   let filteredTrades = optionClosed;
   if (performanceInstruments === 'all') {
     // Include all closed trades (options + stock/ETF)
-    const allTrades = db.trades.filter(t => t.status === 'closed' && t.closeDate && t.netPnl !== undefined);
+    const allTrades = (db.trades || []).filter(t => t.status === 'closed' && t.closeDate && t.netPnl !== undefined);
     filteredTrades = [...optionClosed, ...allTrades.filter(t => !t.type || t.type !== 'option')];
   }
 
@@ -3591,7 +3591,7 @@ function renderPerformance() {
   // Symbol summary tile
   const symTile = document.getElementById('perfSymbolSummary');
   if (performanceSymbolFilter) {
-    const allClosed = db.trades.filter(t => t.status === 'closed' && t.closeDate && t.netPnl !== undefined);
+    const allClosed = (db.trades || []).filter(t => t.status === 'closed' && t.closeDate && t.netPnl !== undefined);
     let symTrades = [...optionClosed, ...allClosed.filter(t => !t.type || t.type !== 'option')];
     if (performanceDateStart || performanceDateEnd) {
       symTrades = symTrades.filter(t => {
