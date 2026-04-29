@@ -1196,6 +1196,7 @@
               <button class="btn btn-sm" id="btnDriveAuto" onclick="toggleAutoDriveConnect()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Auto-connect to Drive on startup">Auto-connect: ON</button>
               <button class="btn btn-sm" id="btnDriveSave" onclick="syncToGoogleDrive('manual')" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Upload current data to Drive now">☁↑ Push to Drive</button>
               <button class="btn btn-sm" id="btnDriveSync" onclick="syncFromGoogleDrive()" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);" title="Download latest data from Drive">☁↓ Pull from Drive</button>
+              <button class="btn btn-sm" id="btnDriveHistory" onclick="showDriveHistory()" style="background:var(--bg3);color:var(--amber);border:1px solid var(--amber);" title="Browse and restore previous Drive saves">☁↺ Version History</button>
             </div>
           </div>
 
@@ -1844,6 +1845,7 @@ function saveDB(data) {
 async function writeToDisk(data) {
   if (!fileHandle) return;
   try {
+    saveLocalBackup();
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(data, null, 2));
     await writable.close();
@@ -2267,6 +2269,8 @@ async function syncToGoogleDrive(mode) {
       return;
     }
     await requestDriveToken('');
+    saveLocalBackup();
+    await createDriveBackup();
     await uploadDriveData(storageMeta.driveFileId, sanitizeDB(db));
     unsaved = false;
     if (mode !== 'auto') setFsStatus('✓ Saved to Drive — ' + new Date().toLocaleTimeString(), 'var(--green)');
@@ -5514,6 +5518,194 @@ setTimeout(() => {
     setFsStatus('! Drive auto-connect failed: ' + err.message, 'var(--red)');
   });
 }, 200);
+
+// ════════════════════════════════════════════════════════
+// BACKUP — Drive snapshots + localStorage
+// ════════════════════════════════════════════════════════
+const DRIVE_BACKUP_PREFIX = 'tgcapital-backup-';
+const MAX_DRIVE_BACKUPS = 7;
+const MAX_LOCAL_BACKUPS = 5;
+const LOCAL_BACKUP_KEY = 'tgcapital_backups_v1';
+
+function saveLocalBackup() {
+  try {
+    const entry = {
+      ts: new Date().toISOString(),
+      n: db.transactions?.length || 0,
+      d: JSON.stringify(sanitizeDB(db)),
+    };
+    let backups = [];
+    try { backups = JSON.parse(localStorage.getItem(LOCAL_BACKUP_KEY) || '[]'); } catch {}
+    backups.unshift(entry);
+    if (backups.length > MAX_LOCAL_BACKUPS) backups.length = MAX_LOCAL_BACKUPS;
+    try {
+      localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(backups));
+    } catch {
+      // If storage is full, try keeping just the newest one
+      try { localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify([entry])); } catch {}
+    }
+  } catch (err) {
+    console.warn('Local backup failed:', err.message);
+  }
+}
+
+function getLocalBackups() {
+  try { return JSON.parse(localStorage.getItem(LOCAL_BACKUP_KEY) || '[]'); } catch { return []; }
+}
+
+async function createDriveBackup() {
+  if (!storageMeta.driveFileId) return;
+  try {
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const name = DRIVE_BACKUP_PREFIX + ts + '.json';
+    const boundary = 'tgcap_bkp_' + Date.now();
+    const body =
+      '--' + boundary + '\r\n' +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify({ name, parents: ['appDataFolder'] }) + '\r\n' +
+      '--' + boundary + '\r\n' +
+      'Content-Type: application/json\r\n\r\n' +
+      JSON.stringify(sanitizeDB(db)) + '\r\n' +
+      '--' + boundary + '--';
+    await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name', {
+      method: 'POST',
+      headers: { 'Content-Type': `multipart/related; boundary="${boundary}"` },
+      body,
+    });
+    pruneOldDriveBackups();
+  } catch (err) {
+    console.warn('Drive backup failed:', err.message);
+  }
+}
+
+async function listDriveBackups() {
+  const resp = await window.gapi.client.drive.files.list({
+    spaces: 'appDataFolder',
+    pageSize: 20,
+    fields: 'files(id,name,modifiedTime)',
+    q: `name contains '${DRIVE_BACKUP_PREFIX}' and trashed=false`,
+    orderBy: 'modifiedTime desc',
+  });
+  return resp.result.files || [];
+}
+
+async function pruneOldDriveBackups() {
+  try {
+    const backups = await listDriveBackups();
+    const toDelete = backups.slice(MAX_DRIVE_BACKUPS);
+    for (const f of toDelete) {
+      try {
+        await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(f.id)}`, { method: 'DELETE' });
+      } catch {}
+    }
+  } catch {}
+}
+
+async function showDriveHistory() {
+  const modal = document.getElementById('backupModal');
+  const body  = document.getElementById('backupModalBody');
+  modal.style.display = 'flex';
+  body.innerHTML = '<div style="color:var(--text2);padding:24px 0;text-align:center;">Loading…</div>';
+
+  let driveRows = '';
+  const localBackups = getLocalBackups();
+
+  // Drive backups
+  if (storageMeta.driveFileId && driveAccessToken) {
+    try {
+      const files = await listDriveBackups();
+      if (files.length) {
+        driveRows = files.map((f, i) => {
+          const dt = new Date(f.modifiedTime).toLocaleString();
+          // Parse txn count from name if embedded, else show date
+          return `<tr>
+            <td style="padding:6px 8px;font-family:var(--mono);font-size:11px;">${dt}</td>
+            <td style="padding:6px 8px;color:var(--text2);font-size:11px;">Drive snapshot</td>
+            <td style="padding:6px 8px;text-align:right;">
+              <button class="btn btn-sm" onclick="restoreDriveBackup('${f.id}')" style="background:var(--accent);color:#fff;border:none;font-size:11px;">Restore</button>
+            </td>
+          </tr>`;
+        }).join('');
+      } else {
+        driveRows = `<tr><td colspan="3" style="padding:12px;color:var(--text2);font-size:11px;">No Drive snapshots found yet.</td></tr>`;
+      }
+    } catch (err) {
+      driveRows = `<tr><td colspan="3" style="padding:12px;color:var(--red);font-size:11px;">Could not load Drive backups: ${err.message}</td></tr>`;
+    }
+  } else {
+    driveRows = `<tr><td colspan="3" style="padding:12px;color:var(--text2);font-size:11px;">Connect Drive to see cloud snapshots.</td></tr>`;
+  }
+
+  const localRows = localBackups.length
+    ? localBackups.map((b, i) => {
+        const dt = new Date(b.ts).toLocaleString();
+        return `<tr>
+          <td style="padding:6px 8px;font-family:var(--mono);font-size:11px;">${dt}</td>
+          <td style="padding:6px 8px;color:var(--text2);font-size:11px;">Local — ${b.n} transactions</td>
+          <td style="padding:6px 8px;text-align:right;">
+            <button class="btn btn-sm" onclick="restoreLocalBackup(${i})" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border);font-size:11px;">Restore</button>
+          </td>
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="3" style="padding:12px;color:var(--text2);font-size:11px;">No local snapshots yet — they appear after your first save.</td></tr>`;
+
+  body.innerHTML = `
+    <div style="margin-bottom:16px;">
+      <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text2);margin-bottom:6px;font-family:var(--mono);">Drive Snapshots (last ${MAX_DRIVE_BACKUPS})</div>
+      <table style="width:100%;border-collapse:collapse;">${driveRows}</table>
+    </div>
+    <div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text2);margin-bottom:6px;font-family:var(--mono);">Local Snapshots (last ${MAX_LOCAL_BACKUPS})</div>
+      <table style="width:100%;border-collapse:collapse;">${localRows}</table>
+    </div>`;
+}
+
+function closeBackupModal() {
+  document.getElementById('backupModal').style.display = 'none';
+}
+
+async function restoreDriveBackup(fileId) {
+  if (!confirm('Restore this Drive snapshot? Your current data will be replaced.')) return;
+  try {
+    const res  = await driveFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`);
+    const data = await res.json();
+    db = sanitizeDB(data);
+    saveDB(db);
+    refreshAll();
+    closeBackupModal();
+    setFsStatus('✓ Snapshot restored — ' + new Date().toLocaleTimeString(), 'var(--green)');
+  } catch (err) {
+    alert('Restore failed: ' + err.message);
+  }
+}
+
+function restoreLocalBackup(index) {
+  const backups = getLocalBackups();
+  const entry = backups[index];
+  if (!entry) return;
+  if (!confirm(`Restore local snapshot from ${new Date(entry.ts).toLocaleString()} (${entry.n} transactions)?`)) return;
+  try {
+    db = sanitizeDB(JSON.parse(entry.d));
+    saveDB(db);
+    refreshAll();
+    closeBackupModal();
+    setFsStatus('✓ Local snapshot restored — ' + new Date().toLocaleTimeString(), 'var(--green)');
+  } catch (err) {
+    alert('Restore failed: ' + err.message);
+  }
+}
 </script>
+
+<!-- Backup/History Modal -->
+<div id="backupModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;width:min(560px,92vw);max-height:80vh;overflow:hidden;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);">
+      <span style="font-weight:700;font-size:13px;letter-spacing:0.05em;text-transform:uppercase;color:var(--text1);">Backup History</span>
+      <button onclick="closeBackupModal()" style="background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer;line-height:1;">✕</button>
+    </div>
+    <div id="backupModalBody" style="padding:16px;overflow-y:auto;flex:1;"></div>
+  </div>
+</div>
+
 </body>
 </html>
