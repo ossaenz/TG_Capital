@@ -3019,14 +3019,20 @@ function populateYearSelects() {
     }
   });
 
-  // Default Performance tab to current year on first load
-  if (!performanceDefaultYearApplied) {
-    const curYear = new Date().getFullYear().toString();
+  // Default Performance tab to the most recent year that has closed trade data
+  if (!performanceDefaultYearApplied && years.length > 0) {
+    const closedYears = new Set(
+      (db.transactions || [])
+        .map(t => (t.date || '').substring(0, 4))
+        .filter(y => y)
+    );
+    // Pick the most recent year that has data; fall back to most recent year in dropdown
+    const defaultYear = years.find(y => closedYears.has(String(y))) || years[0];
     const perfSel = document.getElementById('perfYearSelect');
-    if (perfSel && perfSel.querySelector(`option[value="${curYear}"]`)) {
-      perfSel.value = curYear;
-      performanceDateStart = `${curYear}-01-01`;
-      performanceDateEnd = `${curYear}-12-31`;
+    if (perfSel && defaultYear) {
+      perfSel.value = String(defaultYear);
+      performanceDateStart = `${defaultYear}-01-01`;
+      performanceDateEnd = `${defaultYear}-12-31`;
       performanceDefaultYearApplied = true;
       updatePerformanceFilterLabel();
     }
