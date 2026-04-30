@@ -1049,6 +1049,26 @@
       <div class="kpi"><div class="kpi-label">Assigned</div><div class="kpi-value" id="ck-assigned" style="color:var(--amber)">0</div><div class="kpi-sub">Premium kept</div></div>
     </div>
   </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Year</label>
+      <select id="closedYearSelect" style="width:90px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
+        <option value="">All</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Start</label>
+      <input type="date" id="closedDateStart" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" />
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">End</label>
+      <input type="date" id="closedDateEnd" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" />
+    </div>
+    <button class="btn btn-sm" onclick="applyClosedFilter()" style="align-self:flex-end;background:var(--accent);color:#fff;border:none;">Apply</button>
+    <button class="btn btn-sm" onclick="resetClosedFilter()" style="align-self:flex-end;background:var(--bg3);color:var(--text1);border:1px solid var(--border);">Reset</button>
+    <span id="closedFilterLabel" style="align-self:flex-end;font-family:var(--mono);font-size:10px;color:var(--text2);margin-left:4px;"></span>
+  </div>
+
   <div class="card">
     <div class="card-header">
       <span class="card-title">Closed Positions</span>
@@ -1122,6 +1142,25 @@
 
 <!-- ===== TRADES ===== -->
 <div class="view" id="view-trades">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Year</label>
+      <select id="tradeYearSelect" style="width:90px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
+        <option value="">All</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Start</label>
+      <input type="date" id="tradeDateStart" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" />
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">End</label>
+      <input type="date" id="tradeDateEnd" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" />
+    </div>
+    <button class="btn btn-sm" onclick="applyTradeFilter()" style="align-self:flex-end;background:var(--accent);color:#fff;border:none;">Apply</button>
+    <button class="btn btn-sm" onclick="resetTradeFilter()" style="align-self:flex-end;background:var(--bg3);color:var(--text1);border:1px solid var(--border);">Reset</button>
+    <span id="tradeFilterLabel" style="align-self:flex-end;font-family:var(--mono);font-size:10px;color:var(--text2);margin-left:4px;"></span>
+  </div>
   <div class="card">
     <div class="card-header">
       <span class="card-title">All Transactions</span>
@@ -3008,7 +3047,8 @@ function populateYearSelects() {
   }
   
   // Populate both selects
-  [document.getElementById('dashboardYearSelect'), document.getElementById('perfYearSelect')].forEach(select => {
+  [document.getElementById('dashboardYearSelect'), document.getElementById('perfYearSelect'),
+   document.getElementById('closedYearSelect'),   document.getElementById('tradeYearSelect')].forEach(select => {
     if (!select) return;
     // Keep 'All Years' option, remove old options
     const allYearsOption = select.querySelector('option[value=""]');
@@ -3965,6 +4005,64 @@ function renderDashboard() {
 
 let closedFilter = 'all';
 let posFilter = 'all';
+let closedDateStart = null;
+let closedDateEnd   = null;
+let tradeDateStart  = null;
+let tradeDateEnd    = null;
+
+function applyClosedFilter() {
+  const yr = document.getElementById('closedYearSelect').value;
+  const s  = document.getElementById('closedDateStart').value;
+  const e  = document.getElementById('closedDateEnd').value;
+  if (yr) { closedDateStart = `${yr}-01-01`; closedDateEnd = `${yr}-12-31`; }
+  else    { closedDateStart = s || null; closedDateEnd = e || null; }
+  updateClosedFilterLabel();
+  renderClosedPositions();
+}
+
+function resetClosedFilter() {
+  closedDateStart = null; closedDateEnd = null;
+  document.getElementById('closedYearSelect').value = '';
+  document.getElementById('closedDateStart').value  = '';
+  document.getElementById('closedDateEnd').value    = '';
+  updateClosedFilterLabel();
+  renderClosedPositions();
+}
+
+function updateClosedFilterLabel() {
+  const el = document.getElementById('closedFilterLabel');
+  if (!el) return;
+  el.textContent = (closedDateStart || closedDateEnd)
+    ? `${closedDateStart || '–'} to ${closedDateEnd || '–'}`
+    : '';
+}
+
+function applyTradeFilter() {
+  const yr = document.getElementById('tradeYearSelect').value;
+  const s  = document.getElementById('tradeDateStart').value;
+  const e  = document.getElementById('tradeDateEnd').value;
+  if (yr) { tradeDateStart = `${yr}-01-01`; tradeDateEnd = `${yr}-12-31`; }
+  else    { tradeDateStart = s || null; tradeDateEnd = e || null; }
+  updateTradeFilterLabel();
+  renderTradeTable();
+}
+
+function resetTradeFilter() {
+  tradeDateStart = null; tradeDateEnd = null;
+  document.getElementById('tradeYearSelect').value = '';
+  document.getElementById('tradeDateStart').value  = '';
+  document.getElementById('tradeDateEnd').value    = '';
+  updateTradeFilterLabel();
+  renderTradeTable();
+}
+
+function updateTradeFilterLabel() {
+  const el = document.getElementById('tradeFilterLabel');
+  if (!el) return;
+  el.textContent = (tradeDateStart || tradeDateEnd)
+    ? `${tradeDateStart || '–'} to ${tradeDateEnd || '–'}`
+    : '';
+}
 
 function filterClosed(f, btn) {
   closedFilter = f;
@@ -3976,14 +4074,27 @@ function filterClosed(f, btn) {
 function renderClosedPositions() {
   // Only show option round-trips (trades that have a strike price)
   const { closedTrades: allClosed } = buildPositions();
-  const closedTrades = allClosed.filter(t => t.instrument === 'option');
-  const search = (document.getElementById('closedSearch').value || '').toLowerCase();
+  let closedTrades = allClosed.filter(t => t.instrument === 'option');
 
-  // KPIs
+  // Apply date filter
+  if (closedDateStart || closedDateEnd) {
+    closedTrades = closedTrades.filter(t => {
+      const d = t.closeDate || '';
+      if (closedDateStart && d < closedDateStart) return false;
+      if (closedDateEnd   && d > closedDateEnd)   return false;
+      return true;
+    });
+  }
+
+  const search = (document.getElementById('closedSearch').value || '').toLowerCase();
+  const isFiltered = !!(closedDateStart || closedDateEnd);
+
+  // KPIs — reflect filtered range
   const gross = closedTrades.reduce((s, t) => s + (t.grossPnl || 0), 0);
   const fees  = closedTrades.reduce((s, t) => s + (t.fees || 0), 0);
   const net   = closedTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
   document.getElementById('ck-count').textContent    = closedTrades.length;
+  document.querySelector('#ck-count + .kpi-sub').textContent = isFiltered ? 'In date range' : 'All closed trades';
   document.getElementById('ck-gross').textContent    = fmt$(gross);
   document.getElementById('ck-gross').className      = 'kpi-value pos ' + pnlClass(gross);
   document.getElementById('ck-fees').textContent     = '-' + fmt$(fees);
@@ -4179,7 +4290,15 @@ function renderTradeTable() {
   const washIds = new Set(washFlags.flatMap(f => [f.lossTxn.id, f.repTxn.id]));
 
   let txns = db.transactions;
-  if (search) txns = txns.filter(t => (t.symbol + ' ' + t.action + ' ' + t.description).toLowerCase().includes(search));
+  if (tradeDateStart || tradeDateEnd) {
+    txns = txns.filter(t => {
+      const d = t.date || t.rawDate || '';
+      if (tradeDateStart && d < tradeDateStart) return false;
+      if (tradeDateEnd   && d > tradeDateEnd)   return false;
+      return true;
+    });
+  }
+  if (search) txns = txns.filter(t => (t.symbol + ' ' + t.action + ' ' + (t.description||'')).toLowerCase().includes(search));
   if (actionFilter) txns = txns.filter(t => t.action === actionFilter);
 
   const tbody = document.querySelector('#tradesTable tbody');
