@@ -1116,6 +1116,26 @@
     </div>
   </div>
   <div class="notice info" id="positionsNotice" style="display:none"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Year</label>
+      <select id="openYearSelect" style="width:90px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
+        <option value="">All</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Opened From</label>
+      <input type="date" id="openDateStart" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" />
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Opened To</label>
+      <input type="date" id="openDateEnd" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" />
+    </div>
+    <button class="btn btn-sm" onclick="applyOpenFilter()" style="align-self:flex-end;background:var(--accent);color:#fff;border:none;">Apply</button>
+    <button class="btn btn-sm" onclick="resetOpenFilter()" style="align-self:flex-end;background:var(--bg3);color:var(--text1);border:1px solid var(--border);">Reset</button>
+    <span id="openFilterLabel" style="align-self:flex-end;font-family:var(--mono);font-size:10px;color:var(--text2);margin-left:4px;"></span>
+  </div>
+
   <div class="card">
     <div class="card-header">
       <span class="card-title">Open Positions</span>
@@ -3048,7 +3068,8 @@ function populateYearSelects() {
   
   // Populate both selects
   [document.getElementById('dashboardYearSelect'), document.getElementById('perfYearSelect'),
-   document.getElementById('closedYearSelect'),   document.getElementById('tradeYearSelect')].forEach(select => {
+   document.getElementById('closedYearSelect'),   document.getElementById('tradeYearSelect'),
+   document.getElementById('openYearSelect')].forEach(select => {
     if (!select) return;
     // Keep 'All Years' option, remove old options
     const allYearsOption = select.querySelector('option[value=""]');
@@ -4009,6 +4030,35 @@ let closedDateStart = null;
 let closedDateEnd   = null;
 let tradeDateStart  = null;
 let tradeDateEnd    = null;
+let openDateStart   = null;
+let openDateEnd     = null;
+
+function applyOpenFilter() {
+  const yr = document.getElementById('openYearSelect').value;
+  const s  = document.getElementById('openDateStart').value;
+  const e  = document.getElementById('openDateEnd').value;
+  if (yr) { openDateStart = `${yr}-01-01`; openDateEnd = `${yr}-12-31`; }
+  else    { openDateStart = s || null; openDateEnd = e || null; }
+  updateOpenFilterLabel();
+  renderPositions();
+}
+
+function resetOpenFilter() {
+  openDateStart = null; openDateEnd = null;
+  document.getElementById('openYearSelect').value = '';
+  document.getElementById('openDateStart').value  = '';
+  document.getElementById('openDateEnd').value    = '';
+  updateOpenFilterLabel();
+  renderPositions();
+}
+
+function updateOpenFilterLabel() {
+  const el = document.getElementById('openFilterLabel');
+  if (!el) return;
+  el.textContent = (openDateStart || openDateEnd)
+    ? `Opened ${openDateStart || '–'} to ${openDateEnd || '–'}`
+    : '';
+}
 
 function applyClosedFilter() {
   const yr = document.getElementById('closedYearSelect').value;
@@ -4256,6 +4306,16 @@ function filterPositions(f, btn) {
 function renderPositions() {
   const { openPositions } = buildPositions();
   let pos = openPositions;
+
+  if (openDateStart || openDateEnd) {
+    pos = pos.filter(p => {
+      const d = p.openDate || '';
+      if (openDateStart && d < openDateStart) return false;
+      if (openDateEnd   && d > openDateEnd)   return false;
+      return true;
+    });
+  }
+
   if (posFilter === 'option') pos = pos.filter(p => p.instrument === 'option');
   else if (posFilter === 'stock') pos = pos.filter(p => p.instrument !== 'option');
   else if (posFilter === 'put') pos = pos.filter(p => p.optionType === 'put');
