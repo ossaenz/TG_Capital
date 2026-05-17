@@ -979,6 +979,18 @@
     <div class="kpi"><div class="kpi-label">Current Yearly P&L</div><div class="kpi-value pos n" id="perf-year-pnl">—</div><div class="kpi-sub" id="perf-year-sub">—</div></div>
   </div>
 
+  <div class="card" id="perfRangeStatsCard" style="margin-bottom:16px;background:linear-gradient(160deg, var(--bg2), var(--bg1));border:1px solid var(--border);display:none;">
+    <div class="card-header"><span class="card-title">Range Statistics</span></div>
+    <div class="kpi-grid" style="padding:0 16px 16px;">
+      <div class="kpi"><div class="kpi-label">Avg Daily P&L</div><div class="kpi-value pos n" id="rs-avg-daily">—</div><div class="kpi-sub" id="rs-avg-daily-sub">—</div></div>
+      <div class="kpi"><div class="kpi-label">Best Day</div><div class="kpi-value pos n" id="rs-best-day">—</div><div class="kpi-sub" id="rs-best-day-sub">—</div></div>
+      <div class="kpi"><div class="kpi-label">Worst Day</div><div class="kpi-value pos r" id="rs-worst-day">—</div><div class="kpi-sub" id="rs-worst-day-sub">—</div></div>
+      <div class="kpi"><div class="kpi-label">Win Rate (Trading Days)</div><div class="kpi-value" id="rs-win-rate">—</div><div class="kpi-sub" id="rs-win-rate-sub">—</div></div>
+      <div class="kpi"><div class="kpi-label">Avg per Trade</div><div class="kpi-value pos n" id="rs-avg-trade">—</div><div class="kpi-sub" id="rs-avg-trade-sub">—</div></div>
+      <div class="kpi"><div class="kpi-label">Total Fees</div><div class="kpi-value pos r" id="rs-total-fees">—</div><div class="kpi-sub" id="rs-total-fees-sub">—</div></div>
+    </div>
+  </div>
+
   <div class="card" style="margin-bottom:16px;background:linear-gradient(160deg, var(--bg2), var(--bg1));border:1px solid var(--border);">
     <div class="card-header"><span class="card-title">Quick Filters</span></div>
     <div style="padding:12px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
@@ -3616,6 +3628,69 @@ function computeStatsByDateRange(dateStart, dateEnd) {
   };
 }
 
+function updateRangeStats(filteredTrades) {
+  const card = document.getElementById('perfRangeStatsCard');
+  if (!performanceDateStart && !performanceDateEnd) {
+    card.style.display = 'none';
+    return;
+  }
+
+  if (filteredTrades.length === 0) {
+    card.style.display = 'none';
+    return;
+  }
+
+  // Group trades by day and calculate daily P&L
+  const dailyPnl = new Map();
+  for (const t of filteredTrades) {
+    const d = t.closeDate || '';
+    if (!dailyPnl.has(d)) dailyPnl.set(d, []);
+    dailyPnl.get(d).push(t.netPnl || 0);
+  }
+
+  // Calculate daily stats
+  const dailyTotals = [...dailyPnl.entries()].map(([d, pnls]) => ({
+    date: d,
+    pnl: pnls.reduce((s, p) => s + p, 0),
+    count: pnls.length,
+  })).sort((a, b) => a.date.localeCompare(b.date));
+
+  const avgDaily = dailyTotals.length > 0 ? dailyTotals.reduce((s, d) => s + d.pnl, 0) / dailyTotals.length : 0;
+  const bestDay = dailyTotals.length > 0 ? Math.max(...dailyTotals.map(d => d.pnl)) : 0;
+  const worstDay = dailyTotals.length > 0 ? Math.min(...dailyTotals.map(d => d.pnl)) : 0;
+  const winDays = dailyTotals.filter(d => d.pnl > 0).length;
+  const winRate = dailyTotals.length > 0 ? (winDays / dailyTotals.length) * 100 : 0;
+  const totalPnl = filteredTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
+  const avgPerTrade = filteredTrades.length > 0 ? totalPnl / filteredTrades.length : 0;
+  const totalFees = filteredTrades.reduce((s, t) => s + (t.fees || 0), 0);
+
+  // Update UI
+  document.getElementById('rs-avg-daily').textContent = fmt$(avgDaily);
+  document.getElementById('rs-avg-daily').className = `kpi-value pos ${pnlClass(avgDaily)}`;
+  document.getElementById('rs-avg-daily-sub').textContent = `${dailyTotals.length} trading days`;
+
+  document.getElementById('rs-best-day').textContent = fmt$(bestDay);
+  document.getElementById('rs-best-day').className = `kpi-value pos ${pnlClass(bestDay)}`;
+  document.getElementById('rs-best-day-sub').textContent = bestDay > 0 ? 'Highest daily P&L' : '—';
+
+  document.getElementById('rs-worst-day').textContent = fmt$(worstDay);
+  document.getElementById('rs-worst-day').className = `kpi-value pos ${pnlClass(worstDay)}`;
+  document.getElementById('rs-worst-day-sub').textContent = worstDay < 0 ? 'Lowest daily P&L' : '—';
+
+  document.getElementById('rs-win-rate').textContent = winRate.toFixed(1) + '%';
+  document.getElementById('rs-win-rate').className = `kpi-value ${winRate >= 50 ? 'pos g' : 'pos r'}`;
+  document.getElementById('rs-win-rate-sub').textContent = `${winDays}/${dailyTotals.length} days profitable`;
+
+  document.getElementById('rs-avg-trade').textContent = fmt$(avgPerTrade);
+  document.getElementById('rs-avg-trade').className = `kpi-value pos ${pnlClass(avgPerTrade)}`;
+  document.getElementById('rs-avg-trade-sub').textContent = `${filteredTrades.length} trades`;
+
+  document.getElementById('rs-total-fees').textContent = '-' + fmt$(totalFees);
+  document.getElementById('rs-total-fees-sub').textContent = totalFees > 0 ? 'Fees in range' : '—';
+
+  card.style.display = '';
+}
+
 function renderPerformance() {
   const { optionClosed } = computeStats();
   
@@ -3712,6 +3787,9 @@ function renderPerformance() {
   } else {
     symTile.style.display = 'none';
   }
+
+  // Update range statistics
+  updateRangeStats(filteredTrades);
 
   if (!rows.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No closed trades yet.</td></tr>';
