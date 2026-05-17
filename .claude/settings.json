@@ -5,7 +5,9 @@
       "Bash(node -e ':*)",
       "Bash(git add:*)",
       "Bash(git commit -m ':*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(grep -n \"function pnlClass\\\\|function fmt\\\\$\" /media/osaenz/2ndsk1/github/TG-Capital/index.html)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
