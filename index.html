@@ -3256,8 +3256,21 @@ function periodLabel(key, granularity) {
   return key;
 }
 
-function bucketPerformance(closedTrades, granularity) {
+function bucketPerformance(closedTrades, granularity, dateStart, dateEnd) {
   const buckets = new Map();
+
+  // For daily granularity with date range, pre-generate all days
+  if (granularity === 'daily' && dateStart && dateEnd) {
+    const d = new Date(dateStart);
+    const end = new Date(dateEnd);
+    while (d <= end) {
+      const dateStr = d.toISOString().slice(0, 10);
+      buckets.set(dateStr, { key: dateStr, pnl: 0, count: 0, wins: 0, losses: 0 });
+      d.setDate(d.getDate() + 1);
+    }
+  }
+
+  // Populate trades into buckets
   for (const t of closedTrades) {
     const key = periodKey(t.closeDate, granularity);
     if (!key) continue;
@@ -3649,7 +3662,7 @@ function renderPerformance() {
   setKpi('perf-month', month, 'monthly');
   setKpi('perf-year', year, 'yearly');
 
-  const rows = bucketPerformance(filteredTrades, performancePeriod);
+  const rows = bucketPerformance(filteredTrades, performancePeriod, performanceDateStart, performanceDateEnd);
   const tbody = document.querySelector('#performanceTable tbody');
   const instLabel = performanceInstruments === 'all' ? 'all instruments' : 'options';
   const dateRangeInfo = (performanceDateStart || performanceDateEnd) 
