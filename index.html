@@ -660,6 +660,7 @@
   <button class="nav-btn" onclick="showView('washsales')">Wash Sales</button>
   <button class="nav-btn" onclick="showView('import')">Import</button>
   <button class="nav-btn" onclick="showView('audit')">Audit Trail</button>
+  <button class="nav-btn" onclick="showView('fields')">Field Matrix</button>
   <button class="nav-btn" onclick="showView('reports')" style="margin-left:auto;background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent);">&#9112; Reports</button>
 </div>
 
@@ -1342,6 +1343,48 @@
         <th class="r">Price</th><th class="r">Fees</th><th class="r">Amount</th><th>Import Batch</th>
       </tr></thead>
       <tbody><tr class="empty-row"><td colspan="9">No records.</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- ===== FIELD MATRIX ===== -->
+<div class="view" id="view-fields">
+  <div class="section-title">Data Model Coverage</div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Trade Field Support Matrix</span>
+      <span style="font-family:var(--mono);font-size:12px;color:var(--text2)">Current dashboard coverage</span>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr>
+        <th>Field</th>
+        <th>Support</th>
+        <th>Where it comes from</th>
+        <th>Notes</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>Trade ID</td><td><span class="badge badge-open">Yes</span></td><td>Internal id generated from normalized transaction data</td><td>Used for de-dupe and record identity</td></tr>
+        <tr><td>Open Date</td><td><span class="badge badge-open">Yes</span></td><td>Open leg / matched lot date</td><td>Shown in closed positions and open positions</td></tr>
+        <tr><td>Close Date</td><td><span class="badge badge-open">Yes</span></td><td>Closing transaction date</td><td>Used for performance buckets and closed trade tables</td></tr>
+        <tr><td>Tax Year</td><td><span class="badge badge-assigned">Derived</span></td><td>Can be derived from date / closeDate</td><td>Not stored as a separate field</td></tr>
+        <tr><td>Symbol</td><td><span class="badge badge-open">Yes</span></td><td>Normalized Schwab symbol</td><td>Used throughout the app</td></tr>
+        <tr><td>Asset Type</td><td><span class="badge badge-assigned">Partial</span></td><td>Classified as stock / option / ETF</td><td>Futures are not supported</td></tr>
+        <tr><td>Strategy</td><td><span class="badge badge-closed">No</span></td><td>Not stored as a structured field</td><td>CSP / wheel / covered call / swing / scalp are not classified</td></tr>
+        <tr><td>Side</td><td><span class="badge badge-open">Yes</span></td><td>Schwab action text</td><td>Buy / Sell / STO / BTC / BTO / STC are represented by actions</td></tr>
+        <tr><td>Quantity</td><td><span class="badge badge-open">Yes</span></td><td>Normalized quantity on each transaction</td><td>Contracts or shares depending on instrument</td></tr>
+        <tr><td>Open Price</td><td><span class="badge badge-open">Yes</span></td><td>Open leg / matched lot price</td><td>Displayed in positions and closed positions</td></tr>
+        <tr><td>Close Price</td><td><span class="badge badge-open">Yes</span></td><td>Close leg price</td><td>Displayed in positions and closed positions</td></tr>
+        <tr><td>Gross Proceeds</td><td><span class="badge badge-open">Yes</span></td><td>Broker amount / proceeds</td><td>Shown in tables and P&amp;L breakdowns</td></tr>
+        <tr><td>Cost Basis</td><td><span class="badge badge-open">Yes</span></td><td>Matched lot cost / open credit</td><td>Derived from transaction matching</td></tr>
+        <tr><td>Net P/L</td><td><span class="badge badge-open">Yes</span></td><td>Calculated realized P&amp;L</td><td>Used in closed trade summaries and performance</td></tr>
+        <tr><td>Fees</td><td><span class="badge badge-open">Yes</span></td><td>Schwab fees / commissions</td><td>Tracked separately and displayed in tables</td></tr>
+        <tr><td>Notional Dollar Volume</td><td><span class="badge badge-assigned">Derived</span></td><td>Can be computed from price × quantity</td><td>Not currently shown as a dedicated field</td></tr>
+        <tr><td>Days Held</td><td><span class="badge badge-assigned">Derived</span></td><td>Open date to close date difference</td><td>Not currently shown as a dedicated field</td></tr>
+        <tr><td>Intraday Flag</td><td><span class="badge badge-closed">No</span></td><td>Would require same-day open/close logic</td><td>Not currently tracked</td></tr>
+        <tr><td>Short-Term Flag</td><td><span class="badge badge-closed">No</span></td><td>Would require holding-period logic</td><td>Not currently tracked</td></tr>
+        <tr><td>Daily-Move Income Flag</td><td><span class="badge badge-closed">No</span></td><td>No dedicated strategy tagging</td><td>Could be added manually later</td></tr>
+        <tr><td>Notes</td><td><span class="badge badge-assigned">Partial</span></td><td>Transaction description text</td><td>Freeform description exists, but no dedicated notes field</td></tr>
+      </tbody>
     </table></div>
   </div>
 </div>
@@ -3271,11 +3314,15 @@ function periodLabel(key, granularity) {
 function bucketPerformance(closedTrades, granularity, dateStart, dateEnd) {
   const buckets = new Map();
 
-  // For daily granularity with date range, pre-generate all days
+  // For daily granularity with date range, pre-generate all days (capped at today)
   if (granularity === 'daily' && dateStart && dateEnd) {
     const d = new Date(dateStart);
-    const end = new Date(dateEnd);
-    while (d <= end) {
+    const endDate = new Date(dateEnd);
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    // Don't generate buckets for future dates
+    const actualEnd = endDate > today ? today : endDate;
+    while (d <= actualEnd) {
       const dateStr = d.toISOString().slice(0, 10);
       buckets.set(dateStr, { key: dateStr, pnl: 0, count: 0, wins: 0, losses: 0 });
       d.setDate(d.getDate() + 1);
@@ -3721,10 +3768,16 @@ function renderPerformance() {
     });
   }
 
-  const day = currentPeriodMetrics(filteredTrades, 'daily');
-  const week = currentPeriodMetrics(filteredTrades, 'weekly');
-  const month = currentPeriodMetrics(filteredTrades, 'monthly');
-  const year = currentPeriodMetrics(filteredTrades, 'yearly');
+  // KPIs should show current period stats (today/this week/month/year) from ALL trades, not filtered trades
+  let unfilterredTrades = optionClosed;
+  if (performanceInstruments === 'all') {
+    const allTrades = (db.trades || []).filter(t => t.status === 'closed' && t.closeDate && t.netPnl !== undefined);
+    unfilterredTrades = [...optionClosed, ...allTrades.filter(t => !t.type || t.type !== 'option')];
+  }
+  const day = currentPeriodMetrics(unfilterredTrades, 'daily');
+  const week = currentPeriodMetrics(unfilterredTrades, 'weekly');
+  const month = currentPeriodMetrics(unfilterredTrades, 'monthly');
+  const year = currentPeriodMetrics(unfilterredTrades, 'yearly');
 
   const setKpi = (prefix, m, granularity) => {
     const el = document.getElementById(prefix + '-pnl');
