@@ -2011,7 +2011,7 @@ async function openDataFile() {
         try {
           // Determine if CSV or JSON
           if (fileName.endsWith('.csv')) {
-            const rows = parseCSV(text);
+            const rows = normalizeImportedCsvRows(fileName, parseCSV(text));
             const { added, dupes } = importRecords(rows, fileName, 'batch_' + Date.now() + '_' + index);
             totalAdded += added;
             totalDupes += dupes;
@@ -2630,9 +2630,12 @@ function mergeDatabases(localDB, remoteDB) {
 // ════════════════════════════════════════════════════════
 function parseCSV(text) {
   const lines = text.split('\n');
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  const headerLine = lines.find(line => line.trim());
+  if (!headerLine) return [];
+  const headerIndex = lines.indexOf(headerLine);
+  const headers = headerLine.split(',').map(h => h.trim().replace(/^"|"$/g, ''));
   const rows = [];
-  for (let i = 1; i < lines.length; i++) {
+  for (let i = headerIndex + 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     // Simple CSV parse (handles quoted commas for Schwab)
@@ -2647,6 +2650,73 @@ function parseCSV(text) {
     const row = {};
     headers.forEach((h, idx) => { row[h] = cells[idx] || ''; });
     rows.push(row);
+  }
+  return rows;
+}
+
+function looksLikeFidelityAccountsHistory(rows) {
+  if (!rows || rows.length === 0) return false;
+  const headers = Object.keys(rows[0] || {}).map(h => h.trim().toLowerCase());
+  return headers.includes('run date') && headers.includes('account number') && headers.includes('settlement date');
+}
+
+function normalizeFidelityAction(actionText) {
+  const text = String(actionText || '').trim().toUpperCase();
+  if (!text) return '';
+  if (text.startsWith('YOU BOUGHT ')) return 'Buy';
+  if (text.startsWith('YOU SOLD ')) return 'Sell';
+  if (text.includes('DIVIDEND')) return 'Cash Dividend';
+  if (text.includes('INTEREST')) return 'Credit Interest';
+  if (text.includes('EXCHANGE IN')) return 'Exchange In';
+  if (text.includes('EXCHANGE OUT')) return 'Exchange Out';
+  return String(actionText || '').trim();
+}
+
+function parseFidelitySymbol(actionText, description, fallbackSymbol) {
+  const raw = `${actionText || ''} ${description || ''}`.toUpperCase();
+  const match = raw.match(/\(([A-Z0-9.\-]+)\)/);
+  if (match && match[1]) return match[1].trim();
+  return String(fallbackSymbol || '').trim().toUpperCase();
+}
+
+function fidelityRowsToCanonical(rows) {
+  const out = [];
+  for (const row of rows || []) {
+    const actionText = row['Action'] || row.action || '';
+    const action = normalizeFidelityAction(actionText);
+    if (!action || action === 'Exchange In' || action === 'Exchange Out') continue;
+
+    const runDate = row['Run Date'] || row['Date'] || row.date || '';
+    const settlementDate = row['Settlement Date'] || row['Settlement'] || '';
+    const description = (row['Description'] || row.description || '').trim();
+    const symbol = parseFidelitySymbol(actionText, description, row['Symbol'] || row.symbol || '');
+    const quantity = parseQty(row['Quantity'] ?? row.quantity ?? '');
+    const price = parseMoney(row['Price ($)'] ?? row['Price'] ?? row.price ?? '');
+    const commission = parseMoney(row['Commission ($)'] ?? row['Fees ($)'] ?? row['Fees & Comm'] ?? row.fees ?? '') || 0;
+    const amount = parseMoney(row['Amount ($)'] ?? row['Amount'] ?? row.amount ?? '');
+
+    if (!symbol && !/DIVIDEND|INTEREST/i.test(action)) continue;
+
+    out.push({
+      rawDate: String(runDate || settlementDate || '').trim(),
+      date: parseDate(runDate) || parseDate(settlementDate) || null,
+      action,
+      symbol,
+      description,
+      quantity,
+      price,
+      fees: commission,
+      amount,
+      acctgRuleCd: (row['Type'] || row.type || '').trim(),
+    });
+  }
+  return out;
+}
+
+function normalizeImportedCsvRows(fileName, rows) {
+  if (looksLikeFidelityAccountsHistory(rows)) {
+    addLog(`  → detected Fidelity accounts history; normalizing rows`, 'info');
+    return fidelityRowsToCanonical(rows);
   }
   return rows;
 }
@@ -4656,7 +4726,7 @@ function processFileForBatch(file, parentBatchId, callback) {
         rawRows = data.BrokerageTransactions || (Array.isArray(data) ? data : []);
         addLog(`  ✓ JSON: ${rawRows.length} transactions`, 'ok');
       } else {
-        rawRows = parseCSV(content);
+        rawRows = normalizeImportedCsvRows(file.name, parseCSV(content));
         addLog(`  ✓ CSV: ${rawRows.length} rows`, 'ok');
       }
     } catch (err) {
@@ -4704,7 +4774,7 @@ function processFile(file) {
         rawRows = data.BrokerageTransactions || (Array.isArray(data) ? data : []);
         addLog(`Parsed JSON: ${rawRows.length} transactions found`, 'ok');
       } else {
-        rawRows = parseCSV(content);
+        rawRows = normalizeImportedCsvRows(file.name, parseCSV(content));
         addLog(`Parsed CSV: ${rawRows.length} rows found`, 'ok');
       }
     } catch (err) {
