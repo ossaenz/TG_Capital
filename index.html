@@ -1342,6 +1342,14 @@
         <option value="">All Batches</option>
       </select>
     </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">From Date</label>
+      <input type="date" id="auditDateStart" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" oninput="renderAudit()">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">To Date</label>
+      <input type="date" id="auditDateEnd" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" oninput="renderAudit()">
+    </div>
     <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:200px;">
       <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Search</label>
       <input type="text" id="auditSearch" placeholder="Search symbol, action..." style="padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" oninput="renderAudit()">
@@ -1352,8 +1360,15 @@
     <div class="card-header"><span class="card-title">Audit Trail — All Raw Records</span><span id="auditCount" style="font-family:var(--mono);font-size:12px;color:var(--text2)"></span></div>
     <div class="tbl-wrap"><table id="auditTable">
       <thead><tr>
-        <th>Row ID</th><th>Date</th><th>Action</th><th>Symbol</th><th class="r">Qty</th>
-        <th class="r">Price</th><th class="r">Fees</th><th class="r">Amount</th><th>Import Batch</th>
+        <th style="cursor:pointer;" onclick="sortAudit('rowId')">Row ID</th>
+        <th style="cursor:pointer;" onclick="sortAudit('date')">Date</th>
+        <th style="cursor:pointer;" onclick="sortAudit('action')">Action</th>
+        <th style="cursor:pointer;" onclick="sortAudit('symbol')">Symbol</th>
+        <th class="r" style="cursor:pointer;" onclick="sortAudit('qty')">Qty</th>
+        <th class="r" style="cursor:pointer;" onclick="sortAudit('price')">Price</th>
+        <th class="r" style="cursor:pointer;" onclick="sortAudit('fees')">Fees</th>
+        <th class="r" style="cursor:pointer;" onclick="sortAudit('amount')">Amount</th>
+        <th style="cursor:pointer;" onclick="sortAudit('batch')">Import Batch</th>
       </tr></thead>
       <tbody><tr class="empty-row"><td colspan="9">No records.</td></tr></tbody>
     </table></div>
@@ -4259,6 +4274,10 @@ let tradeDateStart  = null;
 let tradeDateEnd    = null;
 let openDateStart   = null;
 let openDateEnd     = null;
+let auditDateStart  = null;
+let auditDateEnd    = null;
+let auditSortBy     = null;
+let auditSortAsc    = true;
 
 function applyOpenFilter() {
   const yr = document.getElementById('openYearSelect').value;
@@ -4652,13 +4671,66 @@ function renderImportHistory() {
 function renderAudit() {
   const batchFilter = document.getElementById('auditBatchFilter').value;
   const search = (document.getElementById('auditSearch').value || '').toLowerCase();
+  const dateStart = document.getElementById('auditDateStart').value;
+  const dateEnd = document.getElementById('auditDateEnd').value;
 
   let txns = db.transactions;
+
   if (batchFilter) {
     txns = txns.filter(t => t.batchId === batchFilter);
   }
+  if (dateStart || dateEnd) {
+    txns = txns.filter(t => {
+      const d = t.date || t.rawDate || '';
+      if (dateStart && d < dateStart) return false;
+      if (dateEnd && d > dateEnd) return false;
+      return true;
+    });
+  }
   if (search) {
     txns = txns.filter(t => (t.symbol + ' ' + t.action + ' ' + (t.description||'')).toLowerCase().includes(search));
+  }
+
+  if (auditSortBy) {
+    txns = txns.sort((a, b) => {
+      let valA, valB;
+      switch (auditSortBy) {
+        case 'date':
+          valA = a.date || a.rawDate || '';
+          valB = b.date || b.rawDate || '';
+          return auditSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        case 'action':
+          valA = (a.action || '').toLowerCase();
+          valB = (b.action || '').toLowerCase();
+          return auditSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        case 'symbol':
+          valA = (a.symbol || '').toLowerCase();
+          valB = (b.symbol || '').toLowerCase();
+          return auditSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        case 'qty':
+          valA = a.quantity || 0;
+          valB = b.quantity || 0;
+          return auditSortAsc ? valA - valB : valB - valA;
+        case 'price':
+          valA = a.price || 0;
+          valB = b.price || 0;
+          return auditSortAsc ? valA - valB : valB - valA;
+        case 'fees':
+          valA = a.fees || 0;
+          valB = b.fees || 0;
+          return auditSortAsc ? valA - valB : valB - valA;
+        case 'amount':
+          valA = a.amount || 0;
+          valB = b.amount || 0;
+          return auditSortAsc ? valA - valB : valB - valA;
+        case 'batch':
+          valA = (a.batchId || '').toLowerCase();
+          valB = (b.batchId || '').toLowerCase();
+          return auditSortAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        default:
+          return 0;
+      }
+    });
   }
 
   const deleteBtn = document.getElementById('auditDeleteBtn');
@@ -4683,6 +4755,16 @@ function renderAudit() {
     <td class="r">${t.amount !== null ? fmt$(t.amount) : '—'}</td>
     <td style="color:var(--text2);font-size:11px">${t.batchId || '—'}</td>
   </tr>`).join('');
+}
+
+function sortAudit(field) {
+  if (auditSortBy === field) {
+    auditSortAsc = !auditSortAsc;
+  } else {
+    auditSortBy = field;
+    auditSortAsc = true;
+  }
+  renderAudit();
 }
 
 function populateAuditBatches() {
@@ -4728,6 +4810,10 @@ function deleteSelectedBatch() {
 
   document.getElementById('auditBatchFilter').value = '';
   document.getElementById('auditSearch').value = '';
+  document.getElementById('auditDateStart').value = '';
+  document.getElementById('auditDateEnd').value = '';
+  auditSortBy = null;
+  auditSortAsc = true;
   populateAuditBatches();
   renderAudit();
   refreshAll();
