@@ -913,6 +913,12 @@
         <div class="dash-kpi-sub">Options + stock</div>
       </div>
 
+      <div class="dash-kpi accent-purple">
+        <div class="dash-kpi-label">Total Trades</div>
+        <div class="dash-kpi-value" id="kpi-total-trades">—</div>
+        <div class="dash-kpi-sub" id="kpi-total-trades-sub">Closed in range</div>
+      </div>
+
       <div class="dash-kpi accent-amber">
         <div class="dash-kpi-label">Max Put Exposure</div>
         <div class="dash-kpi-value" id="kpi-exposure">—</div>
@@ -4208,6 +4214,13 @@ function renderDashboard() {
   const openEl = document.getElementById('kpi-open');
   openEl.textContent = openPositions.length;
   openEl.style.color = openPositions.length > 0 ? 'var(--teal)' : 'var(--text2)';
+
+  const totalTradesEl = document.getElementById('kpi-total-trades');
+  const totalTradesSubEl = document.getElementById('kpi-total-trades-sub');
+  const totalTrades = dashboardInstruments === 'options-only' ? optionClosed.length : closedTrades.length;
+  totalTradesEl.textContent = totalTrades;
+  totalTradesEl.style.color = totalTrades > 0 ? 'var(--purple)' : 'var(--text2)';
+  totalTradesSubEl.textContent = dashboardInstruments === 'options-only' ? 'Options closed' : 'All closed trades';
 
   const expEl = document.getElementById('kpi-exposure');
   expEl.textContent = premiumAtRisk > 0 ? fmt$(premiumAtRisk) : '—';
