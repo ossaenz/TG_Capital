@@ -934,6 +934,62 @@
     </div>
   </div>
 
+  <!-- ── GROUP 5: Trade Breakdown ──────────────────────── -->
+  <div class="dash-group">
+    <div class="dash-group-label">Trade Breakdown</div>
+    <div class="dash-kpi-row">
+
+      <div class="dash-kpi">
+        <div class="dash-kpi-label">Sell to Open</div>
+        <div class="dash-kpi-value" id="kpi-sto">—</div>
+        <div class="dash-kpi-sub" id="kpi-sto-sub">Option contracts sold</div>
+      </div>
+
+      <div class="dash-kpi">
+        <div class="dash-kpi-label">Buy to Close</div>
+        <div class="dash-kpi-value" id="kpi-btc">—</div>
+        <div class="dash-kpi-sub" id="kpi-btc-sub">Options bought back</div>
+      </div>
+
+      <div class="dash-kpi">
+        <div class="dash-kpi-label">Buy to Open</div>
+        <div class="dash-kpi-value" id="kpi-bto">—</div>
+        <div class="dash-kpi-sub" id="kpi-bto-sub">Option contracts bought</div>
+      </div>
+
+      <div class="dash-kpi">
+        <div class="dash-kpi-label">Sell to Close</div>
+        <div class="dash-kpi-value" id="kpi-stc">—</div>
+        <div class="dash-kpi-sub" id="kpi-stc-sub">Options sold to close</div>
+      </div>
+
+      <div class="dash-kpi">
+        <div class="dash-kpi-label">Stock Buys</div>
+        <div class="dash-kpi-value" id="kpi-stock-buy">—</div>
+        <div class="dash-kpi-sub" id="kpi-stock-buy-sub">Stock purchases</div>
+      </div>
+
+      <div class="dash-kpi">
+        <div class="dash-kpi-label">Stock Sales</div>
+        <div class="dash-kpi-value" id="kpi-stock-sell">—</div>
+        <div class="dash-kpi-sub" id="kpi-stock-sell-sub">Stock sales</div>
+      </div>
+
+      <div class="dash-kpi">
+        <div class="dash-kpi-label">Assigned</div>
+        <div class="dash-kpi-value" id="kpi-assigned">—</div>
+        <div class="dash-kpi-sub" id="kpi-assigned-sub">Assignment closures</div>
+      </div>
+
+      <div class="dash-kpi">
+        <div class="dash-kpi-label">Expired</div>
+        <div class="dash-kpi-value" id="kpi-expired">—</div>
+        <div class="dash-kpi-sub" id="kpi-expired-sub">Expirations</div>
+      </div>
+
+    </div>
+  </div>
+
   <div class="section-title">Cumulative Realized P&L</div>
   <div class="card" style="margin-bottom:20px;">
     <div class="card-header"><span class="card-title">P&L Curve</span><span style="font-size:12px;color:var(--text2)" id="pnlChartSub">—</span></div>
@@ -4221,6 +4277,42 @@ function renderDashboard() {
   totalTradesEl.textContent = totalTrades;
   totalTradesEl.style.color = totalTrades > 0 ? 'var(--purple)' : 'var(--text2)';
   totalTradesSubEl.textContent = dashboardInstruments === 'options-only' ? 'Options closed' : 'All closed trades';
+
+  // ── Trade Breakdown ────────────────────────────────────
+  const allTxns = db.transactions.filter(t => {
+    if (dashboardDateStart || dashboardDateEnd) {
+      const d = t.date || t.rawDate || '';
+      if (dashboardDateStart && d < dashboardDateStart) return false;
+      if (dashboardDateEnd && d > dashboardDateEnd) return false;
+    }
+    return true;
+  });
+
+  const countByAction = {};
+  allTxns.forEach(t => {
+    const action = t.action || '';
+    countByAction[action] = (countByAction[action] || 0) + 1;
+  });
+
+  const setTradeCount = (id, subId, action, label) => {
+    const count = countByAction[action] || 0;
+    const el = document.getElementById(id);
+    const subEl = document.getElementById(subId);
+    if (el) {
+      el.textContent = count;
+      el.style.color = count > 0 ? 'var(--text0)' : 'var(--text2)';
+    }
+    if (subEl) subEl.textContent = label;
+  };
+
+  setTradeCount('kpi-sto', 'kpi-sto-sub', 'Sell to Open', 'Option contracts sold');
+  setTradeCount('kpi-btc', 'kpi-btc-sub', 'Buy to Close', 'Options bought back');
+  setTradeCount('kpi-bto', 'kpi-bto-sub', 'Buy to Open', 'Option contracts bought');
+  setTradeCount('kpi-stc', 'kpi-stc-sub', 'Sell to Close', 'Options sold to close');
+  setTradeCount('kpi-stock-buy', 'kpi-stock-buy-sub', 'Buy', 'Stock purchases');
+  setTradeCount('kpi-stock-sell', 'kpi-stock-sell-sub', 'Sell', 'Stock sales');
+  setTradeCount('kpi-assigned', 'kpi-assigned-sub', 'Assigned', 'Assignment closures');
+  setTradeCount('kpi-expired', 'kpi-expired-sub', 'Expired', 'Expirations');
 
   const expEl = document.getElementById('kpi-exposure');
   expEl.textContent = premiumAtRisk > 0 ? fmt$(premiumAtRisk) : '—';
