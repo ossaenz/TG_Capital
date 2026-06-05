@@ -284,6 +284,20 @@
       </div>
       <div class="filters">
         <div class="field">
+          <label>Tax Year</label>
+          <select id="taxYearSelect" onchange="renderAll()">
+            <option value="">All years</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Date From</label>
+          <input id="dateFrom" type="date" onchange="renderAll()">
+        </div>
+        <div class="field">
+          <label>Date To</label>
+          <input id="dateTo" type="date" onchange="renderAll()">
+        </div>
+        <div class="field">
           <label>Match Mode</label>
           <select id="modeSelect" onchange="renderAll()">
             <option value="strict">Strict (exact symbol for options)</option>
@@ -560,30 +574,51 @@ function shiftDateISO(isoDate, days) {
 }
 
 function getBoundaryCoverageStatus() {
-  const fromDate = db.meta?.fromDate || null;
-  const toDate = db.meta?.toDate || null;
-  if (!fromDate || !toDate) {
+  const selectedYear = document.getElementById('taxYearSelect')?.value || '';
+  const allDates = (db.transactions || []).map(t => t.date).filter(Boolean).sort();
+  const dataMin = allDates.length ? allDates[0] : null;
+  const dataMax = allDates.length ? allDates[allDates.length - 1] : null;
+
+  if (!selectedYear) {
     return {
-      status: 'UNKNOWN',
+      status: 'SELECT YEAR',
       color: 'var(--text2)',
-      sub: 'Load file with FromDate/ToDate to evaluate boundaries',
+      sub: 'Pick a tax year to validate +/-30d boundary coverage',
     };
   }
 
-  const taxYear = String(fromDate).slice(0, 4);
+  if (!dataMin || !dataMax) {
+    return {
+      status: 'UNKNOWN',
+      color: 'var(--text2)',
+      sub: 'No transaction dates available to evaluate boundaries',
+    };
+  }
+
+  const fromDate = db.meta?.fromDate || null;
+  const toDate = db.meta?.toDate || null;
+  const taxYear = selectedYear || (fromDate ? String(fromDate).slice(0, 4) : null);
+  if (!taxYear) {
+    return {
+      status: 'UNKNOWN',
+      color: 'var(--text2)',
+      sub: 'Could not determine tax year for boundary check',
+    };
+  }
+
   const yearStart = `${taxYear}-01-01`;
   const yearEnd = `${taxYear}-12-31`;
   const requiredStart = shiftDateISO(yearStart, -30);
   const requiredEnd = shiftDateISO(yearEnd, 30);
 
-  const hasPre = fromDate <= requiredStart;
-  const hasPost = toDate >= requiredEnd;
+  const hasPre = dataMin <= requiredStart;
+  const hasPost = dataMax >= requiredEnd;
 
   if (hasPre && hasPost) {
     return {
       status: 'OK',
       color: 'var(--green)',
-      sub: `Boundary covered (${requiredStart} to ${requiredEnd})`,
+      sub: `Boundary covered for ${taxYear} (${requiredStart} to ${requiredEnd})`,
     };
   }
 
@@ -591,7 +626,7 @@ function getBoundaryCoverageStatus() {
     return {
       status: 'MISSING BOTH',
       color: 'var(--red)',
-      sub: `Need <= ${requiredStart} and >= ${requiredEnd}`,
+      sub: `Need <= ${requiredStart} and >= ${requiredEnd} for ${taxYear}`,
     };
   }
 
@@ -599,15 +634,49 @@ function getBoundaryCoverageStatus() {
     return {
       status: 'MISSING PRE',
       color: 'var(--amber)',
-      sub: `Need data through ${requiredStart} before tax year`,
+      sub: `Need data through ${requiredStart} before ${taxYear}`,
     };
   }
 
   return {
     status: 'MISSING POST',
     color: 'var(--amber)',
-    sub: `Need data through ${requiredEnd} after tax year`,
+    sub: `Need data through ${requiredEnd} after ${taxYear}`,
   };
+}
+
+function getAvailableTaxYears() {
+  const years = new Set();
+  for (const t of (db.transactions || [])) {
+    if (!t.date) continue;
+    const y = String(t.date).slice(0, 4);
+    if (/^\d{4}$/.test(y)) years.add(y);
+  }
+  return Array.from(years).sort((a, b) => b.localeCompare(a));
+}
+
+function populateTaxYearSelect() {
+  const sel = document.getElementById('taxYearSelect');
+  if (!sel) return;
+
+  const prev = sel.value;
+  const years = getAvailableTaxYears();
+  sel.innerHTML = '<option value="">All years</option>';
+  for (const y of years) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    sel.appendChild(opt);
+  }
+
+  if (prev && years.includes(prev)) {
+    sel.value = prev;
+    return;
+  }
+
+  if (years.length === 1) {
+    sel.value = years[0];
+  }
 }
 
 function diffDaysSigned(a, b) {
@@ -875,6 +944,9 @@ function esc(v) {
 
 function getSettings() {
   return {
+    taxYear: document.getElementById('taxYearSelect').value,
+    dateFrom: document.getElementById('dateFrom').value,
+    dateTo: document.getElementById('dateTo').value,
     mode: document.getElementById('modeSelect').value,
     windowSide: document.getElementById('windowSelect').value,
     symbol: document.getElementById('symbolFilter').value.trim().toUpperCase(),
@@ -883,10 +955,16 @@ function getSettings() {
 }
 
 function filterData(all, settings) {
+  const taxYear = settings.taxYear;
+  const dateFrom = settings.dateFrom || '';
+  const dateTo = settings.dateTo || '';
   const sym = settings.symbol;
   const risk = settings.risk;
 
   const filteredMatches = all.matches.filter(m => {
+    if (taxYear && String(m.lossDate || '').slice(0, 4) !== taxYear) return false;
+    if (dateFrom && (m.lossDate || '') < dateFrom) return false;
+    if (dateTo && (m.lossDate || '') > dateTo) return false;
     if (sym && !(m.lossSymbol || '').toUpperCase().includes(sym)) return false;
     if (risk && m.risk !== risk) return false;
     return true;
@@ -894,6 +972,9 @@ function filterData(all, settings) {
 
   const matchedIds = new Set(filteredMatches.map(m => m.lossId));
   const filteredSummaries = all.summaries.filter(s => {
+    if (taxYear && String(s.lossDate || '').slice(0, 4) !== taxYear) return false;
+    if (dateFrom && (s.lossDate || '') < dateFrom) return false;
+    if (dateTo && (s.lossDate || '') > dateTo) return false;
     if (sym && !(s.symbol || '').toUpperCase().includes(sym)) return false;
     if (!risk) return true;
     return matchedIds.has(s.lossId);
@@ -1167,6 +1248,7 @@ function loadInitialData() {
   if (fromSession) {
     db = fromSession.db;
     setSource(fromSession.source, fromSession.ts);
+    populateTaxYearSelect();
     updateCoverageNotice();
     return;
   }
@@ -1175,12 +1257,14 @@ function loadInitialData() {
   if (fromBackup) {
     db = fromBackup.db;
     setSource(fromBackup.source, fromBackup.ts);
+    populateTaxYearSelect();
     updateCoverageNotice();
     return;
   }
 
   db = { transactions: [], meta: {} };
   setSource('none (open JSON file)', '--');
+  populateTaxYearSelect();
   updateCoverageNotice();
 }
 
@@ -1201,6 +1285,7 @@ document.getElementById('jsonInput').addEventListener('change', async (ev) => {
     const parsed = JSON.parse(text);
     db = sanitizeDB(parsed);
     setSource(`file: ${file.name}`, new Date().toISOString());
+    populateTaxYearSelect();
     updateCoverageNotice();
     renderAll();
   } catch (err) {
