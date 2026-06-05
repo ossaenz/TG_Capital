@@ -658,6 +658,7 @@
   <button class="nav-btn" onclick="showView('closed')">Closed Positions</button>
   <button class="nav-btn" onclick="showView('trades')">Trade Log</button>
   <button class="nav-btn" onclick="showView('washsales')">Wash Sales</button>
+  <button class="nav-btn" onclick="openAdvancedWashSalesPage()">Advanced Wash Sales</button>
   <button class="nav-btn" onclick="showView('import')">Import</button>
   <button class="nav-btn" onclick="showView('audit')">Audit Trail</button>
   <button class="nav-btn" onclick="showView('fields')">Field Matrix</button>
@@ -5093,6 +5094,17 @@ function debugExportDB() {
 // ════════════════════════════════════════════════════════
 // VIEW ROUTING
 // ════════════════════════════════════════════════════════
+function openAdvancedWashSalesPage() {
+  try {
+    const payload = JSON.stringify(sanitizeDB(db));
+    sessionStorage.setItem('tgcapital_adv_wash_payload_v1', payload);
+    sessionStorage.setItem('tgcapital_adv_wash_payload_ts', new Date().toISOString());
+  } catch (err) {
+    console.warn('Advanced wash payload save failed:', err.message);
+  }
+  window.open('advanced-wash-sales.html', '_blank', 'noopener');
+}
+
 function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + id).classList.add('active');
