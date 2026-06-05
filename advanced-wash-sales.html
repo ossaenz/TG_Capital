@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TGCapital - Advanced Wash Sales</title>
+<link rel="icon" type="image/png" href="faveIcon.png">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg0: #0b0d10;
+    --bg1: #111419;
+    --bg2: #191d24;
+    --bg3: #232a34;
+    --border: #2c3442;
+    --border-hi: #3a4558;
+    --text0: #ebeff7;
+    --text1: #b6c0d3;
+    --text2: #7d8aa1;
+    --accent: #58a6ff;
+    --accent-dim: #173150;
+    --green: #44d695;
+    --red: #ff7d7d;
+    --amber: #f2bd62;
+    --teal: #65d4d4;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+    --r: 8px;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--text0);
+    background:
+      radial-gradient(1200px 500px at 85% -10%, rgba(88,166,255,0.15), transparent 70%),
+      radial-gradient(1000px 450px at -10% 20%, rgba(68,214,149,0.10), transparent 65%),
+      linear-gradient(180deg, #090b0e, #0b0d10 45%, #0a0c10);
+    min-height: 100vh;
+  }
+
+  .shell {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 18px;
+  }
+
+  .top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+  }
+
+  .logo span {
+    color: var(--text2);
+    font-weight: 500;
+  }
+
+  .pill {
+    border: 1px solid var(--border);
+    background: var(--bg1);
+    color: var(--text1);
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+
+  .actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--bg2);
+    color: var(--text0);
+    padding: 7px 12px;
+    font-size: 12px;
+    font-family: var(--mono);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .btn:hover { border-color: var(--border-hi); background: var(--bg3); }
+  .btn.primary { background: var(--accent-dim); border-color: #295a90; color: #9cc9ff; }
+
+  .notice {
+    border: 1px solid #71521e;
+    background: #332611;
+    color: var(--amber);
+    border-radius: var(--r);
+    padding: 12px 14px;
+    font-size: 13px;
+    margin-bottom: 14px;
+  }
+
+  .panel {
+    background: linear-gradient(165deg, var(--bg1), #0f1218);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+
+  .panel-hd {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.11em;
+    color: var(--text1);
+    font-weight: 700;
+  }
+
+  .grid-kpi {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .kpi {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 10px 12px;
+  }
+
+  .kpi-lbl {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    margin-bottom: 6px;
+  }
+
+  .kpi-val {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+
+  .kpi-sub { font-size: 11px; color: var(--text2); margin-top: 3px; }
+
+  .filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .field input,
+  .field select {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    color: var(--text0);
+    border-radius: 6px;
+    padding: 7px 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .chart-wrap { padding: 10px 12px 14px; }
+  .bars { display: flex; flex-direction: column; gap: 8px; }
+  .bar-row { display: grid; grid-template-columns: 120px 1fr 90px; gap: 8px; align-items: center; }
+  .bar-name { font-family: var(--mono); font-size: 12px; color: var(--text1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { height: 12px; background: #1a202b; border-radius: 999px; border: 1px solid var(--border); overflow: hidden; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, #f0b14f, #ff7d7d); }
+  .bar-val { font-family: var(--mono); font-size: 12px; color: var(--text1); text-align: right; }
+
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text2);
+    padding: 8px 10px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  tr:hover td { background: rgba(255,255,255,0.015); }
+  td.r, th.r { text-align: right; }
+  td.c, th.c { text-align: center; }
+
+  .badge {
+    display: inline-flex;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+  }
+
+  .risk-high { color: #ff9f9f; background: #3f1d1d; border: 1px solid #6d2a2a; }
+  .risk-medium { color: #ffd08c; background: #3c2c13; border: 1px solid #6f5223; }
+  .risk-low { color: #b5c0d2; background: #1f2734; border: 1px solid #344155; }
+
+  .empty {
+    text-align: center;
+    color: var(--text2);
+    padding: 24px;
+    font-size: 13px;
+  }
+
+  @media (max-width: 800px) {
+    .shell { padding: 10px; }
+    .bar-row { grid-template-columns: 95px 1fr 80px; }
+    .actions { margin-left: 0; width: 100%; }
+  }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <div class="top">
+      <div class="logo">TGCapital <span>/ Advanced Wash Sales</span></div>
+      <div class="pill" id="sourcePill">Source: loading...</div>
+      <div class="pill" id="stampPill">Snapshot: --</div>
+      <div class="actions">
+        <button class="btn" onclick="window.location.href='index.html'">Back To Main App</button>
+        <button class="btn" onclick="reloadFromPayload()">Reload Snapshot</button>
+        <button class="btn" onclick="openJsonFile()">Open JSON File</button>
+        <button class="btn primary" onclick="exportMatchLedgerCSV()">Export Match Ledger CSV</button>
+        <button class="btn primary" onclick="exportForm8949CSV()">Export Form 8949 CSV</button>
+      </div>
+    </div>
+
+    <div class="notice">
+      Advanced wash-sale analytics for CPA workflow: lot-level loss events, replacement matching within the 61-day window, disallowed-loss allocation, and replacement basis adjustments. Review with your CPA before filing.
+    </div>
+
+    <div class="notice" id="coverageNotice" style="display:none;"></div>
+
+    <div class="panel">
+      <div class="panel-hd">
+        <div class="panel-title">Controls</div>
+      </div>
+      <div class="filters">
+        <div class="field">
+          <label>Match Mode</label>
+          <select id="modeSelect" onchange="renderAll()">
+            <option value="strict">Strict (exact symbol for options)</option>
+            <option value="broad">Broad (underlying + option type)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Window Side</label>
+          <select id="windowSelect" onchange="renderAll()">
+            <option value="both">Before and after loss date</option>
+            <option value="after">After loss date only</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Symbol Filter</label>
+          <input id="symbolFilter" type="text" placeholder="e.g. SPY" oninput="renderAll()">
+        </div>
+        <div class="field">
+          <label>Risk Filter</label>
+          <select id="riskFilter" onchange="renderAll()">
+            <option value="">All</option>
+            <option value="HIGH">High</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="LOW">Low</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd"><div class="panel-title">Portfolio Wash Metrics</div></div>
+      <div class="grid-kpi" id="kpiGrid"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd"><div class="panel-title">Top Symbols By Disallowed Loss</div></div>
+      <div class="chart-wrap"><div id="bars" class="bars"></div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd"><div class="panel-title">Loss Event Summary</div></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Loss Date</th>
+              <th>Symbol</th>
+              <th>Instrument</th>
+              <th class="r">Loss Qty</th>
+              <th class="r">Realized Loss</th>
+              <th class="r">Matched Qty</th>
+              <th class="r">Disallowed</th>
+              <th class="r">Deductible Now</th>
+            </tr>
+          </thead>
+          <tbody id="lossSummaryBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd"><div class="panel-title">Replacement Basis Adjustments</div></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Replacement Date</th>
+              <th>Replacement Symbol</th>
+              <th>Action</th>
+              <th class="r">Replacement Qty</th>
+              <th class="r">Qty Matched</th>
+              <th class="r">Basis Adj (+)</th>
+              <th class="r">Adj Per Unit</th>
+            </tr>
+          </thead>
+          <tbody id="adjBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hd"><div class="panel-title">Wash Match Ledger</div></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Loss Date</th>
+              <th>Loss Symbol</th>
+              <th class="r">Loss Qty</th>
+              <th class="r">Loss Per Unit</th>
+              <th>Replacement Date</th>
+              <th>Replacement Symbol</th>
+              <th>Replacement Action</th>
+              <th class="r">Days</th>
+              <th class="r">Matched Qty</th>
+              <th class="r">Disallowed</th>
+              <th class="c">Risk</th>
+              <th class="c">Confidence</th>
+            </tr>
+          </thead>
+          <tbody id="matchBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<input id="jsonInput" type="file" accept=".json" style="display:none">
+
+<script>
+'use strict';
+
+const PAYLOAD_KEY = 'tgcapital_adv_wash_payload_v1';
+const PAYLOAD_TS_KEY = 'tgcapital_adv_wash_payload_ts';
+const LOCAL_BACKUP_KEY = 'tgcapital_backups_v1';
+
+let db = { transactions: [], meta: {} };
+let analytics = null;
+
+const ACTION_ORDER = {
+  'Sell to Open': 0,
+  'Buy to Open': 0,
+  'Buy': 0,
+  'Buy to Close': 1,
+  'Sell to Close': 1,
+  'Expired': 1,
+  'Assigned': 1,
+  'Sell': 1,
+};
+
+function parseMoney(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const s = String(v).replace(/[$,\s]/g, '').trim();
+  if (!s || s === '-') return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseDate(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const asOf = s.match(/as of\s+(\d{2}\/\d{2}\/\d{4})/i);
+  const dateStr = asOf ? asOf[1] : s;
+  const m = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!m) return null;
+  return `${m[3]}-${m[1]}-${m[2]}`;
+}
+
+function parseQty(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(String(v).replace(/,/g, '').trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeAction(v) {
+  return String(v || '').trim();
+}
+
+function sanitizeSymbol(v) {
+  return String(v || '').trim().toUpperCase();
+}
+
+function parseOptionSymbol(sym) {
+  const s = sanitizeSymbol(sym);
+  const m = s.match(/^([A-Z0-9.]+)\s+(\d{2}\/\d{2}\/\d{4})\s+([\d.]+)\s+([CP])$/);
+  if (!m) return null;
+  return {
+    underlying: m[1],
+    expiry: parseDate(m[2]),
+    strike: Number(m[3]),
+    optionType: m[4] === 'C' ? 'call' : 'put',
+  };
+}
+
+function classifyInstrument(symbol) {
+  if (!symbol) return 'other';
+  if (parseOptionSymbol(symbol)) return 'option';
+  return 'stock';
+}
+
+function moneyKey(v) {
+  if (v === null || v === undefined || Number.isNaN(v)) return '';
+  return Number(v).toFixed(4);
+}
+
+function rowId(t) {
+  return [
+    t.rawDate || '',
+    t.date || '',
+    t.action || '',
+    t.symbol || '',
+    t.quantity ?? '',
+    moneyKey(t.price),
+    moneyKey(t.fees),
+    moneyKey(t.amount),
+    t.description || '',
+  ].join('|');
+}
+
+function sanitizeTransaction(raw) {
+  const t = Object.assign({}, raw || {});
+  t.action = normalizeAction(t.action || t.Action);
+  t.rawDate = String(t.rawDate || t.Date || '').trim();
+  t.date = parseDate(t.date || t.rawDate);
+  t.symbol = sanitizeSymbol(t.symbol || t.Symbol);
+  t.description = String(t.description || t.Description || '').trim();
+  t.quantity = parseQty(t.quantity ?? t.Quantity);
+  t.price = parseMoney(t.price ?? t.Price);
+  t.fees = parseMoney(t.fees ?? t['Fees & Comm']) || 0;
+  t.amount = parseMoney(t.amount ?? t.Amount);
+
+  const opt = parseOptionSymbol(t.symbol);
+  t.instrument = t.instrument || classifyInstrument(t.symbol);
+  t.underlying = t.underlying || (opt ? opt.underlying : t.symbol);
+  t.optionType = t.optionType || (opt ? opt.optionType : null);
+  t.strike = t.strike ?? (opt ? opt.strike : null);
+  t.expiry = t.expiry || (opt ? opt.expiry : null);
+  t.id = t.id || rowId(t);
+  return t;
+}
+
+function extractRowsAndMeta(raw) {
+  const root = raw || {};
+  const container = root.db || root.data || root.payload || root.appData || root;
+
+  let rows = [];
+  if (Array.isArray(container)) rows = container;
+  else if (Array.isArray(container.transactions)) rows = container.transactions;
+  else if (Array.isArray(container.txns)) rows = container.txns;
+  else if (Array.isArray(container.BrokerageTransactions)) rows = container.BrokerageTransactions;
+  else if (Array.isArray(root.BrokerageTransactions)) rows = root.BrokerageTransactions;
+
+  const fromDate = parseDate(container.FromDate || root.FromDate || null);
+  const toDate = parseDate(container.ToDate || root.ToDate || null);
+
+  return {
+    rows,
+    meta: {
+      fromDate,
+      toDate,
+      totalTransactionsAmount: container.TotalTransactionsAmount || root.TotalTransactionsAmount || null,
+      totalFeesAndCommAmount: container.TotalFeesAndCommAmount || root.TotalFeesAndCommAmount || null,
+    },
+  };
+}
+
+function sanitizeDB(raw) {
+  const extracted = extractRowsAndMeta(raw);
+  const txns = (extracted.rows || []).map(sanitizeTransaction).filter(t => t.date && t.action);
+  txns.sort((a, b) => {
+    const d = (a.date || '').localeCompare(b.date || '');
+    if (d !== 0) return d;
+    return (ACTION_ORDER[a.action] ?? 9) - (ACTION_ORDER[b.action] ?? 9);
+  });
+  return { transactions: txns, meta: extracted.meta || {} };
+}
+
+function dateDiffDays(a, b) {
+  if (!a || !b) return null;
+  const da = new Date(a + 'T00:00:00Z');
+  const db = new Date(b + 'T00:00:00Z');
+  return Math.round((db - da) / 86400000);
+}
+
+function shiftDateISO(isoDate, days) {
+  if (!isoDate) return null;
+  const d = new Date(isoDate + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function getBoundaryCoverageStatus() {
+  const fromDate = db.meta?.fromDate || null;
+  const toDate = db.meta?.toDate || null;
+  if (!fromDate || !toDate) {
+    return {
+      status: 'UNKNOWN',
+      color: 'var(--text2)',
+      sub: 'Load file with FromDate/ToDate to evaluate boundaries',
+    };
+  }
+
+  const taxYear = String(fromDate).slice(0, 4);
+  const yearStart = `${taxYear}-01-01`;
+  const yearEnd = `${taxYear}-12-31`;
+  const requiredStart = shiftDateISO(yearStart, -30);
+  const requiredEnd = shiftDateISO(yearEnd, 30);
+
+  const hasPre = fromDate <= requiredStart;
+  const hasPost = toDate >= requiredEnd;
+
+  if (hasPre && hasPost) {
+    return {
+      status: 'OK',
+      color: 'var(--green)',
+      sub: `Boundary covered (${requiredStart} to ${requiredEnd})`,
+    };
+  }
+
+  if (!hasPre && !hasPost) {
+    return {
+      status: 'MISSING BOTH',
+      color: 'var(--red)',
+      sub: `Need <= ${requiredStart} and >= ${requiredEnd}`,
+    };
+  }
+
+  if (!hasPre) {
+    return {
+      status: 'MISSING PRE',
+      color: 'var(--amber)',
+      sub: `Need data through ${requiredStart} before tax year`,
+    };
+  }
+
+  return {
+    status: 'MISSING POST',
+    color: 'var(--amber)',
+    sub: `Need data through ${requiredEnd} after tax year`,
+  };
+}
+
+function diffDaysSigned(a, b) {
+  const da = new Date(a + 'T00:00:00Z');
+  const dbb = new Date(b + 'T00:00:00Z');
+  return Math.round((da - dbb) / 86400000);
+}
+
+function riskForDays(absDays) {
+  if (absDays <= 7) return 'HIGH';
+  if (absDays <= 14) return 'MEDIUM';
+  return 'LOW';
+}
+
+function confidenceForMatch(lossEvent, acq, strictMode) {
+  if (lossEvent.symbol === acq.symbol) return 'HIGH';
+  if (!strictMode && lossEvent.instrument === 'option' && acq.instrument === 'option' && lossEvent.optionType === acq.optionType) {
+    return 'MEDIUM';
+  }
+  return 'LOW';
+}
+
+function buildLossEvents(txns) {
+  const openOptionLots = {};
+  const openStockLots = {};
+  const losses = [];
+
+  for (const t of txns) {
+    const isOption = t.instrument === 'option';
+
+    if (isOption && (t.action === 'Sell to Open' || t.action === 'Buy to Open')) {
+      if (!openOptionLots[t.symbol]) openOptionLots[t.symbol] = [];
+      openOptionLots[t.symbol].push({ date: t.date, qty: Math.abs(t.quantity || 0), openAmount: t.amount || 0 });
+      continue;
+    }
+
+    if (isOption && (t.action === 'Buy to Close' || t.action === 'Sell to Close' || t.action === 'Expired' || t.action === 'Assigned')) {
+      const lots = openOptionLots[t.symbol] || [];
+      let remaining = Math.abs(t.quantity || 0) || 1;
+      let matchedQty = 0;
+      let openCredit = 0;
+      let openDateFirst = null;
+
+      while (remaining > 0 && lots.length > 0) {
+        const lot = lots[0];
+        const mQty = Math.min(remaining, lot.qty);
+        openCredit += (lot.qty > 0 ? (lot.openAmount / lot.qty) : 0) * mQty;
+        matchedQty += mQty;
+        if (!openDateFirst) openDateFirst = lot.date;
+        lot.qty -= mQty;
+        remaining -= mQty;
+        if (lot.qty <= 0) lots.shift();
+      }
+
+      if (matchedQty > 0) {
+        const closeAmount = (t.action === 'Expired' || t.action === 'Assigned') ? 0 : (t.amount || 0);
+        const pnl = openCredit + closeAmount;
+        if (pnl < -0.01) {
+          const lossAmount = Math.abs(pnl);
+          losses.push({
+            lossId: `${t.id}::${openDateFirst || ''}`,
+            closeTxnId: t.id,
+            lossDate: t.date,
+            symbol: t.symbol,
+            underlying: t.underlying,
+            instrument: 'option',
+            optionType: t.optionType,
+            qty: matchedQty,
+            realizedLoss: lossAmount,
+            lossPerUnit: matchedQty > 0 ? lossAmount / matchedQty : 0,
+          });
+        }
+      }
+      continue;
+    }
+
+    if (!isOption && t.action === 'Buy') {
+      if (!openStockLots[t.symbol]) openStockLots[t.symbol] = [];
+      openStockLots[t.symbol].push({ date: t.date, qty: Math.abs(t.quantity || 0), costBasis: Math.abs(t.amount || 0) });
+      continue;
+    }
+
+    if (!isOption && t.action === 'Sell') {
+      const lots = openStockLots[t.symbol] || [];
+      let remaining = Math.abs(t.quantity || 0);
+      let matchedQty = 0;
+      let totalCost = 0;
+
+      while (remaining > 0 && lots.length > 0) {
+        const lot = lots[0];
+        const mQty = Math.min(remaining, lot.qty);
+        totalCost += (lot.qty > 0 ? (lot.costBasis / lot.qty) : 0) * mQty;
+        matchedQty += mQty;
+        lot.qty -= mQty;
+        remaining -= mQty;
+        if (lot.qty <= 0) lots.shift();
+      }
+
+      if (matchedQty > 0) {
+        const sellQty = Math.abs(t.quantity || 0) || matchedQty;
+        const proceeds = Math.abs(t.amount || 0) * Math.min(1, matchedQty / sellQty);
+        const pnl = proceeds - totalCost;
+
+        if (pnl < -0.01) {
+          const lossAmount = Math.abs(pnl);
+          losses.push({
+            lossId: `${t.id}`,
+            closeTxnId: t.id,
+            lossDate: t.date,
+            symbol: t.symbol,
+            underlying: t.symbol,
+            instrument: 'stock',
+            optionType: null,
+            qty: matchedQty,
+            realizedLoss: lossAmount,
+            lossPerUnit: matchedQty > 0 ? lossAmount / matchedQty : 0,
+          });
+        }
+      }
+    }
+  }
+
+  return losses;
+}
+
+function buildAcquisitions(txns) {
+  return txns
+    .filter(t => t.date && ['Buy', 'Buy to Open', 'Sell to Open'].includes(t.action) && Math.abs(t.quantity || 0) > 0)
+    .map(t => ({
+      id: t.id,
+      date: t.date,
+      action: t.action,
+      symbol: t.symbol,
+      underlying: t.underlying,
+      instrument: t.instrument,
+      optionType: t.optionType,
+      qty: Math.abs(t.quantity || 0),
+      remainingQty: Math.abs(t.quantity || 0),
+    }));
+}
+
+function isSubstantiallyIdentical(lossEvent, acq, strictMode) {
+  if (lossEvent.underlying !== acq.underlying) return false;
+  if (strictMode) {
+    if (lossEvent.instrument === 'option') return acq.instrument === 'option' && acq.symbol === lossEvent.symbol;
+    return acq.instrument !== 'option' && acq.symbol === lossEvent.symbol;
+  }
+  if (lossEvent.instrument === 'option') return acq.instrument === 'option' && acq.optionType === lossEvent.optionType;
+  return acq.instrument !== 'option' && acq.symbol === lossEvent.symbol;
+}
+
+function computeWashAnalytics(txns, settings) {
+  const strictMode = settings.mode === 'strict';
+  const includeBefore = settings.windowSide === 'both';
+
+  const lossEvents = buildLossEvents(txns);
+  const acquisitions = buildAcquisitions(txns);
+  const matches = [];
+  const summaryMap = new Map();
+
+  for (const ev of lossEvents) {
+    let remainingLossQty = ev.qty;
+    let eventDisallowed = 0;
+    let eventMatchedQty = 0;
+
+    const candidates = acquisitions
+      .filter(a => {
+        if (a.id === ev.closeTxnId || a.remainingQty <= 0) return false;
+        if (!isSubstantiallyIdentical(ev, a, strictMode)) return false;
+        const d = diffDaysSigned(a.date, ev.lossDate);
+        if (!includeBefore && d < 0) return false;
+        return Math.abs(d) <= 30;
+      })
+      .sort((a, b) => {
+        const da = Math.abs(diffDaysSigned(a.date, ev.lossDate));
+        const db = Math.abs(diffDaysSigned(b.date, ev.lossDate));
+        if (da !== db) return da - db;
+        return a.date.localeCompare(b.date);
+      });
+
+    for (const acq of candidates) {
+      if (remainingLossQty <= 0) break;
+      if (acq.remainingQty <= 0) continue;
+
+      const matchedQty = Math.min(remainingLossQty, acq.remainingQty);
+      const disallowed = matchedQty * ev.lossPerUnit;
+      const signedDays = diffDaysSigned(acq.date, ev.lossDate);
+      const absDays = Math.abs(signedDays);
+
+      matches.push({
+        lossId: ev.lossId,
+        lossDate: ev.lossDate,
+        lossSymbol: ev.symbol,
+        lossQty: ev.qty,
+        lossPerUnit: ev.lossPerUnit,
+        replacementId: acq.id,
+        replacementDate: acq.date,
+        replacementSymbol: acq.symbol,
+        replacementAction: acq.action,
+        replacementQty: acq.qty,
+        matchedQty,
+        disallowed,
+        daysSigned: signedDays,
+        daysAbs: absDays,
+        risk: riskForDays(absDays),
+        confidence: confidenceForMatch(ev, acq, strictMode),
+      });
+
+      eventDisallowed += disallowed;
+      eventMatchedQty += matchedQty;
+      remainingLossQty -= matchedQty;
+      acq.remainingQty -= matchedQty;
+    }
+
+    summaryMap.set(ev.lossId, {
+      lossId: ev.lossId,
+      lossDate: ev.lossDate,
+      symbol: ev.symbol,
+      instrument: ev.instrument,
+      lossQty: ev.qty,
+      realizedLoss: ev.realizedLoss,
+      matchedQty: eventMatchedQty,
+      disallowed: eventDisallowed,
+      deductibleNow: Math.max(0, ev.realizedLoss - eventDisallowed),
+      optionType: ev.optionType,
+    });
+  }
+
+  const summaries = Array.from(summaryMap.values()).sort((a, b) => b.lossDate.localeCompare(a.lossDate));
+
+  const replacementAdjustmentsMap = new Map();
+  for (const m of matches) {
+    if (!replacementAdjustmentsMap.has(m.replacementId)) {
+      replacementAdjustmentsMap.set(m.replacementId, {
+        replacementId: m.replacementId,
+        replacementDate: m.replacementDate,
+        replacementSymbol: m.replacementSymbol,
+        replacementAction: m.replacementAction,
+        replacementQty: m.replacementQty,
+        matchedQty: 0,
+        basisAdj: 0,
+      });
+    }
+    const row = replacementAdjustmentsMap.get(m.replacementId);
+    row.matchedQty += m.matchedQty;
+    row.basisAdj += m.disallowed;
+  }
+
+  const replacementAdjustments = Array.from(replacementAdjustmentsMap.values()).map(r => ({
+    ...r,
+    adjPerUnit: r.matchedQty > 0 ? r.basisAdj / r.matchedQty : 0,
+  })).sort((a, b) => b.replacementDate.localeCompare(a.replacementDate));
+
+  return { summaries, matches, replacementAdjustments };
+}
+
+function fmt$(n) {
+  const v = Number(n || 0);
+  return (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(2);
+}
+
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch]));
+}
+
+function getSettings() {
+  return {
+    mode: document.getElementById('modeSelect').value,
+    windowSide: document.getElementById('windowSelect').value,
+    symbol: document.getElementById('symbolFilter').value.trim().toUpperCase(),
+    risk: document.getElementById('riskFilter').value,
+  };
+}
+
+function filterData(all, settings) {
+  const sym = settings.symbol;
+  const risk = settings.risk;
+
+  const filteredMatches = all.matches.filter(m => {
+    if (sym && !(m.lossSymbol || '').toUpperCase().includes(sym)) return false;
+    if (risk && m.risk !== risk) return false;
+    return true;
+  });
+
+  const matchedIds = new Set(filteredMatches.map(m => m.lossId));
+  const filteredSummaries = all.summaries.filter(s => {
+    if (sym && !(s.symbol || '').toUpperCase().includes(sym)) return false;
+    if (!risk) return true;
+    return matchedIds.has(s.lossId);
+  });
+
+  const replacementIds = new Set(filteredMatches.map(m => m.replacementId));
+  const filteredAdjustments = all.replacementAdjustments.filter(r => replacementIds.has(r.replacementId) || (!risk && !sym));
+
+  return { filteredMatches, filteredSummaries, filteredAdjustments };
+}
+
+function renderKPIs(filtered) {
+  const totalLoss = filtered.filteredSummaries.reduce((s, r) => s + r.realizedLoss, 0);
+  const totalDisallowed = filtered.filteredSummaries.reduce((s, r) => s + r.disallowed, 0);
+  const deductibleNow = filtered.filteredSummaries.reduce((s, r) => s + r.deductibleNow, 0);
+  const matchedEvents = filtered.filteredSummaries.filter(r => r.matchedQty > 0).length;
+  const totalEvents = filtered.filteredSummaries.length;
+  const highRisk = filtered.filteredMatches.filter(m => m.risk === 'HIGH').length;
+  const avgDays = filtered.filteredMatches.length > 0
+    ? filtered.filteredMatches.reduce((s, m) => s + m.daysAbs, 0) / filtered.filteredMatches.length
+    : 0;
+  const boundary = getBoundaryCoverageStatus();
+
+  const cards = [
+    { label: 'Loss Events', value: String(totalEvents), sub: `${matchedEvents} with replacement matches`, color: 'var(--text0)' },
+    { label: 'Total Realized Loss', value: fmt$(totalLoss), sub: 'From matched closed lots', color: 'var(--red)' },
+    { label: 'Disallowed Loss', value: fmt$(totalDisallowed), sub: 'Allocated to replacement basis', color: 'var(--amber)' },
+    { label: 'Deductible Now', value: fmt$(deductibleNow), sub: 'Current-year deductible portion', color: 'var(--green)' },
+    { label: 'High-Risk Matches', value: String(highRisk), sub: `${filtered.filteredMatches.length} total matches`, color: highRisk > 0 ? 'var(--red)' : 'var(--text1)' },
+    { label: 'Avg Match Distance', value: filtered.filteredMatches.length ? `${avgDays.toFixed(1)}d` : '0d', sub: 'Absolute days from loss date', color: 'var(--teal)' },
+    { label: 'Boundary Coverage (+/-30d)', value: boundary.status, sub: boundary.sub, color: boundary.color },
+  ];
+
+  document.getElementById('kpiGrid').innerHTML = cards.map(c => `
+    <div class="kpi">
+      <div class="kpi-lbl">${esc(c.label)}</div>
+      <div class="kpi-val" style="color:${c.color}">${esc(c.value)}</div>
+      <div class="kpi-sub">${esc(c.sub)}</div>
+    </div>`).join('');
+}
+
+function renderBars(filtered) {
+  const bySymbol = new Map();
+  for (const row of filtered.filteredSummaries) {
+    const key = row.symbol || 'UNKNOWN';
+    bySymbol.set(key, (bySymbol.get(key) || 0) + (row.disallowed || 0));
+  }
+
+  const data = Array.from(bySymbol.entries())
+    .map(([sym, val]) => ({ sym, val }))
+    .filter(x => x.val > 0)
+    .sort((a, b) => b.val - a.val)
+    .slice(0, 10);
+
+  if (!data.length) {
+    document.getElementById('bars').innerHTML = '<div class="empty">No disallowed-loss allocations for current filters.</div>';
+    return;
+  }
+
+  const maxVal = Math.max(...data.map(x => x.val), 1);
+  document.getElementById('bars').innerHTML = data.map(x => {
+    const w = Math.max(3, Math.round((x.val / maxVal) * 100));
+    return `<div class="bar-row"><div class="bar-name">${esc(x.sym)}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%"></div></div><div class="bar-val">${esc(fmt$(x.val))}</div></div>`;
+  }).join('');
+}
+
+function renderLossSummary(filtered) {
+  const rows = filtered.filteredSummaries;
+  const tbody = document.getElementById('lossSummaryBody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">No loss events for current filters.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${esc(r.lossDate)}</td>
+      <td>${esc(r.symbol)}</td>
+      <td>${esc(r.instrument === 'option' ? (r.optionType ? 'OPTION ' + r.optionType.toUpperCase() : 'OPTION') : 'STOCK')}</td>
+      <td class="r">${esc(String(r.lossQty))}</td>
+      <td class="r" style="color:var(--red)">${esc(fmt$(r.realizedLoss))}</td>
+      <td class="r">${esc(String(r.matchedQty))}</td>
+      <td class="r" style="color:var(--amber)">${esc(fmt$(r.disallowed))}</td>
+      <td class="r" style="color:var(--green)">${esc(fmt$(r.deductibleNow))}</td>
+    </tr>`).join('');
+}
+
+function renderAdjustments(filtered) {
+  const rows = filtered.filteredAdjustments;
+  const tbody = document.getElementById('adjBody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">No replacement basis adjustments for current filters.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${esc(r.replacementDate)}</td>
+      <td>${esc(r.replacementSymbol)}</td>
+      <td>${esc(r.replacementAction)}</td>
+      <td class="r">${esc(String(r.replacementQty))}</td>
+      <td class="r">${esc(String(r.matchedQty))}</td>
+      <td class="r" style="color:var(--amber)">${esc(fmt$(r.basisAdj))}</td>
+      <td class="r">${esc(fmt$(r.adjPerUnit))}</td>
+    </tr>`).join('');
+}
+
+function riskBadgeClass(risk) {
+  if (risk === 'HIGH') return 'risk-high';
+  if (risk === 'MEDIUM') return 'risk-medium';
+  return 'risk-low';
+}
+
+function renderMatches(filtered) {
+  const rows = filtered.filteredMatches;
+  const tbody = document.getElementById('matchBody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="12" class="empty">No wash matches for current filters.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${esc(r.lossDate)}</td>
+      <td>${esc(r.lossSymbol)}</td>
+      <td class="r">${esc(String(r.lossQty))}</td>
+      <td class="r">${esc(fmt$(r.lossPerUnit))}</td>
+      <td>${esc(r.replacementDate)}</td>
+      <td>${esc(r.replacementSymbol)}</td>
+      <td>${esc(r.replacementAction)}</td>
+      <td class="r">${esc(String(r.daysSigned))}</td>
+      <td class="r">${esc(String(r.matchedQty))}</td>
+      <td class="r" style="color:var(--amber)">${esc(fmt$(r.disallowed))}</td>
+      <td class="c"><span class="badge ${riskBadgeClass(r.risk)}">${esc(r.risk)}</span></td>
+      <td class="c">${esc(r.confidence)}</td>
+    </tr>`).join('');
+}
+
+function renderAll() {
+  const settings = getSettings();
+  analytics = computeWashAnalytics(db.transactions, settings);
+  const filtered = filterData(analytics, settings);
+  renderKPIs(filtered);
+  renderBars(filtered);
+  renderLossSummary(filtered);
+  renderAdjustments(filtered);
+  renderMatches(filtered);
+}
+
+function _csvCell(v) {
+  const s = String(v ?? '');
+  return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadCSV(name, rows) {
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportMatchLedgerCSV() {
+  if (!analytics) return;
+  const settings = getSettings();
+  const filtered = filterData(analytics, settings);
+  const rows = [
+    ['Loss Date','Loss Symbol','Loss Qty','Loss Per Unit','Replacement Date','Replacement Symbol','Replacement Action','Days Signed','Matched Qty','Disallowed Loss','Risk','Confidence'].map(_csvCell).join(','),
+    ...filtered.filteredMatches.map(r => [
+      r.lossDate, r.lossSymbol, r.lossQty, r.lossPerUnit.toFixed(6),
+      r.replacementDate, r.replacementSymbol, r.replacementAction, r.daysSigned,
+      r.matchedQty, r.disallowed.toFixed(2), r.risk, r.confidence,
+    ].map(_csvCell).join(',')),
+  ];
+  downloadCSV('TGCapital_AdvancedWash_MatchLedger.csv', rows);
+}
+
+function exportForm8949CSV() {
+  if (!analytics) return;
+  const settings = getSettings();
+  const filtered = filterData(analytics, settings);
+
+  const rows = [
+    ['TGCapital - Form 8949 Estimated Export'].map(_csvCell).join(','),
+    ['Generated At', new Date().toISOString()].map(_csvCell).join(','),
+    ['Source Range', (db.meta?.fromDate || '?') + ' to ' + (db.meta?.toDate || '?')].map(_csvCell).join(','),
+    [],
+    ['Description','Date Acquired','Date Sold','Proceeds','Cost or Other Basis','Adjustment Code','Adjustment Amount','Gain or (Loss)','Symbol','Instrument','Loss Qty','Matched Qty','Confidence'].map(_csvCell).join(','),
+    ...filtered.filteredSummaries.map(r => [
+      `Estimated wash-sale disposition: ${r.symbol}`,
+      '',
+      r.lossDate,
+      '',
+      '',
+      r.disallowed > 0 ? 'W' : '',
+      r.disallowed > 0 ? r.disallowed.toFixed(2) : '0.00',
+      (-r.deductibleNow).toFixed(2),
+      r.symbol,
+      r.instrument === 'option' ? (r.optionType ? `option-${r.optionType}` : 'option') : 'stock',
+      r.lossQty,
+      r.matchedQty,
+      r.matchedQty > 0 ? 'review' : 'none',
+    ].map(_csvCell).join(',')),
+  ];
+  downloadCSV('TGCapital_AdvancedWash_Form8949_Estimate.csv', rows);
+}
+
+function setSource(sourceText, tsText) {
+  document.getElementById('sourcePill').textContent = `Source: ${sourceText}`;
+  document.getElementById('stampPill').textContent = `Snapshot: ${tsText || '--'}`;
+}
+
+function updateCoverageNotice() {
+  const el = document.getElementById('coverageNotice');
+  const fromDate = db.meta?.fromDate || null;
+  const toDate = db.meta?.toDate || null;
+  if (!fromDate || !toDate) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+
+  const spanDays = dateDiffDays(fromDate, toDate);
+  if (spanDays === null) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+
+  if (spanDays < 61) {
+    el.style.display = 'block';
+    el.textContent = `Data range is ${spanDays + 1} days (${fromDate} to ${toDate}). Wash-sale analysis may miss matches outside this window. Use at least 61+ days around any loss date, and preferably the full tax year plus prior/next month.`;
+  } else {
+    el.style.display = 'none';
+    el.textContent = '';
+  }
+}
+
+function tryLoadFromSession() {
+  try {
+    const raw = sessionStorage.getItem(PAYLOAD_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const clean = sanitizeDB(parsed);
+    if (!clean.transactions.length) return null;
+    const ts = sessionStorage.getItem(PAYLOAD_TS_KEY) || new Date().toISOString();
+    return { db: clean, source: 'main app snapshot', ts };
+  } catch {
+    return null;
+  }
+}
+
+function tryLoadFromLocalBackup() {
+  try {
+    const backups = JSON.parse(localStorage.getItem(LOCAL_BACKUP_KEY) || '[]');
+    if (!Array.isArray(backups) || backups.length === 0) return null;
+    const first = backups[0];
+    if (!first || !first.d) return null;
+    const parsed = JSON.parse(first.d);
+    const clean = sanitizeDB(parsed);
+    if (!clean.transactions.length) return null;
+    return { db: clean, source: 'latest local backup', ts: first.ts || new Date().toISOString() };
+  } catch {
+    return null;
+  }
+}
+
+function loadInitialData() {
+  const fromSession = tryLoadFromSession();
+  if (fromSession) {
+    db = fromSession.db;
+    setSource(fromSession.source, fromSession.ts);
+    updateCoverageNotice();
+    return;
+  }
+
+  const fromBackup = tryLoadFromLocalBackup();
+  if (fromBackup) {
+    db = fromBackup.db;
+    setSource(fromBackup.source, fromBackup.ts);
+    updateCoverageNotice();
+    return;
+  }
+
+  db = { transactions: [], meta: {} };
+  setSource('none (open JSON file)', '--');
+  updateCoverageNotice();
+}
+
+function reloadFromPayload() {
+  loadInitialData();
+  renderAll();
+}
+
+function openJsonFile() {
+  document.getElementById('jsonInput').click();
+}
+
+document.getElementById('jsonInput').addEventListener('change', async (ev) => {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    db = sanitizeDB(parsed);
+    setSource(`file: ${file.name}`, new Date().toISOString());
+    updateCoverageNotice();
+    renderAll();
+  } catch (err) {
+    alert('Could not load JSON file: ' + err.message);
+  } finally {
+    ev.target.value = '';
+  }
+});
+
+loadInitialData();
+renderAll();
+</script>
+</body>
+</html>
