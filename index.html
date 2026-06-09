@@ -1318,6 +1318,26 @@
       <!-- Right: Notes & Screenshots -->
       <div>
         <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:10px;color:var(--text2);font-weight:700;margin-bottom:8px;text-transform:uppercase;">Trading Strategy</label>
+          <select id="journalStrategy" onchange="handleStrategyChange()" style="width:100%;padding:8px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text0);font-size:12px;">
+            <option value="">— Select Strategy —</option>
+            <option value="Iron Condor">Iron Condor</option>
+            <option value="Vertical Call Spread">Vertical Call Spread</option>
+            <option value="Vertical Put Spread">Vertical Put Spread</option>
+            <option value="Covered Call">Covered Call</option>
+            <option value="Cash-Secured Put">Cash-Secured Put</option>
+            <option value="Long Call">Long Call</option>
+            <option value="Long Put">Long Put</option>
+            <option value="Strangle">Strangle</option>
+            <option value="Straddle">Straddle</option>
+            <option value="Wheel Strategy">Wheel Strategy</option>
+            <option value="Stock Buy">Stock Buy</option>
+            <option value="Stock Sale">Stock Sale</option>
+            <option value="Other">Other (Custom)</option>
+          </select>
+          <input type="text" id="journalStrategyCustom" placeholder="Enter custom strategy name..." style="width:100%;padding:8px;margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text0);font-size:12px;display:none;" />
+        </div>
+        <div style="margin-bottom:16px;">
           <label style="display:block;font-size:10px;color:var(--text2);font-weight:700;margin-bottom:8px;text-transform:uppercase;">Trade Notes</label>
           <textarea id="journalNotes" placeholder="Document your analysis, rationale, and decision-making process..." style="width:100%;height:200px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text0);font-family:var(--mono);font-size:12px;resize:vertical;"></textarea>
         </div>
@@ -2943,6 +2963,7 @@ function importRecords(rawRows, fileName, batchId) {
         strike: txn.strike,
         expiry: txn.expiry,
         instrument: txn.instrument,
+        strategy: '',
         notes: '',
         screenshots: [],
         createdAt: new Date().toISOString(),
@@ -4853,7 +4874,10 @@ function renderJournal() {
                       entry.action === 'Buy to Close' ? 'BTC' : entry.action === 'Sell to Close' ? 'STC' : entry.action;
 
     return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:16px;cursor:pointer;transition:all 0.2s;" onclick="openJournalEntry('${entry.id}')" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-      <div style="font-family:var(--mono);font-weight:700;font-size:14px;color:var(--accent);margin-bottom:8px;">${symbol}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="font-family:var(--mono);font-weight:700;font-size:14px;color:var(--accent);">${symbol}</div>
+        ${entry.strategy ? `<div style="background:var(--accent-dim);color:var(--accent);padding:3px 8px;border-radius:3px;font-size:10px;font-weight:700;">${entry.strategy}</div>` : ''}
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:var(--text1);margin-bottom:12px;">
         <div><span style="color:var(--text2);">Date:</span> ${date}</div>
         <div><span style="color:var(--text2);">Action:</span> ${actionStr}</div>
@@ -4873,6 +4897,24 @@ function openJournalEntry(entryId) {
   if (!currentJournalEntry) return;
 
   document.getElementById('journalNotes').value = currentJournalEntry.notes || '';
+  const strategySelect = document.getElementById('journalStrategy');
+  const customInput = document.getElementById('journalStrategyCustom');
+
+  if (currentJournalEntry.strategy) {
+    const predefined = ['Iron Condor', 'Vertical Call Spread', 'Vertical Put Spread', 'Covered Call', 'Cash-Secured Put', 'Long Call', 'Long Put', 'Strangle', 'Straddle', 'Wheel Strategy', 'Stock Buy', 'Stock Sale'];
+    if (predefined.includes(currentJournalEntry.strategy)) {
+      strategySelect.value = currentJournalEntry.strategy;
+      customInput.style.display = 'none';
+    } else {
+      strategySelect.value = 'Other';
+      customInput.value = currentJournalEntry.strategy;
+      customInput.style.display = 'block';
+    }
+  } else {
+    strategySelect.value = '';
+    customInput.style.display = 'none';
+  }
+
   updateJournalSummary();
   renderJournalScreenshots();
   fetchAndRenderPriceChart();
@@ -4944,11 +4986,31 @@ function removeJournalScreenshot(idx) {
 function saveJournalEntry() {
   if (!currentJournalEntry) return;
   currentJournalEntry.notes = document.getElementById('journalNotes').value;
+
+  const strategySelect = document.getElementById('journalStrategy');
+  const customInput = document.getElementById('journalStrategyCustom');
+  if (strategySelect.value === 'Other') {
+    currentJournalEntry.strategy = customInput.value || '';
+  } else {
+    currentJournalEntry.strategy = strategySelect.value || '';
+  }
+
   currentJournalEntry.updatedAt = new Date().toISOString();
   saveDB(db);
   addLog('Journal entry saved', 'success');
   closeJournalModal();
   renderJournal();
+}
+
+function handleStrategyChange() {
+  const strategySelect = document.getElementById('journalStrategy');
+  const customInput = document.getElementById('journalStrategyCustom');
+  if (strategySelect.value === 'Other') {
+    customInput.style.display = 'block';
+    customInput.focus();
+  } else {
+    customInput.style.display = 'none';
+  }
 }
 
 async function fetchAndRenderPriceChart() {
