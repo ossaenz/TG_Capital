@@ -658,6 +658,7 @@
   <button class="nav-btn" onclick="showView('closed')">Closed Positions</button>
   <button class="nav-btn" onclick="showView('trades')">Trade Log</button>
   <button class="nav-btn" onclick="showView('journal')">Trading Journal</button>
+  <button class="nav-btn" onclick="showView('journal-report')">Journal Report</button>
   <button class="nav-btn" onclick="showView('washsales')">Wash Sales</button>
   <button class="nav-btn" onclick="openAdvancedWashSalesPage()">Advanced Wash Sales</button>
   <button class="nav-btn" onclick="showView('import')">Import</button>
@@ -1356,6 +1357,23 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- ===== JOURNAL REPORT ===== -->
+<div class="view" id="view-journal-report">
+  <div class="section-title">Trading Journal Report — IRS Audit Documentation</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px;">
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">From Date</label>
+      <input type="date" id="jrDateStart" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" oninput="renderJournalReport()">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">To Date</label>
+      <input type="date" id="jrDateEnd" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" oninput="renderJournalReport()">
+    </div>
+    <button class="btn btn-sm" onclick="jrExportCSV()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);align-self:flex-end;">⬇ Export for CPA</button>
+  </div>
+  <div id="journalReportContainer"></div>
 </div>
 
 <!-- ===== WASH SALES ===== -->
@@ -5112,6 +5130,265 @@ function renderPriceChart(prices, tradeDate, tradePrice) {
   container.innerHTML = svg;
 }
 
+// ════════════════════════════════════════════════════════
+// JOURNAL REPORT - IRS AUDIT DOCUMENTATION
+// ════════════════════════════════════════════════════════
+function renderJournalReport() {
+  const dateStart = document.getElementById('jrDateStart')?.value || '';
+  const dateEnd = document.getElementById('jrDateEnd')?.value || '';
+
+  let filtered = db.journalEntries.filter(e => {
+    const date = e.date || e.createdAt;
+    if (dateStart && date < dateStart) return false;
+    if (dateEnd && date > dateEnd) return false;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    document.getElementById('journalReportContainer').innerHTML = '<div style="text-align:center;color:var(--text2);padding:40px;">No journal entries in this date range.</div>';
+    return;
+  }
+
+  // Calculate metrics
+  const byStrategy = {};
+  const byTicker = {};
+  const byAction = {};
+  let totalNotes = 0;
+  let withStrategy = 0;
+  let withScreenshots = 0;
+
+  for (const entry of filtered) {
+    const strategy = entry.strategy || 'Unassigned';
+    const ticker = entry.underlying || entry.symbol;
+    const action = entry.action;
+
+    if (!byStrategy[strategy]) byStrategy[strategy] = { count: 0, entries: [] };
+    if (!byTicker[ticker]) byTicker[ticker] = { count: 0, entries: [] };
+    if (!byAction[action]) byAction[action] = { count: 0 };
+
+    byStrategy[strategy].count++;
+    byStrategy[strategy].entries.push(entry);
+    byTicker[ticker].count++;
+    byTicker[ticker].entries.push(entry);
+    byAction[action].count++;
+
+    if (entry.notes) totalNotes++;
+    if (entry.strategy) withStrategy++;
+    if (entry.screenshots && entry.screenshots.length > 0) withScreenshots++;
+  }
+
+  let html = '';
+
+  // KPIs
+  html += `<div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><span class="card-title">Documentation Overview</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;padding:20px;">
+      <div style="text-align:center;">
+        <div style="font-size:24px;color:var(--accent);font-weight:700;">${filtered.length}</div>
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;margin-top:4px;">Total Trades</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:24px;color:var(--green);font-weight:700;">${withStrategy}</div>
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;margin-top:4px;">With Strategy</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:24px;color:var(--accent);font-weight:700;">${totalNotes}</div>
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;margin-top:4px;">With Notes</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:24px;color:var(--accent);font-weight:700;">${withScreenshots}</div>
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;margin-top:4px;">With Evidence</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:24px;color:var(--amber);font-weight:700;">${Object.keys(byStrategy).length}</div>
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;margin-top:4px;">Strategies Used</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:24px;color:var(--accent);font-weight:700;">${Object.keys(byTicker).length}</div>
+        <div style="font-size:11px;color:var(--text2);text-transform:uppercase;margin-top:4px;">Tickers</div>
+      </div>
+    </div>
+  </div>`;
+
+  // By Strategy
+  html += `<div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><span class="card-title">Trades by Strategy</span></div>
+    <div class="tbl-wrap"><table style="width:100%;">
+      <thead><tr style="background:var(--bg2);">
+        <th style="padding:12px;text-align:left;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;">Strategy</th>
+        <th style="padding:12px;text-align:right;">Count</th>
+        <th style="padding:12px;text-align:right;">With Notes %</th>
+        <th style="padding:12px;text-align:right;">With Evidence %</th>
+      </tr></thead>
+      <tbody>`;
+
+  Object.keys(byStrategy).sort((a, b) => byStrategy[b].count - byStrategy[a].count).forEach(strategy => {
+    const data = byStrategy[strategy];
+    const notesCount = data.entries.filter(e => e.notes).length;
+    const screenshotCount = data.entries.filter(e => e.screenshots && e.screenshots.length > 0).length;
+    html += `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:12px;"><strong>${strategy}</strong></td>
+      <td style="padding:12px;text-align:right;color:var(--accent);font-weight:700;">${data.count}</td>
+      <td style="padding:12px;text-align:right;color:var(--text1);">${((notesCount/data.count)*100).toFixed(0)}%</td>
+      <td style="padding:12px;text-align:right;color:var(--text1);">${((screenshotCount/data.count)*100).toFixed(0)}%</td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div></div>`;
+
+  // By Ticker
+  html += `<div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><span class="card-title">Trades by Ticker</span></div>
+    <div class="tbl-wrap"><table style="width:100%;">
+      <thead><tr style="background:var(--bg2);">
+        <th style="padding:12px;text-align:left;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;">Ticker</th>
+        <th style="padding:12px;text-align:right;">Count</th>
+        <th style="padding:12px;text-align:right;">Documented %</th>
+      </tr></thead>
+      <tbody>`;
+
+  Object.keys(byTicker).sort((a, b) => byTicker[b].count - byTicker[a].count).forEach(ticker => {
+    const data = byTicker[ticker];
+    const documented = data.entries.filter(e => e.strategy || e.notes).length;
+    html += `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:12px;"><strong>${ticker}</strong></td>
+      <td style="padding:12px;text-align:right;color:var(--accent);font-weight:700;">${data.count}</td>
+      <td style="padding:12px;text-align:right;color:var(--text1);">${((documented/data.count)*100).toFixed(0)}%</td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div></div>`;
+
+  // By Action Type
+  html += `<div class="card" style="margin-bottom:16px;">
+    <div class="card-header"><span class="card-title">Trades by Action Type</span></div>
+    <div class="tbl-wrap"><table style="width:100%;">
+      <thead><tr style="background:var(--bg2);">
+        <th style="padding:12px;text-align:left;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;">Action</th>
+        <th style="padding:12px;text-align:right;">Count</th>
+        <th style="padding:12px;text-align:right;">% of Total</th>
+      </tr></thead>
+      <tbody>`;
+
+  Object.keys(byAction).sort((a, b) => byAction[b].count - byAction[a].count).forEach(action => {
+    const count = byAction[action].count;
+    html += `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:12px;"><strong>${action}</strong></td>
+      <td style="padding:12px;text-align:right;color:var(--accent);font-weight:700;">${count}</td>
+      <td style="padding:12px;text-align:right;color:var(--text1);">${((count/filtered.length)*100).toFixed(1)}%</td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div></div>`;
+
+  // Recent Trades with Documentation
+  html += `<div class="card">
+    <div class="card-header"><span class="card-title">Recent Trade Documentation Timeline</span></div>
+    <div class="tbl-wrap"><table style="width:100%;font-size:12px;">
+      <thead><tr style="background:var(--bg2);">
+        <th style="padding:10px;text-align:left;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;width:80px;">Date</th>
+        <th style="padding:10px;text-align:left;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Ticker</th>
+        <th style="padding:10px;text-align:left;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Strategy</th>
+        <th style="padding:10px;text-align:left;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Action</th>
+        <th style="padding:10px;text-align:left;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Notes</th>
+      </tr></thead>
+      <tbody>`;
+
+  filtered.sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt)).slice(0, 50).forEach(entry => {
+    const ticker = entry.underlying || entry.symbol;
+    const strategy = entry.strategy || '—';
+    const hasNotes = entry.notes ? '✓' : '—';
+    const notePreview = entry.notes ? entry.notes.substring(0, 40) + (entry.notes.length > 40 ? '...' : '') : '';
+    html += `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:10px;color:var(--text1);">${entry.date}</td>
+      <td style="padding:10px;color:var(--accent);font-weight:700;">${ticker}</td>
+      <td style="padding:10px;color:var(--text1);">${strategy}</td>
+      <td style="padding:10px;color:var(--text1);font-size:11px;">${entry.action}</td>
+      <td style="padding:10px;color:var(--text2);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;">${notePreview || '—'}</td>
+    </tr>`;
+  });
+
+  html += `</tbody></table></div></div>`;
+
+  document.getElementById('journalReportContainer').innerHTML = html;
+}
+
+function jrExportCSV() {
+  const dateStart = document.getElementById('jrDateStart')?.value || '';
+  const dateEnd = document.getElementById('jrDateEnd')?.value || '';
+
+  let filtered = db.journalEntries.filter(e => {
+    const date = e.date || e.createdAt;
+    if (dateStart && date < dateStart) return false;
+    if (dateEnd && date > dateEnd) return false;
+    return true;
+  });
+
+  let csv = 'TGCapital Trading Journal Report\n';
+  csv += `Generated: ${new Date().toISOString()}\n`;
+  if (dateStart || dateEnd) csv += `Period: ${dateStart} to ${dateEnd}\n`;
+  csv += '\n';
+
+  // KPIs
+  csv += 'DOCUMENTATION OVERVIEW\n';
+  csv += `Total Trades Documented,${filtered.length}\n`;
+  csv += `With Strategy,${filtered.filter(e => e.strategy).length}\n`;
+  csv += `With Trade Notes,${filtered.filter(e => e.notes).length}\n`;
+  csv += `With Evidence (Screenshots),${filtered.filter(e => e.screenshots && e.screenshots.length > 0).length}\n`;
+  csv += '\n';
+
+  // By Strategy
+  csv += 'TRADES BY STRATEGY\n';
+  csv += 'Strategy,Count,With Notes %,With Evidence %\n';
+  const byStrategy = {};
+  for (const entry of filtered) {
+    const strategy = entry.strategy || 'Unassigned';
+    if (!byStrategy[strategy]) byStrategy[strategy] = { count: 0, entries: [] };
+    byStrategy[strategy].count++;
+    byStrategy[strategy].entries.push(entry);
+  }
+  Object.keys(byStrategy).sort((a, b) => byStrategy[b].count - byStrategy[a].count).forEach(strategy => {
+    const data = byStrategy[strategy];
+    const notesCount = data.entries.filter(e => e.notes).length;
+    const screenshotCount = data.entries.filter(e => e.screenshots && e.screenshots.length > 0).length;
+    csv += `"${strategy}",${data.count},${((notesCount/data.count)*100).toFixed(0)},${((screenshotCount/data.count)*100).toFixed(0)}\n`;
+  });
+  csv += '\n';
+
+  // By Ticker
+  csv += 'TRADES BY TICKER\n';
+  csv += 'Ticker,Count,Documented %\n';
+  const byTicker = {};
+  for (const entry of filtered) {
+    const ticker = entry.underlying || entry.symbol;
+    if (!byTicker[ticker]) byTicker[ticker] = { count: 0, entries: [] };
+    byTicker[ticker].count++;
+    byTicker[ticker].entries.push(entry);
+  }
+  Object.keys(byTicker).sort((a, b) => byTicker[b].count - byTicker[a].count).forEach(ticker => {
+    const data = byTicker[ticker];
+    const documented = data.entries.filter(e => e.strategy || e.notes).length;
+    csv += `"${ticker}",${data.count},${((documented/data.count)*100).toFixed(0)}\n`;
+  });
+  csv += '\n';
+
+  // Detailed Timeline
+  csv += 'TRADE DOCUMENTATION TIMELINE\n';
+  csv += 'Date,Ticker,Strategy,Action,Qty,Price,Notes\n';
+  filtered.sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt)).forEach(entry => {
+    const ticker = entry.underlying || entry.symbol;
+    const strategy = entry.strategy || '';
+    csv += `"${entry.date}","${ticker}","${strategy}","${entry.action}",${entry.quantity},${entry.price},"${(entry.notes || '').replace(/"/g, '""')}"\n`;
+  });
+
+  const filename = `TGCapital_JournalReport_${dateStart || 'all'}_to_${dateEnd || 'all'}.csv`;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.setAttribute('href', URL.createObjectURL(blob));
+  link.setAttribute('download', filename);
+  link.click();
+}
+
 function renderWashSales() {
   const flags = detectWashSales();
   document.getElementById('washCount').textContent = flags.length ? `${flags.length} potential violations` : 'No flags';
@@ -5492,6 +5769,7 @@ function showView(id) {
   else if (id === 'closed') renderClosedPositions();
   else if (id === 'trades') renderTradeTable();
   else if (id === 'journal') renderJournal();
+  else if (id === 'journal-report') renderJournalReport();
   else if (id === 'washsales') renderWashSales();
   else if (id === 'import') renderImportHistory();
   else if (id === 'audit') { populateAuditBatches(); renderAudit(); }
@@ -5511,8 +5789,9 @@ function refreshAll() {
   renderImportHistory();
   populateAuditBatches();
   renderAudit();
-  // Only re-render Reports if it's currently visible (avoids slow render when hidden)
-  if (document.getElementById('view-reports').classList.contains('active')) renderReports();
+  // Only re-render visible report tabs
+  if (document.getElementById('view-journal-report')?.classList.contains('active')) renderJournalReport();
+  if (document.getElementById('view-reports')?.classList.contains('active')) renderReports();
 }
 
 // ════════════════════════════════════════════════════════
