@@ -657,6 +657,7 @@
   <button class="nav-btn" onclick="showView('positions')">Open Positions</button>
   <button class="nav-btn" onclick="showView('closed')">Closed Positions</button>
   <button class="nav-btn" onclick="showView('trades')">Trade Log</button>
+  <button class="nav-btn" onclick="showView('journal')">Trading Journal</button>
   <button class="nav-btn" onclick="showView('washsales')">Wash Sales</button>
   <button class="nav-btn" onclick="openAdvancedWashSalesPage()">Advanced Wash Sales</button>
   <button class="nav-btn" onclick="showView('import')">Import</button>
@@ -1283,6 +1284,60 @@
   </div>
 </div>
 
+<!-- ===== TRADING JOURNAL ===== -->
+<div class="view" id="view-journal">
+  <div class="section-title">Trading Journal — Decision Documentation</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Filter</label>
+      <input type="text" id="journalSearch" placeholder="Search symbol, action..." style="padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);width:200px;" oninput="renderJournal()">
+    </div>
+  </div>
+  <div id="journalContainer" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
+  </div>
+</div>
+
+<!-- ===== JOURNAL DETAIL MODAL ===== -->
+<div id="journalModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
+  <div style="background:var(--bg0);margin:20px auto;max-width:900px;border-radius:6px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+    <div style="padding:20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+      <h2 style="margin:0;color:var(--text0);">Trade Journal Entry</h2>
+      <button onclick="closeJournalModal()" style="background:none;border:none;color:var(--text1);font-size:20px;cursor:pointer;">&times;</button>
+    </div>
+    <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+      <!-- Left: Trade Summary & Chart -->
+      <div>
+        <div style="background:var(--bg2);padding:16px;border-radius:6px;margin-bottom:16px;">
+          <div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;margin-bottom:8px;">Trade Summary</div>
+          <div id="journalSummary" style="font-size:14px;color:var(--text0);line-height:1.6;"></div>
+        </div>
+        <div id="journalChartContainer" style="background:var(--bg2);padding:16px;border-radius:6px;height:300px;position:relative;">
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text2);font-size:12px;">Loading chart...</div>
+        </div>
+      </div>
+      <!-- Right: Notes & Screenshots -->
+      <div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:10px;color:var(--text2);font-weight:700;margin-bottom:8px;text-transform:uppercase;">Trade Notes</label>
+          <textarea id="journalNotes" placeholder="Document your analysis, rationale, and decision-making process..." style="width:100%;height:200px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text0);font-family:var(--mono);font-size:12px;resize:vertical;"></textarea>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block;font-size:10px;color:var(--text2);font-weight:700;margin-bottom:8px;text-transform:uppercase;">Screenshots / Evidence</label>
+          <div id="journalScreenshots" style="background:var(--bg2);border:2px dashed var(--border);border-radius:4px;padding:16px;text-align:center;cursor:pointer;" onclick="document.getElementById('journalImageInput').click();">
+            <div style="color:var(--text2);font-size:12px;">Click to upload screenshots</div>
+            <input type="file" id="journalImageInput" multiple accept="image/*" style="display:none;" onchange="handleJournalImageUpload(event)">
+          </div>
+          <div id="journalImagePreview" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;margin-top:12px;"></div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="saveJournalEntry()" style="flex:1;">Save Entry</button>
+          <button class="btn" onclick="closeJournalModal()" style="flex:1;background:var(--bg2);border:1px solid var(--border);">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== WASH SALES ===== -->
 <div class="view" id="view-washsales">
   <div class="notice">⚠ Wash sale detection is heuristic only. This tool flags potential violations based on the 30-day rule for substantially identical securities. Confirm all flagged trades with your CPA before filing. This is not tax advice.</div>
@@ -1702,7 +1757,7 @@ let gapiClientReady = false;
 let driveAccessToken = null;
 
 function createEmptyDB() {
-  return { transactions: [], importBatches: [], version: 3 };
+  return { transactions: [], importBatches: [], journalEntries: [], version: 4 };
 }
 
 function coerceJSONToDB(parsed, sourceName) {
@@ -2694,7 +2749,9 @@ function sanitizeDB(rawDB) {
     seenBatch.add(b.id);
     return true;
   });
-  next.version = 3;
+
+  next.journalEntries = (next.journalEntries || []);
+  next.version = 4;
   return next;
 }
 
@@ -2710,6 +2767,14 @@ function mergeDatabases(localDB, remoteDB) {
   merged.importBatches = importBatches.filter(b => {
     if (!b || !b.id || seen.has(b.id)) return false;
     seen.add(b.id);
+    return true;
+  });
+
+  const journalEntries = [...(right.journalEntries || []), ...(left.journalEntries || [])];
+  const seenJournal = new Set();
+  merged.journalEntries = journalEntries.filter(j => {
+    if (!j || !j.id || seenJournal.has(j.id)) return false;
+    seenJournal.add(j.id);
     return true;
   });
 
@@ -2861,6 +2926,32 @@ function importRecords(rawRows, fileName, batchId) {
   }
   db.transactions.push(...newTxns);
   db.transactions = dedupeTransactions(db.transactions);
+
+  // Create journal entries for trade transactions (actions that represent actual trades)
+  const tradeActions = ['Buy to Open', 'Sell to Open', 'Buy to Close', 'Sell to Close', 'Buy', 'Sell', 'Assigned', 'Expired'];
+  for (const txn of newTxns) {
+    if (tradeActions.includes(txn.action)) {
+      const entry = {
+        id: 'journal_' + txn.id,
+        transactionId: txn.id,
+        date: txn.date || txn.rawDate,
+        symbol: txn.symbol,
+        action: txn.action,
+        quantity: txn.quantity,
+        price: txn.price,
+        underlying: txn.underlying,
+        strike: txn.strike,
+        expiry: txn.expiry,
+        instrument: txn.instrument,
+        notes: '',
+        screenshots: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      db.journalEntries.push(entry);
+    }
+  }
+
   db.importBatches.push({ id: batchId, fileName, importedAt: new Date().toISOString(), total: rawRows.length, added, dupes });
   saveDB(db);
   return { added, dupes, total: rawRows.length };
@@ -4736,6 +4827,229 @@ function renderTradeTable() {
   }).join('');
 }
 
+// ════════════════════════════════════════════════════════
+// TRADING JOURNAL
+// ════════════════════════════════════════════════════════
+let currentJournalEntry = null;
+let journalChartInstance = null;
+
+function renderJournal() {
+  const search = (document.getElementById('journalSearch')?.value || '').toLowerCase();
+  const filtered = db.journalEntries.filter(e =>
+    !search || e.symbol.toLowerCase().includes(search) || e.action.toLowerCase().includes(search)
+  );
+
+  const container = document.getElementById('journalContainer');
+  if (filtered.length === 0) {
+    container.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text2);padding:40px;">No journal entries found.</div>';
+    return;
+  }
+
+  container.innerHTML = filtered.map(entry => {
+    const date = entry.date || 'N/A';
+    const priceStr = entry.price ? '$' + entry.price.toFixed(2) : '—';
+    const symbol = entry.underlying || entry.symbol;
+    const actionStr = entry.action === 'Buy to Open' ? 'BTO' : entry.action === 'Sell to Open' ? 'STO' :
+                      entry.action === 'Buy to Close' ? 'BTC' : entry.action === 'Sell to Close' ? 'STC' : entry.action;
+
+    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:16px;cursor:pointer;transition:all 0.2s;" onclick="openJournalEntry('${entry.id}')" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
+      <div style="font-family:var(--mono);font-weight:700;font-size:14px;color:var(--accent);margin-bottom:8px;">${symbol}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:var(--text1);margin-bottom:12px;">
+        <div><span style="color:var(--text2);">Date:</span> ${date}</div>
+        <div><span style="color:var(--text2);">Action:</span> ${actionStr}</div>
+        <div><span style="color:var(--text2);">Qty:</span> ${entry.quantity}</div>
+        <div><span style="color:var(--text2);">Price:</span> ${priceStr}</div>
+      </div>
+      <div style="font-size:11px;color:var(--text2);line-height:1.4;max-height:60px;overflow:hidden;text-overflow:ellipsis;">
+        ${entry.notes || '<em style="opacity:0.6;">No notes yet — click to add</em>'}
+      </div>
+      ${entry.screenshots && entry.screenshots.length > 0 ? `<div style="margin-top:8px;font-size:11px;color:var(--accent);">📸 ${entry.screenshots.length} screenshot(s)</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function openJournalEntry(entryId) {
+  currentJournalEntry = db.journalEntries.find(e => e.id === entryId);
+  if (!currentJournalEntry) return;
+
+  document.getElementById('journalNotes').value = currentJournalEntry.notes || '';
+  updateJournalSummary();
+  renderJournalScreenshots();
+  fetchAndRenderPriceChart();
+  document.getElementById('journalModal').style.display = 'block';
+}
+
+function closeJournalModal() {
+  document.getElementById('journalModal').style.display = 'none';
+  currentJournalEntry = null;
+}
+
+function updateJournalSummary() {
+  if (!currentJournalEntry) return;
+  const e = currentJournalEntry;
+  const symbol = e.underlying || e.symbol;
+  const strikeExp = e.strike ? ` ${e.strike}${e.expiry ? ' exp ' + e.expiry : ''}` : '';
+  const summary = `
+    <div style="margin-bottom:12px;"><strong>${symbol}${strikeExp}</strong></div>
+    <div><strong>Action:</strong> ${e.action}</div>
+    <div><strong>Quantity:</strong> ${e.quantity}</div>
+    <div><strong>Price:</strong> $${(e.price || 0).toFixed(2)}</div>
+    <div><strong>Date:</strong> ${e.date}</div>
+    <div><strong>Total Value:</strong> $${((e.quantity || 0) * (e.price || 0)).toFixed(2)}</div>
+  `;
+  document.getElementById('journalSummary').innerHTML = summary;
+}
+
+function renderJournalScreenshots() {
+  if (!currentJournalEntry) return;
+  const preview = document.getElementById('journalImagePreview');
+  const screenshots = currentJournalEntry.screenshots || [];
+
+  if (screenshots.length === 0) {
+    preview.innerHTML = '';
+    return;
+  }
+
+  preview.innerHTML = screenshots.map((img, idx) => `
+    <div style="position:relative;width:80px;height:80px;">
+      <img src="${img}" style="width:100%;height:100%;object-fit:cover;border-radius:4px;border:1px solid var(--border);" />
+      <button onclick="removeJournalScreenshot(${idx})" style="position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;background:var(--red);color:#fff;border:none;cursor:pointer;font-size:12px;">×</button>
+    </div>
+  `).join('');
+}
+
+function handleJournalImageUpload(event) {
+  const files = event.target.files;
+  if (!files || !currentJournalEntry) return;
+
+  for (const file of files) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (!currentJournalEntry.screenshots) currentJournalEntry.screenshots = [];
+      currentJournalEntry.screenshots.push(e.target.result);
+      renderJournalScreenshots();
+    };
+    reader.readAsDataURL(file);
+  }
+  event.target.value = '';
+}
+
+function removeJournalScreenshot(idx) {
+  if (currentJournalEntry && currentJournalEntry.screenshots) {
+    currentJournalEntry.screenshots.splice(idx, 1);
+    renderJournalScreenshots();
+  }
+}
+
+function saveJournalEntry() {
+  if (!currentJournalEntry) return;
+  currentJournalEntry.notes = document.getElementById('journalNotes').value;
+  currentJournalEntry.updatedAt = new Date().toISOString();
+  saveDB(db);
+  addLog('Journal entry saved', 'success');
+  closeJournalModal();
+  renderJournal();
+}
+
+async function fetchAndRenderPriceChart() {
+  if (!currentJournalEntry) return;
+
+  const symbol = currentJournalEntry.underlying || currentJournalEntry.symbol;
+  const tradeDate = currentJournalEntry.date;
+
+  try {
+    const prices = await fetchHistoricalPrices(symbol, tradeDate);
+    renderPriceChart(prices, tradeDate, currentJournalEntry.price);
+  } catch (error) {
+    const container = document.getElementById('journalChartContainer');
+    container.innerHTML = `<div style="color:var(--red);text-align:center;padding:20px;">Error loading price chart: ${error.message}</div>`;
+  }
+}
+
+async function fetchHistoricalPrices(symbol, tradeDate) {
+  const apiKey = 'lF1AaokGHOg3gJsrviJledCLIUIz2QnI';
+  const startDate = new Date(tradeDate);
+  startDate.setDate(startDate.getDate() - 20);
+  const endDate = new Date(tradeDate);
+  endDate.setDate(endDate.getDate() + 30);
+
+  const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=${apiKey}&outputsize=full`;
+
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Failed to fetch price data');
+
+  const data = await response.json();
+  if (data['Error Message']) throw new Error(data['Error Message']);
+
+  const timeSeries = data['Time Series (Daily)'] || {};
+  const prices = [];
+
+  for (const [dateStr, ohlc] of Object.entries(timeSeries)) {
+    const currentDate = new Date(dateStr);
+    if (currentDate >= startDate && currentDate <= endDate) {
+      prices.push({
+        date: dateStr,
+        open: parseFloat(ohlc['1. open']),
+        high: parseFloat(ohlc['2. high']),
+        low: parseFloat(ohlc['3. low']),
+        close: parseFloat(ohlc['4. close']),
+        volume: parseInt(ohlc['5. volume']),
+      });
+    }
+  }
+
+  return prices.sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+function renderPriceChart(prices, tradeDate, tradePrice) {
+  const container = document.getElementById('journalChartContainer');
+
+  if (!prices || prices.length === 0) {
+    container.innerHTML = '<div style="color:var(--text2);text-align:center;padding:20px;">No price data available for this period.</div>';
+    return;
+  }
+
+  const width = container.offsetWidth;
+  const height = 300;
+  const padding = 40;
+  const chartWidth = width - padding * 2;
+  const chartHeight = height - padding * 2;
+
+  const minPrice = Math.min(...prices.map(p => p.low));
+  const maxPrice = Math.max(...prices.map(p => p.high));
+  const priceRange = maxPrice - minPrice;
+
+  const xScale = chartWidth / (prices.length - 1 || 1);
+  const yScale = chartHeight / (priceRange || 1);
+
+  let svg = `<svg width="${width}" height="${height}" style="background:var(--bg1);border-radius:4px;">`;
+
+  // Axes
+  svg += `<line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="var(--border)" stroke-width="1"/>`;
+  svg += `<line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="var(--border)" stroke-width="1"/>`;
+
+  // Price line
+  for (let i = 0; i < prices.length - 1; i++) {
+    const x1 = padding + i * xScale;
+    const y1 = height - padding - (prices[i].close - minPrice) * yScale;
+    const x2 = padding + (i + 1) * xScale;
+    const y2 = height - padding - (prices[i + 1].close - minPrice) * yScale;
+    svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--accent)" stroke-width="2"/>`;
+  }
+
+  // Trade entry marker
+  const tradeIdx = prices.findIndex(p => p.date === tradeDate);
+  if (tradeIdx >= 0 && tradePrice) {
+    const x = padding + tradeIdx * xScale;
+    const y = height - padding - (tradePrice - minPrice) * yScale;
+    svg += `<circle cx="${x}" cy="${y}" r="5" fill="var(--green)" stroke="#fff" stroke-width="2"/>`;
+    svg += `<text x="${x}" y="${y - 15}" text-anchor="middle" font-size="12" fill="var(--text1)">Entry: $${tradePrice.toFixed(2)}</text>`;
+  }
+
+  svg += `</svg>`;
+  container.innerHTML = svg;
+}
+
 function renderWashSales() {
   const flags = detectWashSales();
   document.getElementById('washCount').textContent = flags.length ? `${flags.length} potential violations` : 'No flags';
@@ -5115,6 +5429,7 @@ function showView(id) {
   else if (id === 'positions') renderPositions();
   else if (id === 'closed') renderClosedPositions();
   else if (id === 'trades') renderTradeTable();
+  else if (id === 'journal') renderJournal();
   else if (id === 'washsales') renderWashSales();
   else if (id === 'import') renderImportHistory();
   else if (id === 'audit') { populateAuditBatches(); renderAudit(); }
@@ -5129,6 +5444,7 @@ function refreshAll() {
   renderClosedPositions();
   renderPositions();
   renderTradeTable();
+  renderJournal();
   renderWashSales();
   renderImportHistory();
   populateAuditBatches();
