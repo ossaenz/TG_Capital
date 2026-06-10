@@ -1376,12 +1376,12 @@
         </div>
         <div style="margin-bottom:16px;">
           <label style="display:block;font-size:10px;color:var(--text2);font-weight:700;margin-bottom:8px;text-transform:uppercase;">Trade Notes</label>
-          <textarea id="journalNotes" placeholder="Document your analysis, rationale, and decision-making process..." style="width:100%;height:200px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text0);font-family:var(--mono);font-size:12px;resize:vertical;"></textarea>
+          <textarea id="journalNotes" placeholder="Document your analysis, rationale, and decision-making process..." onpaste="handleJournalPaste(event)" style="width:100%;height:200px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text0);font-family:var(--mono);font-size:12px;resize:vertical;"></textarea>
         </div>
         <div style="margin-bottom:16px;">
           <label style="display:block;font-size:10px;color:var(--text2);font-weight:700;margin-bottom:8px;text-transform:uppercase;">Screenshots / Evidence</label>
-          <div id="journalScreenshots" style="background:var(--bg2);border:2px dashed var(--border);border-radius:4px;padding:16px;text-align:center;cursor:pointer;" onclick="document.getElementById('journalImageInput').click();">
-            <div style="color:var(--text2);font-size:12px;">Click to upload screenshots</div>
+          <div id="journalScreenshots" onpaste="handleJournalPaste(event)" style="background:var(--bg2);border:2px dashed var(--border);border-radius:4px;padding:16px;text-align:center;cursor:pointer;" onclick="document.getElementById('journalImageInput').click();">
+            <div style="color:var(--text2);font-size:12px;">Click to upload or paste screenshots (Ctrl/Cmd+V)</div>
             <input type="file" id="journalImageInput" multiple accept="image/*" style="display:none;" onchange="handleJournalImageUpload(event)">
           </div>
           <div id="journalImagePreview" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;margin-top:12px;"></div>
@@ -4997,10 +4997,12 @@ function openJournalEntry(entryId) {
   renderJournalScreenshots();
   fetchAndRenderPriceChart();
   document.getElementById('journalModal').style.display = 'block';
+  document.addEventListener('paste', handleJournalPaste);
 }
 
 function closeJournalModal() {
   document.getElementById('journalModal').style.display = 'none';
+  document.removeEventListener('paste', handleJournalPaste);
   currentJournalEntry = null;
 }
 
@@ -5042,7 +5044,15 @@ function handleJournalImageUpload(event) {
   const files = event.target.files;
   if (!files || !currentJournalEntry) return;
 
+  addJournalScreenshotsFromFiles(files);
+  event.target.value = '';
+}
+
+function addJournalScreenshotsFromFiles(files) {
+  if (!files || !currentJournalEntry) return;
+
   for (const file of files) {
+    if (!file || !String(file.type || '').startsWith('image/')) continue;
     const reader = new FileReader();
     reader.onload = (e) => {
       if (!currentJournalEntry.screenshots) currentJournalEntry.screenshots = [];
@@ -5051,7 +5061,19 @@ function handleJournalImageUpload(event) {
     };
     reader.readAsDataURL(file);
   }
-  event.target.value = '';
+}
+
+function handleJournalPaste(event) {
+  if (!currentJournalEntry || !event || !event.clipboardData) return;
+  const items = Array.from(event.clipboardData.items || []);
+  const imageFiles = items
+    .filter(item => item && item.kind === 'file' && String(item.type || '').startsWith('image/'))
+    .map(item => item.getAsFile())
+    .filter(Boolean);
+
+  if (!imageFiles.length) return;
+  event.preventDefault();
+  addJournalScreenshotsFromFiles(imageFiles);
 }
 
 function removeJournalScreenshot(idx) {
