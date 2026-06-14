@@ -159,7 +159,7 @@
 }
 .topbar-stats {
   display: grid;
-  grid-template-columns: repeat(6, minmax(96px, 1fr));
+  grid-template-columns: repeat(4, minmax(96px, auto));
   gap: 8px;
   margin: 0;
   padding: 8px 0;

@@ -312,5 +312,17 @@ function renderDashboard() {
     }).join('');
   }
 
-  if (optionClosed.length > 0) renderCharts(optionClosed);
+  // Toggle chart panel: show empty state when no data, open panel when data arrives
+  const chartEmpty = document.getElementById('chartEmptyState');
+  const chartContent = document.getElementById('chartContent');
+  const chartsPanel = document.getElementById('chartsPanel');
+  if (optionClosed.length > 0) {
+    if (chartEmpty) chartEmpty.style.display = 'none';
+    if (chartContent) chartContent.style.display = '';
+    if (chartsPanel && !chartsPanel.open) chartsPanel.open = true;
+    renderCharts(optionClosed);
+  } else {
+    if (chartEmpty) chartEmpty.style.display = '';
+    if (chartContent) chartContent.style.display = 'none';
+  }
 }
