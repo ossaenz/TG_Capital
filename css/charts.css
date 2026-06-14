@@ -1,0 +1,54 @@
+/* ════════════════════════════════════════════════════════
+   TGCapital — Charts
+   Chart wrappers, legends and the dashboard chart grid.
+   ════════════════════════════════════════════════════════ */
+
+/* Base chart wrapper (height also set inline by some markup) */
+.chart-wrap {
+  position: relative;
+  height: 220px;
+  width: 100%;
+}
+
+/* Dashboard 2×2 chart grid */
+.chart-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 900px) {
+  .chart-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 1440px) {
+  .chart-grid { grid-template-columns: repeat(2, 1fr); }
+  .chart-grid .chart-wrap { height: 280px; }
+}
+
+/* Chart legend chips */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 4px 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--c-text-1);
+}
+.chart-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.chart-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--c-text-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-wrap canvas { animation: none; }
+}
+
+@media (max-width: 640px) {
+  .chart-grid { grid-template-columns: 1fr; gap: 12px; }
+  .chart-wrap { height: 200px; }
+}
