@@ -78,27 +78,34 @@
 
   <!-- ── Filter strip ─────────────────────────────────── -->
   <div class="dash-filterbar">
-    <div class="dash-filter-group">
-      <label class="dash-filter-label">Year</label>
-      <select id="dashboardYearSelect" onchange="applyDashboardFilter()" class="dash-select">
-        <option value="">All Years</option>
-      </select>
+    <div class="dash-filter-controls">
+      <div class="dash-filter-group">
+        <label class="dash-filter-label">Year</label>
+        <select id="dashboardYearSelect" onchange="applyDashboardFilter()" class="dash-select">
+          <option value="">All Years</option>
+        </select>
+      </div>
+      <div class="dash-filter-group">
+        <label class="dash-filter-label">From</label>
+        <input type="date" id="dashboardDateStart" class="dash-input" />
+      </div>
+      <div class="dash-filter-group">
+        <label class="dash-filter-label">To</label>
+        <input type="date" id="dashboardDateEnd" class="dash-input" />
+      </div>
+      <div class="dash-filter-group">
+        <label class="dash-filter-label">Type</label>
+        <div class="seg-ctrl">
+          <button class="active" id="dash-opts-only" onclick="setDashboardInstruments('options-only', this)">Options Only</button>
+          <button id="dash-all-inst" onclick="setDashboardInstruments('all', this)">All Instruments</button>
+        </div>
+      </div>
     </div>
-    <div class="dash-filter-group">
-      <label class="dash-filter-label">From</label>
-      <input type="date" id="dashboardDateStart" class="dash-input" />
+    <div class="dash-filter-actions">
+      <button class="btn btn-sm btn-accent" onclick="applyDashboardFilter()">Apply</button>
+      <button class="btn btn-sm" onclick="resetDashboardFilter()">Reset</button>
+      <span class="dash-filter-active" id="dashboardFilterLabel">Viewing: All Years</span>
     </div>
-    <div class="dash-filter-group">
-      <label class="dash-filter-label">To</label>
-      <input type="date" id="dashboardDateEnd" class="dash-input" />
-    </div>
-    <div class="seg-ctrl">
-      <button class="active" id="dash-opts-only" onclick="setDashboardInstruments('options-only', this)">Options Only</button>
-      <button id="dash-all-inst" onclick="setDashboardInstruments('all', this)">All Instruments</button>
-    </div>
-    <button class="btn btn-sm btn-accent" onclick="applyDashboardFilter()">Apply</button>
-    <button class="btn btn-sm" onclick="resetDashboardFilter()">Reset</button>
-    <span class="dash-filter-active" id="dashboardFilterLabel">Viewing: All Years</span>
   </div>
 
   <!-- ── Hero KPI row ─────────────────────────────────── -->
