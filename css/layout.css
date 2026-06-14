@@ -1,0 +1,329 @@
+/* ════════════════════════════════════════════════════════
+   TGCapital — Layout
+   App shell: fixed sidebar nav, persistent KPI topbar, main grid,
+   responsive collapse (tablet icon rail / mobile bottom bar).
+   Loaded after components.css so these rules take precedence for
+   chrome elements (.app, .topbar, .nav, .main, .nav-btn, .tstat).
+   ════════════════════════════════════════════════════════ */
+
+/* ── App grid: sidebar + content column ── */
+.app {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-rows: 100vh;
+  min-height: 100vh;
+}
+
+/* ════════ SIDEBAR ════════ */
+.sidebar {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-surface);
+  border-right: 1px solid var(--c-border);
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebar-brand {
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid var(--c-border);
+}
+.sidebar-logo {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-accent);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.sidebar-logo span { color: var(--c-text-2); font-weight: 400; }
+.sidebar-tagline {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--c-text-2);
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-section {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--c-text-2);
+  padding: 12px 16px 4px;
+  white-space: nowrap;
+}
+
+/* Sidebar nav items reuse .nav-btn (keeps showView's onclick logic) */
+.sidebar .nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 400;
+  padding: 8px 16px;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--c-text-1);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s, color 0.12s;
+}
+.sidebar .nav-btn .nav-ico {
+  width: 18px;
+  text-align: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.sidebar .nav-btn:hover {
+  background: var(--c-raised);
+  color: var(--c-text-0);
+  border-bottom: none;
+}
+.sidebar .nav-btn.active {
+  background: var(--c-accent-dim);
+  color: var(--c-text-0);
+  border-left: 3px solid var(--c-accent);
+  border-bottom: none;
+}
+
+.sidebar-foot {
+  border-top: 1px solid var(--c-border);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sidebar-foot .btn { width: 100%; }
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 12px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-sm);
+  background: var(--c-raised);
+  color: var(--c-text-1);
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+.theme-toggle:hover { color: var(--c-text-0); border-color: var(--c-border-hi); }
+
+/* ════════ CONTENT COLUMN ════════ */
+.content {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100vh;
+}
+
+/* ════════ TOPBAR (KPI strip) ════════ */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: var(--topbar-h);
+  padding: 0 16px;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar-stats {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(96px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 8px 0;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.tstat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  border: none;
+  border-left: 1px solid var(--c-border);
+  border-radius: 0;
+  background: transparent;
+  min-height: auto;
+}
+.tstat-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-text-2);
+}
+.tstat-val {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--c-text-0);
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Status bar */
+.status-bar {
+  padding: 4px 16px;
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--c-text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 98;
+}
+.status-bar:empty { display: none; }
+
+/* Main scroll area */
+.main {
+  flex: 1;
+  padding: 20px;
+  max-width: 1600px;
+  width: 100%;
+  margin: 0 auto;
+}
+.view { display: none; }
+.view.active { display: block; }
+
+/* Mobile bottom navigation (hidden on desktop) */
+.bottom-nav { display: none; }
+
+/* ════════ RESPONSIVE ════════ */
+
+/* Tablet: collapse sidebar to icon rail */
+@media (max-width: 1023px) and (min-width: 640px) {
+  .app { grid-template-columns: var(--sidebar-w-collapsed) 1fr; }
+  .sidebar-tagline,
+  .sidebar-section,
+  .sidebar .nav-btn .nav-label { display: none; }
+  .sidebar-logo { font-size: 0; }
+  .sidebar-logo::before { content: 'TG'; font-size: 14px; }
+  .sidebar-brand { padding: 14px 0; text-align: center; }
+  .sidebar .nav-btn {
+    justify-content: center;
+    padding: 10px 0;
+    position: relative;
+  }
+  .sidebar .nav-btn .nav-ico { width: auto; }
+  /* Tooltip label on hover */
+  .sidebar .nav-btn[data-label]:hover::after {
+    content: attr(data-label);
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 8px;
+    background: var(--c-overlay);
+    color: var(--c-text-0);
+    border: 1px solid var(--c-border-hi);
+    border-radius: var(--r-sm);
+    padding: 4px 8px;
+    font-size: 11px;
+    white-space: nowrap;
+    z-index: 300;
+    pointer-events: none;
+  }
+  .sidebar-foot .btn-label { display: none; }
+  .theme-toggle span { display: none; }
+  .topbar-stats { grid-template-columns: repeat(4, minmax(80px, 1fr)); }
+  .tstat:nth-child(n+5) { display: none; }
+}
+
+/* Mobile: hide sidebar, show bottom nav */
+@media (max-width: 639px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+  .sidebar { display: none; }
+  .content { grid-column: 1; }
+  .main { padding: 10px 8px 64px; }
+
+  .topbar {
+    flex-wrap: wrap;
+    min-height: auto;
+    padding: 6px 8px;
+  }
+  .topbar-stats {
+    order: 2;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px;
+  }
+  .tstat { border-left: none; padding: 4px 6px; }
+  .tstat:nth-child(n+5) { display: flex; }
+  .topbar-actions { order: 1; width: 100%; }
+
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: var(--c-surface);
+    border-top: 1px solid var(--c-border);
+    height: 56px;
+  }
+  .bottom-nav .nav-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 44px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: var(--c-text-1);
+    font-size: 10px;
+    cursor: pointer;
+  }
+  .bottom-nav .nav-btn .nav-ico { font-size: 18px; }
+  .bottom-nav .nav-btn.active { color: var(--c-accent); border-bottom: none; }
+}
