@@ -10,5 +10,6 @@ dist/
 .DS_Store
 /.idea
 /.vscode
+.claude/worktrees/
 exported_data/
 config.json
