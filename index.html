@@ -106,7 +106,7 @@
 
     <div class="hero-kpi hero-kpi--green hero-kpi--wide">
       <div class="hero-kpi-label">Realized P&amp;L</div>
-      <div class="hero-kpi-value lg pos g" id="kpi-realized">—</div>
+      <div class="dash-kpi-value lg" id="kpi-realized">—</div>
       <div class="hero-kpi-sub" id="kpi-realized-sub">Closed options only</div>
       <div class="dash-kpi-split" id="kpi-pnl-breakdown" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--c-border);display:none;">
         <div class="dash-kpi-split-item"><span class="dash-kpi-split-val" id="kpi-opt-pnl">—</span><span class="dash-kpi-split-lbl">Options</span></div>
@@ -308,24 +308,27 @@
   </details>
 
   <!-- ── Collapsible: Charts ───────────────────────────── -->
-  <details class="dash-panel" open>
+  <details class="dash-panel" id="chartsPanel">
     <summary class="dash-panel-hdr">
       <span class="dash-panel-title">Charts</span>
       <span class="dash-panel-meta" id="pnlChartSub">Cumulative P&amp;L · By symbol · By type</span>
     </summary>
     <div class="dash-panel-body">
-      <div class="dash-chart-section">
-        <div class="dash-chart-label">Cumulative Realized P&amp;L</div>
-        <div class="chart-wrap"><canvas id="pnlChart" role="img" aria-label="Cumulative realized P&L over time">Cumulative realized P&L chart</canvas></div>
-      </div>
-      <div class="dash-chart-grid">
-        <div>
-          <div class="dash-chart-label">P&amp;L by Underlying</div>
-          <div class="chart-wrap chart-wrap--sm"><canvas id="symbolChart" role="img" aria-label="P&L by underlying symbol">P&L by symbol</canvas></div>
+      <div id="chartEmptyState" class="dash-empty-state" style="display:none;">No chart data — import trades to populate charts.</div>
+      <div id="chartContent">
+        <div class="dash-chart-section">
+          <div class="dash-chart-label">Cumulative Realized P&amp;L</div>
+          <div class="chart-wrap"><canvas id="pnlChart" role="img" aria-label="Cumulative realized P&L over time">Cumulative realized P&L chart</canvas></div>
         </div>
-        <div>
-          <div class="dash-chart-label">Trade Type Breakdown</div>
-          <div class="chart-wrap chart-wrap--sm"><canvas id="typeChart" role="img" aria-label="Trade type breakdown">Trade type chart</canvas></div>
+        <div class="dash-chart-grid">
+          <div>
+            <div class="dash-chart-label">P&amp;L by Underlying</div>
+            <div class="chart-wrap chart-wrap--sm"><canvas id="symbolChart" role="img" aria-label="P&L by underlying symbol">P&L by symbol</canvas></div>
+          </div>
+          <div>
+            <div class="dash-chart-label">Trade Type Breakdown</div>
+            <div class="chart-wrap chart-wrap--sm"><canvas id="typeChart" role="img" aria-label="Trade type breakdown">Trade type chart</canvas></div>
+          </div>
         </div>
       </div>
     </div>

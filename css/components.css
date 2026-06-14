@@ -122,6 +122,16 @@
   }
   .dash-panel-body { padding: 16px; }
 
+  /* ── Hero realized P&L: JS resets class to dash-kpi-value, override size ── */
+  .hero-kpi #kpi-realized.dash-kpi-value { font-size: 30px; }
+  .hero-kpi #kpi-realized.dash-kpi-value.lg { font-size: 30px; }
+
+  /* ── Dashboard empty state ── */
+  .dash-empty-state {
+    padding: 32px 16px; text-align: center;
+    font-family: var(--font-ui); font-size: 13px; color: var(--c-text-2);
+  }
+
   /* Chart helpers inside panels */
   .dash-chart-section { margin-bottom: 16px; }
   .dash-chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
