@@ -46,6 +46,32 @@
     <button class="nav-btn" data-label="Audit Trail" onclick="showView('audit')"><span class="nav-ico">⌖</span><span class="nav-label">Audit Trail</span></button>
     <button class="nav-btn" data-label="Field Matrix" onclick="showView('fields')"><span class="nav-ico">⊞</span><span class="nav-label">Field Matrix</span></button>
   </nav>
+
+  <!-- ── Global date range filter ── -->
+  <details class="sidebar-filter" open>
+    <summary class="sidebar-filter-title">Date Range</summary>
+    <div class="sidebar-filter-body">
+      <div class="sidebar-filter-group">
+        <label class="sidebar-filter-label">Year</label>
+        <select id="globalYearSelect" onchange="applyGlobalFilter()" class="sidebar-filter-select">
+          <option value="">All Years</option>
+        </select>
+      </div>
+      <div class="sidebar-filter-group">
+        <label class="sidebar-filter-label">From</label>
+        <input type="date" id="globalDateStart" class="sidebar-filter-input" />
+      </div>
+      <div class="sidebar-filter-group">
+        <label class="sidebar-filter-label">To</label>
+        <input type="date" id="globalDateEnd" class="sidebar-filter-input" />
+      </div>
+      <div class="sidebar-filter-actions">
+        <button class="btn btn-sm btn-accent" onclick="applyGlobalFilter()" style="flex:1;">Apply</button>
+        <button class="btn btn-sm" onclick="resetGlobalFilter()" style="flex:1;">Reset</button>
+      </div>
+    </div>
+  </details>
+
   <div class="sidebar-foot">
     <button class="btn btn-sm" id="btnSaveFile" onclick="saveDataFile()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);font-weight:700;" title="Save all data to disk">💾 <span class="btn-label">Save</span></button>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark / light mode" aria-label="Toggle theme"><span class="theme-ico">☾</span><span class="theme-label">Dark Mode</span></button>
@@ -80,20 +106,6 @@
   <div class="dash-filterbar">
     <div class="dash-filter-controls">
       <div class="dash-filter-group">
-        <label class="dash-filter-label">Year</label>
-        <select id="dashboardYearSelect" onchange="applyDashboardFilter()" class="dash-select">
-          <option value="">All Years</option>
-        </select>
-      </div>
-      <div class="dash-filter-group">
-        <label class="dash-filter-label">From</label>
-        <input type="date" id="dashboardDateStart" class="dash-input" />
-      </div>
-      <div class="dash-filter-group">
-        <label class="dash-filter-label">To</label>
-        <input type="date" id="dashboardDateEnd" class="dash-input" />
-      </div>
-      <div class="dash-filter-group">
         <label class="dash-filter-label">Type</label>
         <div class="seg-ctrl">
           <button class="active" id="dash-opts-only" onclick="setDashboardInstruments('options-only', this)">Options Only</button>
@@ -102,8 +114,6 @@
       </div>
     </div>
     <div class="dash-filter-actions">
-      <button class="btn btn-sm btn-accent" onclick="applyDashboardFilter()">Apply</button>
-      <button class="btn btn-sm" onclick="resetDashboardFilter()">Reset</button>
       <span class="dash-filter-active" id="dashboardFilterLabel">Viewing: All Years</span>
     </div>
   </div>
@@ -1216,6 +1226,9 @@
 <script src="js/views/washsales.js"></script>
 <script src="js/views/audit.js"></script>
 <script src="js/views/import.js"></script>
+
+<!-- Global filter (applies date range across all views) -->
+<script src="js/global-filter.js"></script>
 
 <!-- Initial file-status message -->
 <script>
