@@ -619,15 +619,8 @@ async function ensureGoogleDriveReady() {
   }
   if (!appConfig.client_id) throw new Error('config.json is missing client_id');
 
-  await waitForGoogleGlobals();
-  await new Promise((resolve, reject) => {
-    window.gapi.load('client', {
-      callback: resolve,
-      onerror: () => reject(new Error('Failed to initialize gapi client')),
-    });
-  });
-
-  await window.gapi.client.init({ discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'] });
+  // Drive file operations use the REST API directly via driveFetch(), so we
+  // do not need the gapi discovery-docs client. Mark ready after config load.
   gapiClientReady = true;
 }
 
@@ -641,25 +634,32 @@ function mapDriveAuthError(code) {
 }
 
 async function requestDriveToken(prompt) {
-  await ensureGoogleDriveReady();
-  // Build the redirect URI pointing to our same-origin relay page.
-  const redirectUri = window.location.href.replace(/[^/]*$/, '') + 'auth-redirect.html';
-  const params = new URLSearchParams({
-    client_id: appConfig.client_id,
-    redirect_uri: redirectUri,
-    response_type: 'token',
-    scope: DRIVE_SCOPE,
-    include_granted_scopes: 'true',
-  });
-  if (prompt) params.set('prompt', prompt);
-  const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+  // Open the popup IMMEDIATELY — before any await — so the browser sees it
+  // as a direct result of the user gesture and does not block it.
+  const popup = window.open('about:blank', 'driveAuth', 'width=520,height=640,left=200,top=80');
+  if (!popup) {
+    throw new Error('Browser blocked the sign-in popup — allow popups for this site and try again');
+  }
+
+  try {
+    await ensureGoogleDriveReady();
+
+    const redirectUri = window.location.href.replace(/[^/]*$/, '') + 'auth-redirect.html';
+    const params = new URLSearchParams({
+      client_id: appConfig.client_id,
+      redirect_uri: redirectUri,
+      response_type: 'token',
+      scope: DRIVE_SCOPE,
+      include_granted_scopes: 'true',
+    });
+    if (prompt) params.set('prompt', prompt);
+    popup.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+  } catch (err) {
+    try { popup.close(); } catch {}
+    throw err;
+  }
 
   return new Promise((resolve, reject) => {
-    const popup = window.open(authUrl, 'driveAuth', 'width=520,height=640,left=200,top=80');
-    if (!popup) {
-      reject(new Error('Browser blocked the sign-in popup — allow popups for this site and try again'));
-      return;
-    }
     const timer = setTimeout(() => {
       window.removeEventListener('message', onMessage);
       try { popup.close(); } catch {}
@@ -680,7 +680,6 @@ async function requestDriveToken(prompt) {
         return;
       }
       driveAccessToken = evt.data.token;
-      window.gapi.client.setToken({ access_token: driveAccessToken });
       resolve(driveAccessToken);
     }
     window.addEventListener('message', onMessage);
@@ -701,13 +700,10 @@ async function driveFetch(url, options = {}) {
 
 async function findDriveDataFile() {
   const q = `name='${DRIVE_DATA_FILE_NAME}' and trashed=false`;
-  const resp = await window.gapi.client.drive.files.list({
-    spaces: 'appDataFolder',
-    pageSize: 10,
-    fields: 'files(id,name,modifiedTime)',
-    q,
-  });
-  const files = resp.result.files || [];
+  const params = new URLSearchParams({ spaces: 'appDataFolder', pageSize: '10', fields: 'files(id,name,modifiedTime)', q });
+  const resp = await driveFetch('https://www.googleapis.com/drive/v3/files?' + params.toString());
+  const data = await resp.json();
+  const files = data.files || [];
   return files[0] || null;
 }
 
@@ -934,14 +930,16 @@ async function createDriveBackup() {
 }
 
 async function listDriveBackups() {
-  const resp = await window.gapi.client.drive.files.list({
+  const params = new URLSearchParams({
     spaces: 'appDataFolder',
-    pageSize: 20,
+    pageSize: '20',
     fields: 'files(id,name,modifiedTime)',
     q: `name contains '${DRIVE_BACKUP_PREFIX}' and trashed=false`,
     orderBy: 'modifiedTime desc',
   });
-  return resp.result.files || [];
+  const resp = await driveFetch('https://www.googleapis.com/drive/v3/files?' + params.toString());
+  const data = await resp.json();
+  return data.files || [];
 }
 
 async function pruneOldDriveBackups() {
