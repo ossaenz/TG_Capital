@@ -53,7 +53,6 @@
     align-items: center;
     gap: 8px;
     padding-top: 6px;
-    border-top: 1px solid var(--c-border);
   }
   .dash-filter-active {
     margin-left: auto; font-family: var(--mono); font-size: 11px;
