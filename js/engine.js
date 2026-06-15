@@ -186,17 +186,19 @@ function buildPositions() {
       let totalCost = 0, openFeesAlloc = 0, openDateFirst = null, openPriceWtd = 0, matchedTotal = 0;
 
       while (remaining > 0 && lots.length > 0) {
-        const lot     = lots[0];
-        const matched = Math.min(lot.qty, remaining);
-        const frac    = matched / lot.qty;
-        totalCost    += (lot.costBasis / lot.qty) * matched;
+        const lot          = lots[0];
+        const matched      = Math.min(lot.qty, remaining);
+        const frac         = matched / lot.qty;
+        const perShareCost = lot.costBasis / lot.qty;
+        totalCost    += perShareCost * matched;
         openFeesAlloc+= lot.openFees * frac;
         openPriceWtd += lot.openPrice * matched;
         matchedTotal += matched;
         if (!openDateFirst) openDateFirst = lot.txn.date;
-        lot.qty      -= matched;
-        lot.openFees -= lot.openFees * frac;
-        remaining    -= matched;
+        lot.costBasis -= perShareCost * matched; // keep remaining cost basis accurate
+        lot.qty       -= matched;
+        lot.openFees  -= lot.openFees * frac;
+        remaining     -= matched;
         if (lot.qty <= 0) lots.shift();
       }
 
@@ -271,7 +273,7 @@ function buildPositions() {
         optionType: null, direction: 'long', qty: lot.qty,
         openDate: lot.txn.date, expiry: null, strike: null,
         openPrice: lot.openPrice,
-        avgCost: lot.costBasis / lot.txn.quantity,
+        avgCost: lot.qty > 0 ? lot.costBasis / lot.qty : 0,
         premiumRcvd: 0, openFees: lot.openFees, status: 'open',
       });
     }
