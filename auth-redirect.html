@@ -23,10 +23,10 @@
       if (window.opener) {
         window.opener.postMessage(
           { type: 'TGC_OAUTH', token: token || null, error: error || null },
-          window.location.origin
+          '*'
         );
       }
-      window.close();
+      // Don't close here — let parent handle it to avoid CORS issues
     })();
   </script>
 </body>
