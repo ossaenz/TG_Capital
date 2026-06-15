@@ -159,23 +159,36 @@ function _renderReportsWithState() {
   const totalPnl      = trades.reduce((s, t) => s + (t.netPnl || 0), 0);
   const totalGross    = trades.reduce((s, t) => s + (t.grossPnl || 0), 0);
   const totalFees     = trades.reduce((s, t) => s + (t.fees || 0), 0);
-  const totalPremium  = trades.filter(t => t.instrument === 'option').reduce((s, t) => s + Math.max(0, t.openCredit || 0), 0);
+  const optionTrades  = trades.filter(t => t.instrument === 'option');
+  const stockTrades   = trades.filter(t => t.instrument !== 'option');
+  const optionPnl     = optionTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
+  const stockPnl      = stockTrades.reduce((s, t) => s + (t.netPnl || 0), 0);
+  const totalPremium  = optionTrades.reduce((s, t) => s + Math.max(0, t.openCredit || 0), 0);
   const totalIncome   = income.reduce((s, t) => s + (t.amount || 0), 0);
+  // Win rate and avg win/loss are always options-only to match topbar / dashboard
+  const optionWins    = optionTrades.filter(t => (t.netPnl || 0) > 0);
+  const optionLosses  = optionTrades.filter(t => (t.netPnl || 0) < 0);
   const wins          = trades.filter(t => (t.netPnl || 0) > 0);
   const losses        = trades.filter(t => (t.netPnl || 0) < 0);
-  const winRate       = trades.length > 0 ? wins.length / trades.length : null;
-  const avgWin        = wins.length   > 0 ? wins.reduce((s, t) => s + t.netPnl, 0)   / wins.length   : null;
-  const avgLoss       = losses.length > 0 ? losses.reduce((s, t) => s + t.netPnl, 0) / losses.length : null;
+  const winRate       = optionTrades.length > 0 ? optionWins.length / optionTrades.length : null;
+  const avgWin        = optionWins.length   > 0 ? optionWins.reduce((s, t) => s + t.netPnl, 0)   / optionWins.length   : null;
+  const avgLoss       = optionLosses.length > 0 ? optionLosses.reduce((s, t) => s + t.netPnl, 0) / optionLosses.length : null;
+
+  // P&L sub-label: break out Options vs Stock when both are present
+  const hasStock = stockTrades.length > 0;
+  const pnlSub = hasStock
+    ? `Opt ${fmt$(optionPnl)} · Stk ${fmt$(stockPnl)}`
+    : `${trades.length} closed trades`;
 
   // ── KPI Strip
   const kpiData = [
-    { label: 'Realized P&L',       val: totalPnl,     sub: `${trades.length} closed trades`,  color: totalPnl >= 0 ? 'var(--green)' : 'var(--red)' },
+    { label: 'Realized P&L',       val: totalPnl,     sub: pnlSub,                           color: totalPnl >= 0 ? 'var(--green)' : 'var(--red)' },
     { label: 'Premium Collected',  val: totalPremium, sub: 'Options only',                    color: 'var(--text0)' },
     { label: 'Total Fees Paid',    val: -totalFees,   sub: 'Embedded in amounts',             color: 'var(--red)' },
     { label: 'Income (Divs/Int)',  val: totalIncome,  sub: `${income.length} events`,         color: 'var(--teal)' },
-    { label: 'Win Rate',           val: null,         sub: `${wins.length}W / ${losses.length}L`, color: winRate !== null && winRate >= 0.5 ? 'var(--green)' : 'var(--red)',
+    { label: 'Win Rate',           val: null,         sub: `${optionWins.length}W / ${optionLosses.length}L · options`, color: winRate !== null && winRate >= 0.5 ? 'var(--green)' : 'var(--red)',
       rawText: winRate !== null ? (winRate * 100).toFixed(1) + '%' : '—' },
-    { label: 'Avg Win / Avg Loss', val: null,         sub: `per trade`,                       color: 'var(--text0)',
+    { label: 'Avg Win / Avg Loss', val: null,         sub: `per option trade`,                color: 'var(--text0)',
       rawText: (avgWin !== null ? fmt$(avgWin) : '—') + ' / ' + (avgLoss !== null ? fmt$(avgLoss) : '—') },
     { label: 'Gross P&L',          val: totalGross,   sub: 'Before fee adjustment',           color: totalGross >= 0 ? 'var(--green)' : 'var(--red)' },
     { label: 'Wash Sale Flags',    val: null,         sub: 'Review required',                 color: wash.length > 0 ? 'var(--amber)' : 'var(--text2)',
