@@ -275,7 +275,7 @@
   @media (max-width: 768px) {
     body { font-size: 13px; }
     .section-title { margin-top: 12px; margin-bottom: 6px; font-size: 10px; }
-    .main { padding: 8px; max-width: 100%; }
+    .main { padding: 8px 8px 36px; max-width: 100%; }
     .topbar { 
       flex-direction: column; 
       padding: 6px 6px; 
