@@ -37,8 +37,17 @@
   color: var(--c-accent);
   letter-spacing: 0.04em;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .sidebar-logo span { color: var(--c-text-2); font-weight: 400; }
+.sidebar-logo-img {
+  height: 24px;
+  width: 24px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
 .sidebar-tagline {
   display: block;
   margin-top: 4px;
@@ -310,8 +319,8 @@
   .sidebar-tagline,
   .sidebar-section,
   .sidebar .nav-btn .nav-label { display: none; }
-  .sidebar-logo { font-size: 0; }
-  .sidebar-logo::before { content: 'TG'; font-size: 14px; }
+  .sidebar-logo { font-size: 0; justify-content: center; }
+  .sidebar-logo-img { height: 28px; width: 28px; }
   .sidebar-brand { padding: 14px 0; text-align: center; }
   .sidebar .nav-btn {
     justify-content: center;

@@ -675,7 +675,9 @@
 
     /* Show print header */
     .rpt-print-header { display:block; border-bottom:2px solid #000; margin-bottom:18pt; padding-bottom:10pt; }
-    .rpt-print-header h1 { font-size:18pt; font-weight:700; margin:0 0 4pt 0; }
+    .rpt-ph-branding { display:flex; align-items:center; gap:10pt; margin-bottom:4pt; }
+    .rpt-ph-logo { height:34pt; width:34pt; border-radius:5pt; }
+    .rpt-print-header h1 { font-size:18pt; font-weight:700; margin:0; }
     .rpt-print-header .rpt-ph-meta { font-size:9pt; color:#444; }
 
     /* KPI strip */
