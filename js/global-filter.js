@@ -46,10 +46,15 @@ function resetGlobalFilter() {
   refreshAll();
 }
 
-// Populate year selector
+// Populate year selector (called after data loads)
 function initGlobalYearSelect() {
   const yearSel = document.getElementById('globalYearSelect');
-  if (!yearSel) return;
+  if (!yearSel || !window.trades) return;
+
+  // Clear existing options (keep "All Years")
+  while (yearSel.children.length > 1) {
+    yearSel.removeChild(yearSel.lastChild);
+  }
 
   const allYears = new Set();
   for (const trade of trades) {
@@ -66,9 +71,10 @@ function initGlobalYearSelect() {
   });
 }
 
-// Call on app boot
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initGlobalYearSelect);
-} else {
+// Hook into data load cycle
+const origRefreshAll = window.refreshAll;
+window.refreshAll = function(...args) {
   initGlobalYearSelect();
-}
+  return origRefreshAll?.apply(this, args);
+};
+
