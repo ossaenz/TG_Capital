@@ -267,25 +267,29 @@
   margin-left: auto;
 }
 
-/* Status bar */
+/* Fixed bottom status bar */
 .status-bar {
-  padding: 6px 16px;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 500;
+  padding: 5px 16px;
+  background: var(--c-surface);
+  border-top: 1px solid var(--c-border);
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--c-text-2);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  position: sticky;
-  top: var(--topbar-h);
-  z-index: 98;
 }
 .status-bar:empty { display: none; }
 
 /* Main scroll area */
 .main {
   flex: 1;
-  padding: 20px;
+  padding: 20px 20px 36px; /* bottom pad clears fixed status bar */
   max-width: 1600px;
   width: 100%;
   margin: 0 auto;

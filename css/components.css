@@ -274,7 +274,6 @@
   /* ── Mobile Responsive ── */
   @media (max-width: 768px) {
     body { font-size: 13px; }
-    .status-bar { display: none !important; }
     .section-title { margin-top: 12px; margin-bottom: 6px; font-size: 10px; }
     .main { padding: 8px; max-width: 100%; }
     .topbar { 
@@ -567,9 +566,6 @@
     .nav-btn { padding: 4px 5px; font-size: 8px; }
   }
 
-  @media (max-width: 480px) {
-    .status-bar { display: none !important; }
-  }
 
 
   /* ── Filters ── */
@@ -619,9 +615,6 @@
   /* ── Trades table search ── */
   .tbl-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
-  /* ── Status bar (below nav) ── */
-  .status-bar { padding: 4px 20px; background: var(--bg1); border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 11px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; position: sticky; top: 126px; z-index: 98; }
-  .status-bar:empty { display: none; }
 
   /* ════════════════════════════════════════════════════════
      REPORTS VIEW
