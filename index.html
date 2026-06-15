@@ -991,12 +991,18 @@
   <!-- Filter bar (hidden on print) -->
   <div class="rpt-filter-bar rpt-no-print">
     <div>
+      <label>Year</label>
+      <select id="rptYear" onchange="rptPickYear()" style="width:86px">
+        <option value="">— All —</option>
+      </select>
+    </div>
+    <div>
       <label>Date From</label>
-      <input type="date" id="rptDateFrom" onchange="renderReports()">
+      <input type="date" id="rptDateFrom" onchange="rptClearYear(); renderReports()">
     </div>
     <div>
       <label>Date To</label>
-      <input type="date" id="rptDateTo" onchange="renderReports()">
+      <input type="date" id="rptDateTo" onchange="rptClearYear(); renderReports()">
     </div>
     <div>
       <label>Ticker</label>

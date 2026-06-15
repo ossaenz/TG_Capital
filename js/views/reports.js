@@ -14,6 +14,7 @@ let rptState = {
 
 // Sync filter controls → state, then re-render
 function renderReports() {
+  rptPopulateYearSelect();
   rptState.dateFrom   = document.getElementById('rptDateFrom').value   || '';
   rptState.dateTo     = document.getElementById('rptDateTo').value     || '';
   rptState.ticker     = (document.getElementById('rptTicker').value    || '').trim().toUpperCase();
@@ -23,17 +24,56 @@ function renderReports() {
   _renderReportsWithState();
 }
 
+// Populate year select from transaction dates in the DB
+function rptPopulateYearSelect() {
+  const el = document.getElementById('rptYear');
+  if (!el) return;
+  const years = new Set();
+  (db.transactions || []).forEach(t => {
+    const y = (t.date || '').slice(0, 4);
+    if (/^\d{4}$/.test(y)) years.add(y);
+  });
+  const sorted = [...years].sort().reverse();
+  const current = el.value;
+  el.innerHTML = '<option value="">— All —</option>' +
+    sorted.map(y => `<option value="${y}">${y}</option>`).join('');
+  if (current && sorted.includes(current)) el.value = current;
+}
+
+// Year picker handler — fills both date inputs for the full calendar year
+function rptPickYear() {
+  const y = document.getElementById('rptYear').value;
+  if (y) {
+    document.getElementById('rptDateFrom').value = `${y}-01-01`;
+    document.getElementById('rptDateTo').value   = `${y}-12-31`;
+  } else {
+    document.getElementById('rptDateFrom').value = '';
+    document.getElementById('rptDateTo').value   = '';
+  }
+  renderReports();
+}
+
+// Clear the year picker when the user edits dates manually
+function rptClearYear() {
+  const el = document.getElementById('rptYear');
+  if (el) el.value = '';
+}
+
 // Quick-range preset buttons
 function rptQuickRange(range) {
-  const now = new Date();
-  const y   = now.getFullYear();
+  const now  = new Date();
+  const yearEl = document.getElementById('rptYear');
+  // Q1–Q4 use the selected year; YTD always uses today's year; All clears everything
+  const y = (range !== 'ytd' && range !== 'all' && yearEl && yearEl.value)
+    ? parseInt(yearEl.value, 10)
+    : now.getFullYear();
   let from = '', to = '';
   if (range === 'ytd') { from = `${y}-01-01`; to = now.toISOString().slice(0, 10); }
   else if (range === 'q1') { from = `${y}-01-01`; to = `${y}-03-31`; }
   else if (range === 'q2') { from = `${y}-04-01`; to = `${y}-06-30`; }
   else if (range === 'q3') { from = `${y}-07-01`; to = `${y}-09-30`; }
   else if (range === 'q4') { from = `${y}-10-01`; to = `${y}-12-31`; }
-  else if (range === 'all') { from = ''; to = ''; }
+  else if (range === 'all') { from = ''; to = ''; if (yearEl) yearEl.value = ''; }
   document.getElementById('rptDateFrom').value = from;
   document.getElementById('rptDateTo').value   = to;
   renderReports();
