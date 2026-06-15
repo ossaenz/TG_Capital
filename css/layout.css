@@ -23,8 +23,7 @@
   height: 100vh;
   position: sticky;
   top: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden; /* children handle their own scroll */
 }
 
 .sidebar-brand {
@@ -51,10 +50,13 @@
 
 .sidebar-nav {
   flex: 1;
+  min-height: 0; /* allow shrinking inside the flex column */
   padding: 8px 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .sidebar-section {
@@ -64,7 +66,7 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--c-text-2);
-  padding: 12px 16px 4px;
+  padding: 8px 16px 3px;
   white-space: nowrap;
 }
 
@@ -78,7 +80,7 @@
   font-family: var(--font-ui);
   font-size: 13px;
   font-weight: 400;
-  padding: 8px 16px;
+  padding: 6px 16px;
   border: none;
   border-left: 3px solid transparent;
   border-radius: 0;
