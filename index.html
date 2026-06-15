@@ -1036,8 +1036,10 @@
       <button class="btn btn-sm" onclick="rptQuickRange('q4')"  style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">Q4</button>
       <button class="btn btn-sm" onclick="rptQuickRange('all')" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">All Time</button>
       <span style="width:1px;height:22px;background:var(--border);display:inline-block;margin:0 4px"></span>
-      <button class="btn btn-sm" onclick="rptExportDetailCSV()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)">&#8659; Detail CSV</button>
-      <button class="btn btn-sm" onclick="rptExportSummaryCSV()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)">&#8659; Summary CSV</button>
+      <button class="btn btn-sm" onclick="rptExportDetailCSV()"   style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)">&#8659; Detail CSV</button>
+      <button class="btn btn-sm" onclick="rptExportDetailXLSX()"  style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)">&#8659; Detail XLSX</button>
+      <button class="btn btn-sm" onclick="rptExportSummaryCSV()"  style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)">&#8659; Summary CSV</button>
+      <button class="btn btn-sm" onclick="rptExportSummaryXLSX()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)">&#8659; Summary XLSX</button>
       <button class="btn btn-sm" onclick="window.print()" style="background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent)">&#9112; Print</button>
     </div>
   </div>
@@ -1206,6 +1208,9 @@
 
 <!-- Theme (applies persisted dark/light immediately) -->
 <script src="js/theme.js"></script>
+
+<!-- SheetJS for Excel export -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 
 <!-- Core modules -->
 <script src="js/storage.js"></script>

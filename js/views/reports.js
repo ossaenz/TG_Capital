@@ -387,3 +387,128 @@ function rptExportSummaryCSV() {
   const dateTag = (dateFrom || dateTo) ? `_${(dateFrom||'').replace(/-/g,'')}-${(dateTo||'').replace(/-/g,'')}` : '';
   _rptDownloadCSV(`TGCapital_Summary${dateTag}.csv`, rows);
 }
+
+// ── XLSX Export ────────────────────────────────────────
+function _rptDateTag() {
+  const { dateFrom, dateTo } = rptState;
+  return (dateFrom || dateTo) ? `_${(dateFrom||'').replace(/-/g,'')}-${(dateTo||'').replace(/-/g,'')}` : '';
+}
+
+function rptExportDetailXLSX() {
+  const d = window._rptData;
+  if (!d || !d.trades.length) { alert('No data to export. Apply filters first.'); return; }
+
+  const { dateFrom, dateTo } = rptState;
+  const wb = XLSX.utils.book_new();
+
+  // ── Sheet 1: Trade Detail
+  const detailHeader = ['Close Date','Open Date','Underlying','Symbol','Instrument','Option Type',
+    'Strike','Expiry','Qty','Open Price','Premium / Cost Basis','Close Price','Close Amount',
+    'Outcome','Fees','Net P&L','Gross P&L'];
+  const detailData = d.trades.map(t => [
+    t.closeDate  || '',
+    t.openDate   || '',
+    t.underlying || (t.symbol || '').split(' ')[0],
+    t.symbol     || '',
+    t.instrument || '',
+    t.optionType || '',
+    t.strike     != null ? t.strike    : null,
+    t.expiry     || '',
+    t.qty        || 1,
+    t.openPrice  != null ? t.openPrice : null,
+    t.openCredit || 0,
+    t.closePrice != null ? t.closePrice : null,
+    t.closeCost  || 0,
+    t.via        || '',
+    t.fees       || 0,
+    t.netPnl     || 0,
+    t.grossPnl   || 0,
+  ]);
+  const detailTotals = ['','','','','','','','','','','','','','TOTALS',
+    d.trades.reduce((s,t) => s+(t.fees||0),0),
+    d.trades.reduce((s,t) => s+(t.netPnl||0),0),
+    d.trades.reduce((s,t) => s+(t.grossPnl||0),0),
+  ];
+
+  const ws1 = XLSX.utils.aoa_to_sheet([
+    [`TGCapital Trading Report — Detail`],
+    [`Period: ${dateFrom || 'start'} to ${dateTo || 'present'}   Generated: ${new Date().toLocaleDateString()}`],
+    [],
+    detailHeader,
+    ...detailData,
+    [],
+    detailTotals,
+  ]);
+  ws1['!cols'] = [
+    {wch:12},{wch:12},{wch:12},{wch:22},{wch:11},{wch:12},{wch:8},{wch:12},{wch:5},
+    {wch:11},{wch:19},{wch:12},{wch:14},{wch:10},{wch:8},{wch:10},{wch:10},
+  ];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Trade Detail');
+
+  // ── Sheet 2: Income & Dividends
+  const incomeHeader = ['Date','Symbol','Type','Description','Amount'];
+  const incomeData   = d.income.map(t => [t.date||'', t.symbol||'', t.action||'', t.description||'', t.amount||0]);
+  const incomeTotal  = ['','','','Total Income', d.income.reduce((s,t) => s+(t.amount||0), 0)];
+  const ws2 = XLSX.utils.aoa_to_sheet([incomeHeader, ...incomeData, [], incomeTotal]);
+  ws2['!cols'] = [{wch:12},{wch:10},{wch:20},{wch:50},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Income & Dividends');
+
+  XLSX.writeFile(wb, `TGCapital_TradeDetail${_rptDateTag()}.xlsx`);
+}
+
+function rptExportSummaryXLSX() {
+  const d = window._rptData;
+  if (!d || !d.summaryRows.length) { alert('No data to export. Apply filters first.'); return; }
+
+  const { dateFrom, dateTo } = rptState;
+  const totalNet = d.summaryRows.reduce((s, [,g]) => s + g.net, 0);
+  const wb = XLSX.utils.book_new();
+
+  // ── Sheet 1: Summary by Underlying
+  const sumHeader = ['Underlying','Trades','Wins','Losses','Win Rate %','Premium Collected','Total Fees','Gross P&L','Net P&L','% of Total'];
+  const sumData = d.summaryRows.map(([sym, g]) => [
+    sym,
+    g.trades,
+    g.wins,
+    g.losses,
+    g.trades > 0 ? +(g.wins / g.trades * 100).toFixed(2) : 0,
+    g.premium,
+    g.fees,
+    g.gross,
+    g.net,
+    totalNet !== 0 ? +(g.net / totalNet * 100).toFixed(2) : 0,
+  ]);
+  const sumTotals = ['TOTALS',
+    d.summaryRows.reduce((s,[,g]) => s+g.trades,  0),
+    d.summaryRows.reduce((s,[,g]) => s+g.wins,    0),
+    d.summaryRows.reduce((s,[,g]) => s+g.losses,  0),
+    '',
+    d.summaryRows.reduce((s,[,g]) => s+g.premium, 0),
+    d.summaryRows.reduce((s,[,g]) => s+g.fees,    0),
+    d.summaryRows.reduce((s,[,g]) => s+g.gross,   0),
+    totalNet,
+    '',
+  ];
+
+  const ws1 = XLSX.utils.aoa_to_sheet([
+    [`TGCapital Trading Report — Summary`],
+    [`Period: ${dateFrom || 'start'} to ${dateTo || 'present'}   Generated: ${new Date().toLocaleDateString()}`],
+    [],
+    sumHeader,
+    ...sumData,
+    [],
+    sumTotals,
+  ]);
+  ws1['!cols'] = [{wch:12},{wch:8},{wch:6},{wch:8},{wch:11},{wch:20},{wch:12},{wch:12},{wch:12},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Summary by Underlying');
+
+  // ── Sheet 2: Income & Dividends
+  const incomeHeader = ['Date','Symbol','Type','Description','Amount'];
+  const incomeData   = d.income.map(t => [t.date||'', t.symbol||'', t.action||'', t.description||'', t.amount||0]);
+  const incomeTotal  = ['','','','Total Income', d.income.reduce((s,t) => s+(t.amount||0), 0)];
+  const ws2 = XLSX.utils.aoa_to_sheet([incomeHeader, ...incomeData, [], incomeTotal]);
+  ws2['!cols'] = [{wch:12},{wch:10},{wch:20},{wch:50},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Income & Dividends');
+
+  XLSX.writeFile(wb, `TGCapital_Summary${_rptDateTag()}.xlsx`);
+}
