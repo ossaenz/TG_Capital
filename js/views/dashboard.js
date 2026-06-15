@@ -269,6 +269,8 @@ function renderDashboard() {
   // ── Topbar ─────────────────────────────────────────────
   document.getElementById('ts-realized').textContent = fmt$(realized);
   document.getElementById('ts-realized').className = 'tstat-val pos ' + pnlClass(realized);
+  const scopeEl = document.getElementById('ts-realized-scope');
+  if (scopeEl) scopeEl.textContent = dashboardInstruments === 'all' ? 'all instruments' : 'options only';
   document.getElementById('ts-open').textContent = openPositions.length;
   const isFiltered = !!(dashboardDateStart || dashboardDateEnd);
   const displayedTrades = dashboardInstruments === 'options-only' ? optionClosed : closedTrades;
