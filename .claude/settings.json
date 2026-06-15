@@ -9,7 +9,13 @@
       "Bash(grep -n \"function pnlClass\\\\|function fmt\\\\$\" /media/osaenz/2ndsk1/github/TG-Capital/index.html)",
       "Bash(git commit -m ' *)",
       "Bash(git -C /media/osaenz/2ndsk1/github/TG-Capital commit -m ' *)",
-      "Bash(git -C /media/osaenz/2ndsk1/github/TG-Capital add css/layout.css index.html)"
+      "Bash(git -C /media/osaenz/2ndsk1/github/TG-Capital add css/layout.css index.html)",
+      "Bash(git -C /media/osaenz/2ndsk1/github/TG-Capital log --oneline -3)",
+      "Bash(git -C /media/osaenz/2ndsk1/github/TG-Capital log --oneline -8)",
+      "Bash(git -C /media/osaenz/2ndsk1/github/TG-Capital diff HEAD~1 --name-only)",
+      "Bash(git -C /media/osaenz/2ndsk1/github/TG-Capital log --oneline origin/main..HEAD)",
+      "Bash(git -C /media/osaenz/2ndsk1/github/TG-Capital show HEAD -- index.html)",
+      "Bash(git -C /media/osaenz/2ndsk1/github/TG-Capital show HEAD --stat)"
     ]
   }
 }
