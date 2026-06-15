@@ -4,7 +4,33 @@
 let currentJournalEntry = null;
 let journalChartInstance = null;
 
+function inferStrategy(entry) {
+  const action = entry.action || '';
+  const opt = (entry.optionType || '').toLowerCase();
+  switch (action) {
+    case 'Sell to Open':   return opt === 'put' ? 'Cash-Secured Put'  : opt === 'call' ? 'Covered Call' : null;
+    case 'Buy to Close':   return opt === 'put' ? 'Cash-Secured Put'  : opt === 'call' ? 'Covered Call' : null;
+    case 'Expired':        return opt === 'put' ? 'Cash-Secured Put'  : opt === 'call' ? 'Covered Call' : null;
+    case 'Buy to Open':    return opt === 'put' ? 'Long Put'          : opt === 'call' ? 'Long Call'    : null;
+    case 'Sell to Close':  return opt === 'put' ? 'Long Put'          : opt === 'call' ? 'Long Call'    : null;
+    case 'Assigned':       return 'Wheel Strategy';
+    case 'Buy':            return 'Stock Buy';
+    case 'Sell':           return 'Stock Sale';
+    default:               return null;
+  }
+}
+
 function renderJournal() {
+  // Silently backfill strategy on any entry that doesn't have one yet
+  let backfilled = 0;
+  for (const e of db.journalEntries) {
+    if (!e.strategy) {
+      const s = inferStrategy(e);
+      if (s) { e.strategy = s; backfilled++; }
+    }
+  }
+  if (backfilled > 0) saveDB(db);
+
   const search = (document.getElementById('journalSearch')?.value || '').toLowerCase();
   const dateStart = document.getElementById('journalDateStart')?.value || '';
   const dateEnd = document.getElementById('journalDateEnd')?.value || '';
@@ -74,16 +100,15 @@ function openJournalEntry(entryId) {
   const strategySelect = document.getElementById('journalStrategy');
   const customInput = document.getElementById('journalStrategyCustom');
 
-  if (currentJournalEntry.strategy) {
-    const predefined = ['Iron Condor', 'Vertical Call Spread', 'Vertical Put Spread', 'Covered Call', 'Cash-Secured Put', 'Long Call', 'Long Put', 'Strangle', 'Straddle', 'Wheel Strategy', 'Stock Buy', 'Stock Sale'];
-    if (predefined.includes(currentJournalEntry.strategy)) {
-      strategySelect.value = currentJournalEntry.strategy;
-      customInput.style.display = 'none';
-    } else {
-      strategySelect.value = 'Other';
-      customInput.value = currentJournalEntry.strategy;
-      customInput.style.display = 'block';
-    }
+  const strategyToShow = currentJournalEntry.strategy || inferStrategy(currentJournalEntry) || '';
+  const predefined = ['Iron Condor', 'Vertical Call Spread', 'Vertical Put Spread', 'Covered Call', 'Cash-Secured Put', 'Long Call', 'Long Put', 'Strangle', 'Straddle', 'Wheel Strategy', 'Stock Buy', 'Stock Sale'];
+  if (strategyToShow && predefined.includes(strategyToShow)) {
+    strategySelect.value = strategyToShow;
+    customInput.style.display = 'none';
+  } else if (strategyToShow) {
+    strategySelect.value = 'Other';
+    customInput.value = strategyToShow;
+    customInput.style.display = 'block';
   } else {
     strategySelect.value = '';
     customInput.style.display = 'none';
