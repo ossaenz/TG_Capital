@@ -269,7 +269,7 @@
 
 /* Status bar */
 .status-bar {
-  padding: 4px 16px;
+  padding: 6px 16px;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--c-text-2);
