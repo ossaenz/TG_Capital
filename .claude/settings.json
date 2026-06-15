@@ -7,7 +7,9 @@
       "Bash(git commit -m ':*)",
       "Bash(git push:*)",
       "Bash(grep -n \"function pnlClass\\\\|function fmt\\\\$\" /media/osaenz/2ndsk1/github/TG-Capital/index.html)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git -C /media/osaenz/2ndsk1/github/TG-Capital commit -m ' *)",
+      "Bash(git -C /media/osaenz/2ndsk1/github/TG-Capital add css/layout.css index.html)"
     ]
   }
 }

@@ -31,9 +31,12 @@ function applyGlobalFilter() {
 function resetGlobalFilter() {
   globalDateStart = null;
   globalDateEnd = null;
-  document.getElementById('globalYearSelect').value = '';
-  document.getElementById('globalDateStart').value = '';
-  document.getElementById('globalDateEnd').value = '';
+  const gy = document.getElementById('globalYearSelect');
+  const gs = document.getElementById('globalDateStart');
+  const ge = document.getElementById('globalDateEnd');
+  if (gy) gy.value = '';
+  if (gs) gs.value = '';
+  if (ge) ge.value = '';
 
   // Sync dashboard
   if (typeof dashboardDateStart !== 'undefined') {

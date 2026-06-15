@@ -47,31 +47,6 @@
     <button class="nav-btn" data-label="Field Matrix" onclick="showView('fields')"><span class="nav-ico">⊞</span><span class="nav-label">Field Matrix</span></button>
   </nav>
 
-  <!-- ── Global date range filter ── -->
-  <details class="sidebar-filter">
-    <summary class="sidebar-filter-title">Date Range</summary>
-    <div class="sidebar-filter-body">
-      <div class="sidebar-filter-group">
-        <label class="sidebar-filter-label">Year</label>
-        <select id="globalYearSelect" onchange="applyGlobalFilter()" class="sidebar-filter-select">
-          <option value="">All Years</option>
-        </select>
-      </div>
-      <div class="sidebar-filter-group">
-        <label class="sidebar-filter-label">From</label>
-        <input type="date" id="globalDateStart" class="sidebar-filter-input" />
-      </div>
-      <div class="sidebar-filter-group">
-        <label class="sidebar-filter-label">To</label>
-        <input type="date" id="globalDateEnd" class="sidebar-filter-input" />
-      </div>
-      <div class="sidebar-filter-actions">
-        <button class="btn btn-sm btn-accent" onclick="applyGlobalFilter()" style="flex:1;">Apply</button>
-        <button class="btn btn-sm" onclick="resetGlobalFilter()" style="flex:1;">Reset</button>
-      </div>
-    </div>
-  </details>
-
   <div class="sidebar-foot">
     <button class="btn btn-sm" id="btnSaveFile" onclick="saveDataFile()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green);font-weight:700;" title="Save all data to disk">💾 <span class="btn-label">Save</span></button>
     <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark / light mode" aria-label="Toggle theme"><span class="theme-ico">☾</span><span class="theme-label">Dark Mode</span></button>
