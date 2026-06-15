@@ -329,7 +329,7 @@ function importRecords(rawRows, fileName, batchId) {
         strike: txn.strike,
         expiry: txn.expiry,
         instrument: txn.instrument,
-        strategy: '',
+        strategy: (typeof inferStrategy === 'function' ? inferStrategy(txn) : null) || '',
         notes: '',
         screenshots: [],
         createdAt: new Date().toISOString(),
