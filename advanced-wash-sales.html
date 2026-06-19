@@ -1220,12 +1220,15 @@ function updateCoverageNotice() {
 
 function tryLoadFromSession() {
   try {
-    const raw = sessionStorage.getItem(PAYLOAD_KEY);
+    // Use localStorage — shared across all tabs regardless of noopener/browser.
+    // sessionStorage is not propagated to child tabs in Firefox/Safari, and is
+    // also blocked when noopener is set in Chromium.
+    const raw = localStorage.getItem(PAYLOAD_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     const clean = sanitizeDB(parsed);
     if (!clean.transactions.length) return null;
-    const ts = sessionStorage.getItem(PAYLOAD_TS_KEY) || new Date().toISOString();
+    const ts = localStorage.getItem(PAYLOAD_TS_KEY) || new Date().toISOString();
     return { db: clean, source: 'main app snapshot', ts };
   } catch {
     return null;
