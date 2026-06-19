@@ -162,7 +162,7 @@ function buildPositions() {
         closeCost: 0, closeFees: 0,
         grossPnl, fees: totalFees,
         netPnl: grossPnl,                  // Amount already net of fees
-        via: 'assigned', closeAction: 'Assigned', closeTxn: t,
+        via: t.optionType === 'call' ? 'exercised' : 'assigned', closeAction: 'Assigned', closeTxn: t,
       });
     }
 
