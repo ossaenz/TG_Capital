@@ -559,6 +559,10 @@
       </div>
     </div>
   </div>
+  <div style="background:var(--bg1);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--r);padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--text2);line-height:1.6;">
+    <strong style="font-family:var(--mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text1);">Lot-matching note</strong> —
+    Stock positions use <strong style="color:var(--text1)">same-date buy priority</strong>: intraday buy/sell pairs cancel first, then standard FIFO applies to older lots. This may differ from your broker's lot-matching method or strict IRS FIFO accounting. Consult a tax advisor for official cost-basis reporting.
+  </div>
   <div class="notice info" id="positionsNotice" style="display:none"></div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
     <div style="display:flex;flex-direction:column;gap:4px;">
@@ -654,7 +658,15 @@
 <!-- ===== TRADING JOURNAL ===== -->
 <div class="view" id="view-journal">
   <div class="section-title">Trading Journal — Decision Documentation</div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
+
+  <!-- View toggle -->
+  <div class="ws-subtab-bar" style="margin-bottom:12px;">
+    <button id="jvBtnEntries" class="ws-subtab active" onclick="switchJournalView('entries')">Entries</button>
+    <button id="jvBtnTrades"  class="ws-subtab"        onclick="switchJournalView('trades')">Trades</button>
+  </div>
+
+  <!-- Entries filter bar -->
+  <div id="jvFilterEntries" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
     <div style="display:flex;flex-direction:column;gap:4px;">
       <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">From Date</label>
       <input type="date" id="journalDateStart" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" oninput="renderJournal()">
@@ -696,6 +708,52 @@
       </select>
     </div>
   </div>
+
+  <!-- Trades filter bar (hidden by default) -->
+  <div id="jvFilterTrades" style="display:none;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:12px;">
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Closed From</label>
+      <input type="date" id="jtDateStart" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" oninput="renderJournal()">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Closed To</label>
+      <input type="date" id="jtDateEnd" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" oninput="renderJournal()">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Symbol</label>
+      <input type="text" id="jtSearch" placeholder="Filter symbol…" style="width:120px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" oninput="renderJournal()">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Close Type</label>
+      <select id="jtCloseType" onchange="renderJournal()" style="width:140px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
+        <option value="">All</option>
+        <option value="closed">Closed (BTC/STC)</option>
+        <option value="expired">Expired Worthless</option>
+        <option value="assigned">Assigned</option>
+        <option value="sold">Stock Sold</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Instrument</label>
+      <select id="jtInstrument" onchange="renderJournal()" style="width:120px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
+        <option value="">All</option>
+        <option value="option">Options</option>
+        <option value="stock">Stocks / ETFs</option>
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+      <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Sort</label>
+      <select id="jtSort" onchange="renderJournal()" style="width:160px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
+        <option value="date-desc">Close Date ↓</option>
+        <option value="date-asc">Close Date ↑</option>
+        <option value="pnl-best">Best P&amp;L First</option>
+        <option value="pnl-worst">Worst P&amp;L First</option>
+        <option value="symbol">Symbol A–Z</option>
+        <option value="days">Longest Hold</option>
+      </select>
+    </div>
+  </div>
+
   <div id="journalContainer" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
   </div>
 </div>
@@ -755,6 +813,78 @@
         <div style="display:flex;gap:8px;">
           <button class="btn btn-primary" onclick="saveJournalEntry()" style="flex:1;">Save Entry</button>
           <button class="btn" onclick="closeJournalModal()" style="flex:1;background:var(--bg2);border:1px solid var(--border);">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TRADE DETAIL MODAL ===== -->
+<div id="tradeModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
+  <div style="background:var(--bg0);margin:20px auto;max-width:920px;border-radius:6px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+    <!-- Header -->
+    <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+      <div>
+        <h2 id="tradeModalTitle" style="margin:0;font-size:20px;color:var(--text0);"></h2>
+        <div id="tradeModalSubtitle" style="font-size:12px;color:var(--text2);margin-top:4px;"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;flex-shrink:0;">
+        <div id="tradeModalPnl"></div>
+        <button onclick="closeTradeModal()" style="background:none;border:none;color:var(--text1);font-size:22px;cursor:pointer;line-height:1;">&times;</button>
+      </div>
+    </div>
+    <!-- Body -->
+    <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+      <!-- Left: Timeline + chart -->
+      <div>
+        <div id="tradeTimeline" style="background:var(--bg2);padding:16px;border-radius:6px;margin-bottom:16px;"></div>
+        <div id="tradeChartContainer" style="background:var(--bg2);padding:16px;border-radius:6px;min-height:180px;position:relative;">
+          <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text2);font-size:12px;">Loading chart…</div>
+        </div>
+      </div>
+      <!-- Right: Notes & screenshots -->
+      <div>
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:10px;color:var(--text2);font-weight:700;margin-bottom:8px;text-transform:uppercase;">Trading Strategy</label>
+          <select id="tradeStrategy" onchange="handleTradeStrategyChange()" style="width:100%;padding:8px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text0);font-size:12px;">
+            <option value="">— Select Strategy —</option>
+            <option value="Iron Condor">Iron Condor</option>
+            <option value="Vertical Call Spread">Vertical Call Spread</option>
+            <option value="Vertical Put Spread">Vertical Put Spread</option>
+            <option value="Covered Call">Covered Call</option>
+            <option value="Cash-Secured Put">Cash-Secured Put</option>
+            <option value="Long Call">Long Call</option>
+            <option value="Long Put">Long Put</option>
+            <option value="Strangle">Strangle</option>
+            <option value="Straddle">Straddle</option>
+            <option value="Wheel Strategy">Wheel Strategy</option>
+            <option value="Stock Buy">Stock Buy</option>
+            <option value="Stock Sale">Stock Sale</option>
+            <option value="Other">Other (Custom)</option>
+          </select>
+          <input type="text" id="tradeStrategyCustom" placeholder="Enter custom strategy name…" style="width:100%;padding:8px;margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text0);font-size:12px;display:none;box-sizing:border-box;" />
+        </div>
+        <!-- Open-leg notes (read-only) -->
+        <div id="tradeOpenNoteBlock" style="margin-bottom:14px;display:none;">
+          <label style="display:block;font-size:10px;color:var(--text2);font-weight:700;margin-bottom:6px;text-transform:uppercase;">Open Leg Notes</label>
+          <div id="tradeOpenNote" style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:10px;font-size:12px;color:var(--text1);line-height:1.5;white-space:pre-wrap;font-family:var(--mono);min-height:48px;"></div>
+        </div>
+        <!-- Close-leg / trade notes -->
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:10px;color:var(--text2);font-weight:700;margin-bottom:6px;text-transform:uppercase;">Trade Notes</label>
+          <textarea id="tradeNotes" placeholder="Document your rationale, outcome, and lessons learned…" onpaste="handleTradePaste(event)" style="width:100%;height:160px;padding:10px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text0);font-family:var(--mono);font-size:12px;resize:vertical;box-sizing:border-box;"></textarea>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:10px;color:var(--text2);font-weight:700;margin-bottom:6px;text-transform:uppercase;">Screenshots / Evidence</label>
+          <div id="tradeScreenshots" style="background:var(--bg2);border:2px dashed var(--border);border-radius:4px;padding:14px;text-align:center;cursor:pointer;" onclick="document.getElementById('tradeImageInput').click()">
+            <div style="color:var(--text2);font-size:12px;">Click to upload or paste (Ctrl/Cmd+V)</div>
+            <input type="file" id="tradeImageInput" multiple accept="image/*" style="display:none;" onchange="handleTradeImageUpload(event)">
+          </div>
+          <div id="tradeImagePreview" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;margin-top:10px;"></div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="saveTradeNote()" style="flex:1;">Save Notes</button>
+          <button class="btn" onclick="closeTradeModal()" style="flex:1;background:var(--bg2);border:1px solid var(--border);">Close</button>
         </div>
       </div>
     </div>
