@@ -293,6 +293,15 @@ function normalizeRow(raw, batchId) {
     direction,
     batchId,
   };
+
+  // Schwab records 'Exercised' (CC called away) with the underlying ticker as the
+  // symbol rather than the full option symbol, so classifyInstrument returns 'stock'.
+  // Override so the engine can find the matching option lot.
+  if (action === 'Exercised' && !optInfo) {
+    t.instrument = 'option';
+    t.underlying = symbol; // symbol IS the underlying ticker in this case
+  }
+
   return sanitizeTransaction(t);
 }
 
