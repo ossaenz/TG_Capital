@@ -167,9 +167,23 @@ function buildPositions() {
     }
 
     // ── EXERCISED (covered call called away) ─────────────
-    else if (t.action === 'Exercised' && isOption) {
-      const k = t.symbol;
-      const lots = openLots[k] || [];
+    // Schwab may use the underlying ticker as the symbol for Exercised rows
+    // instead of the full option symbol. Try direct key first, then search
+    // open lots for a short call whose underlying matches the ticker.
+    else if (t.action === 'Exercised') {
+      let lots = openLots[t.symbol] || [];
+      let refTxn = t; // source of option details (strike, expiry, optionType)
+
+      if (!lots.length) {
+        const underlying = t.underlying || t.symbol;
+        const matchKey = Object.keys(openLots).find(k => {
+          const info = parseOptionSymbol(k);
+          return info && info.underlying === underlying && openLots[k].length > 0
+            && openLots[k].some(l => l.txn.optionType === 'call');
+        });
+        if (matchKey) { lots = openLots[matchKey]; refTxn = lots[0].txn; }
+      }
+
       let remaining = Math.abs(t.quantity || 1);
       let openCredit = 0, openFeesAlloc = 0, openDateFirst = null, openPriceWtd = 0, matchedTotal = 0;
 
@@ -188,22 +202,22 @@ function buildPositions() {
         if (lot.qty <= 0) lots.shift();
       }
 
+      if (matchedTotal <= 0) continue; // no matching open lot — skip (carry-in position)
+
       const avgOpenPrice = matchedTotal > 0 ? openPriceWtd / matchedTotal : 0;
-      const grossPnl = openCredit;
-      const totalFees = openFeesAlloc;
 
       closedTrades.push({
-        symbol: t.symbol, underlying: t.underlying,
-        instrument: 'option', optionType: t.optionType,
-        strike: t.strike, expiry: t.expiry,
+        symbol: refTxn.symbol, underlying: refTxn.underlying || t.symbol,
+        instrument: 'option', optionType: refTxn.optionType,
+        strike: refTxn.strike, expiry: refTxn.expiry,
         openDate: openDateFirst, closeDate: t.date,
         qty: matchedTotal,
         openPrice: avgOpenPrice,
         openCredit, openFees: openFeesAlloc,
-        closePrice: t.strike || 0,
+        closePrice: refTxn.strike || 0,
         closeCost: 0, closeFees: 0,
-        grossPnl, fees: totalFees,
-        netPnl: grossPnl,
+        grossPnl: openCredit, fees: openFeesAlloc,
+        netPnl: openCredit,
         via: 'exercised', closeAction: 'Exercised', closeTxn: t,
       });
     }
