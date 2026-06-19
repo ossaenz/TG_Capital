@@ -39,7 +39,6 @@
     <div class="sidebar-section">Analysis</div>
     <button class="nav-btn" data-label="Reports" onclick="showView('reports')"><span class="nav-ico">▣</span><span class="nav-label">Reports</span></button>
     <button class="nav-btn" data-label="Wash Sales" onclick="showView('washsales')"><span class="nav-ico">⚠</span><span class="nav-label">Wash Sales</span></button>
-    <button class="nav-btn" data-label="Advanced Wash Sales" onclick="openAdvancedWashSalesPage()"><span class="nav-ico">⚑</span><span class="nav-label">Advanced Wash</span></button>
 
     <div class="sidebar-section">Journal</div>
     <button class="nav-btn" data-label="Trade Journal" onclick="showView('journal')"><span class="nav-ico">✎</span><span class="nav-label">Trade Journal</span></button>
@@ -781,17 +780,245 @@
 
 <!-- ===== WASH SALES ===== -->
 <div class="view" id="view-washsales">
-  <div class="notice">⚠ Wash sale detection is heuristic only. This tool flags potential violations based on the 30-day rule for substantially identical securities. Confirm all flagged trades with your CPA before filing. This is not tax advice.</div>
-  <div class="card">
-    <div class="card-header"><span class="card-title">Potential Wash Sale Violations</span><span id="washCount" style="font-family:var(--mono);font-size:12px;color:var(--amber)"></span></div>
-    <div class="tbl-wrap"><table id="washTable">
-      <thead><tr>
-        <th>Symbol</th><th>Loss Trade Date</th><th>Loss Amount</th>
-        <th>Repurchase Date</th><th>Days Apart</th><th>Repurchase Action</th><th>Risk Level</th>
-      </tr></thead>
-      <tbody><tr class="empty-row"><td colspan="7">No wash sale flags.</td></tr></tbody>
-    </table></div>
+  <div class="notice" style="border-radius:0;margin:0">⚠ Wash sale detection is heuristic only. Confirm all flagged trades with your CPA before filing. This is not tax advice.</div>
+
+  <!-- Sub-tab selector -->
+  <div class="ws-subtab-bar">
+    <button id="wsSubtabBasic" class="ws-subtab active" onclick="wsShowPanel('basic')">Quick Scan</button>
+    <button id="wsSubtabAdv"   class="ws-subtab"        onclick="wsShowPanel('adv')">Advanced / CPA</button>
   </div>
+
+  <!-- ══ QUICK SCAN PANEL ══════════════════════════════ -->
+  <div id="ws-panel-basic">
+    <div class="rpt-filter-bar">
+      <div>
+        <label>Year</label>
+        <select id="wsYear" onchange="wsPickYear()" style="width:86px">
+          <option value="">— All —</option>
+        </select>
+      </div>
+      <div>
+        <label>Date From</label>
+        <input type="date" id="wsDateFrom" onchange="wsClearYear(); renderWashSales()">
+      </div>
+      <div>
+        <label>Date To</label>
+        <input type="date" id="wsDateTo" onchange="wsClearYear(); renderWashSales()">
+      </div>
+      <div>
+        <label>Symbol</label>
+        <input type="text" id="wsSymbol" placeholder="e.g. TSLA, SPY" oninput="renderWashSales()" style="width:120px">
+      </div>
+      <div>
+        <label>Risk</label>
+        <select id="wsRisk" onchange="renderWashSales()" style="width:100px">
+          <option value="all">All</option>
+          <option value="HIGH">HIGH</option>
+          <option value="MEDIUM">MEDIUM</option>
+          <option value="LOW">LOW</option>
+        </select>
+      </div>
+      <div>
+        <label>Instrument</label>
+        <select id="wsInstrument" onchange="renderWashSales()">
+          <option value="all">All</option>
+          <option value="option">Options</option>
+          <option value="stock">Stocks / ETFs</option>
+        </select>
+      </div>
+      <div class="rpt-actions">
+        <button class="btn btn-sm" onclick="wsQuickRange('ytd')" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">YTD</button>
+        <button class="btn btn-sm" onclick="wsQuickRange('q1')"  style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">Q1</button>
+        <button class="btn btn-sm" onclick="wsQuickRange('q2')"  style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">Q2</button>
+        <button class="btn btn-sm" onclick="wsQuickRange('q3')"  style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">Q3</button>
+        <button class="btn btn-sm" onclick="wsQuickRange('q4')"  style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">Q4</button>
+        <button class="btn btn-sm" onclick="wsQuickRange('all')" style="background:var(--bg3);color:var(--text1);border:1px solid var(--border)">All Time</button>
+        <span style="width:1px;height:22px;background:var(--border);display:inline-block;margin:0 4px"></span>
+        <button class="btn btn-sm" onclick="wsExportCSV()"  style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)">&#8659; CSV</button>
+        <button class="btn btn-sm" onclick="wsExportXLSX()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)">&#8659; XLSX</button>
+      </div>
+    </div>
+
+    <div class="rpt-body">
+      <div class="rpt-kpi-row">
+        <div class="rpt-kpi">
+          <div class="rpt-kpi-label">Potential Flags</div>
+          <div class="rpt-kpi-val" id="wsKpiFlags">—</div>
+        </div>
+        <div class="rpt-kpi">
+          <div class="rpt-kpi-label">Total Disallowed Loss</div>
+          <div class="rpt-kpi-val" id="wsKpiLoss">—</div>
+          <div class="rpt-kpi-sub">sum of flagged losses</div>
+        </div>
+        <div class="rpt-kpi">
+          <div class="rpt-kpi-label">HIGH Risk</div>
+          <div class="rpt-kpi-val" id="wsKpiHigh">—</div>
+          <div class="rpt-kpi-sub">repurchased within 7 days</div>
+        </div>
+        <div class="rpt-kpi">
+          <div class="rpt-kpi-label">MED / LOW Risk</div>
+          <div class="rpt-kpi-val" id="wsKpiMedLow">—</div>
+          <div class="rpt-kpi-sub">8–14d / 15–30d</div>
+        </div>
+      </div>
+
+      <div class="rpt-section">
+        <div class="rpt-section-hdr">
+          <span class="rpt-section-title">By Symbol</span>
+        </div>
+        <div class="scroll-x">
+          <table class="rpt-tbl summary" id="wsSummaryTable">
+            <thead><tr>
+              <th>Symbol</th><th class="r">Flags</th>
+              <th class="r">Total Disallowed Loss</th><th>Highest Risk</th>
+            </tr></thead>
+            <tbody><tr class="empty-row"><td colspan="4">—</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="rpt-section">
+        <div class="rpt-section-hdr">
+          <span class="rpt-section-title">Potential Violations</span>
+          <span class="rpt-section-count" id="washCount"></span>
+        </div>
+        <div class="scroll-x">
+          <table class="rpt-tbl" id="washTable">
+            <thead><tr>
+              <th style="cursor:pointer" onclick="wsSortBy('symbol')">Symbol<span id="wsSort-symbol"></span></th>
+              <th style="cursor:pointer" onclick="wsSortBy('lossDate')">Loss Trade Date<span id="wsSort-lossDate"> ▼</span></th>
+              <th style="cursor:pointer" onclick="wsSortBy('lossAmount')">Loss Amount<span id="wsSort-lossAmount"></span></th>
+              <th style="cursor:pointer" onclick="wsSortBy('repDate')">Repurchase Date<span id="wsSort-repDate"></span></th>
+              <th style="cursor:pointer" onclick="wsSortBy('daysApart')">Days Apart<span id="wsSort-daysApart"></span></th>
+              <th>Repurchase Action</th>
+              <th style="cursor:pointer" onclick="wsSortBy('risk')">Risk Level<span id="wsSort-risk"></span></th>
+            </tr></thead>
+            <tbody><tr class="empty-row"><td colspan="7">No wash sale flags.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div><!-- /ws-panel-basic -->
+
+  <!-- ══ ADVANCED / CPA PANEL ═════════════════════════ -->
+  <div id="ws-panel-adv" style="display:none">
+    <div id="advCoverageNotice" class="notice" style="display:none;border-radius:0;margin:0"></div>
+
+    <div class="rpt-filter-bar">
+      <div>
+        <label>Tax Year</label>
+        <select id="advTaxYear" onchange="advRenderAll()" style="width:100px">
+          <option value="">All years</option>
+        </select>
+      </div>
+      <div>
+        <label>Date From</label>
+        <input type="date" id="advDateFrom" onchange="advRenderAll()">
+      </div>
+      <div>
+        <label>Date To</label>
+        <input type="date" id="advDateTo" onchange="advRenderAll()">
+      </div>
+      <div>
+        <label>Match Mode</label>
+        <select id="advMode" onchange="advRenderAll()">
+          <option value="strict">Strict (exact option symbol)</option>
+          <option value="broad">Broad (underlying + option type)</option>
+        </select>
+      </div>
+      <div>
+        <label>Window Side</label>
+        <select id="advWindow" onchange="advRenderAll()">
+          <option value="both">Before and after loss</option>
+          <option value="after">After loss only</option>
+        </select>
+      </div>
+      <div>
+        <label>Symbol</label>
+        <input type="text" id="advSymbol" placeholder="e.g. SPY" oninput="advRenderAll()" style="width:110px">
+      </div>
+      <div>
+        <label>Risk</label>
+        <select id="advRisk" onchange="advRenderAll()" style="width:100px">
+          <option value="">All</option>
+          <option value="HIGH">HIGH</option>
+          <option value="MEDIUM">MEDIUM</option>
+          <option value="LOW">LOW</option>
+        </select>
+      </div>
+      <div class="rpt-actions">
+        <button class="btn btn-sm" onclick="advExportMatchLedgerCSV()" style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)">&#8659; Match Ledger CSV</button>
+        <button class="btn btn-sm" onclick="advExportForm8949CSV()"    style="background:var(--green-dim);color:var(--green);border:1px solid var(--green)">&#8659; Form 8949 CSV</button>
+      </div>
+    </div>
+
+    <div class="rpt-body">
+      <!-- KPI strip -->
+      <div class="rpt-kpi-row" id="advKpiGrid"></div>
+
+      <!-- Top Symbols bar chart -->
+      <div class="rpt-section">
+        <div class="rpt-section-hdr">
+          <span class="rpt-section-title">Top Symbols by Disallowed Loss</span>
+        </div>
+        <div class="adv-bars" id="advBars"></div>
+      </div>
+
+      <!-- Loss Event Summary -->
+      <div class="rpt-section">
+        <div class="rpt-section-hdr">
+          <span class="rpt-section-title">Loss Event Summary</span>
+        </div>
+        <div class="scroll-x">
+          <table class="rpt-tbl">
+            <thead><tr>
+              <th>Loss Date</th><th>Symbol</th><th>Instrument</th>
+              <th class="r">Loss Qty</th><th class="r">Realized Loss</th>
+              <th class="r">Matched Qty</th><th class="r">Disallowed</th><th class="r">Deductible Now</th>
+            </tr></thead>
+            <tbody id="advLossSummaryBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Replacement Basis Adjustments -->
+      <div class="rpt-section">
+        <div class="rpt-section-hdr">
+          <span class="rpt-section-title">Replacement Basis Adjustments</span>
+        </div>
+        <div class="scroll-x">
+          <table class="rpt-tbl">
+            <thead><tr>
+              <th>Replacement Date</th><th>Replacement Symbol</th><th>Action</th>
+              <th class="r">Replacement Qty</th><th class="r">Qty Matched</th>
+              <th class="r">Basis Adj (+)</th><th class="r">Adj Per Unit</th>
+            </tr></thead>
+            <tbody id="advAdjBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Wash Match Ledger -->
+      <div class="rpt-section">
+        <div class="rpt-section-hdr">
+          <span class="rpt-section-title">Wash Match Ledger</span>
+        </div>
+        <div class="scroll-x">
+          <table class="rpt-tbl">
+            <thead><tr>
+              <th>Loss Date</th><th>Loss Symbol</th>
+              <th class="r">Loss Qty</th><th class="r">Loss Per Unit</th>
+              <th>Replacement Date</th><th>Replacement Symbol</th><th>Action</th>
+              <th class="r">Days</th><th class="r">Matched Qty</th>
+              <th class="r">Disallowed</th><th class="c">Risk</th><th class="c">Confidence</th>
+            </tr></thead>
+            <tbody id="advMatchBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div><!-- /ws-panel-adv -->
+
 </div>
 
 <!-- ===== IMPORT ===== -->
@@ -1233,6 +1460,7 @@
 <script src="js/views/journal.js"></script>
 <script src="js/views/reports.js"></script>
 <script src="js/views/washsales.js"></script>
+<script src="js/views/advwashsales.js"></script>
 <script src="js/views/audit.js"></script>
 <script src="js/views/import.js"></script>
 

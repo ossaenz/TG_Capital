@@ -1,16 +1,6 @@
 // ════════════════════════════════════════════════════════
 // VIEW ROUTING
 // ════════════════════════════════════════════════════════
-function openAdvancedWashSalesPage() {
-  try {
-    const payload = JSON.stringify(sanitizeDB(db));
-    sessionStorage.setItem('tgcapital_adv_wash_payload_v1', payload);
-    sessionStorage.setItem('tgcapital_adv_wash_payload_ts', new Date().toISOString());
-  } catch (err) {
-    console.warn('Advanced wash payload save failed:', err.message);
-  }
-  window.open('advanced-wash-sales.html', '_blank', 'noopener');
-}
 
 function showView(id) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));

@@ -657,6 +657,27 @@
   .rpt-print-header { display:none; }
 
   /* ────────────────────────────────────────────────────────
+     WASH SALES — sub-tab nav + advanced panel elements
+  ──────────────────────────────────────────────────────── */
+  .ws-subtab-bar { display:flex; gap:0; border-bottom:2px solid var(--border); background:var(--bg2); padding:0 16px; }
+  .ws-subtab { background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-2px; padding:10px 18px; font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:0.09em; text-transform:uppercase; color:var(--text2); cursor:pointer; transition:color 0.15s, border-color 0.15s; }
+  .ws-subtab:hover { color:var(--text1); }
+  .ws-subtab.active { color:var(--accent); border-bottom-color:var(--accent); }
+
+  /* Bar chart for "Top Symbols by Disallowed Loss" */
+  .adv-bars { display:flex; flex-direction:column; gap:10px; padding:4px 0 8px; }
+  .adv-bar-row { display:grid; grid-template-columns:130px 1fr 100px; gap:10px; align-items:center; }
+  .adv-bar-name { font-family:var(--mono); font-size:12px; color:var(--text1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .adv-bar-track { height:10px; background:var(--bg3); border-radius:999px; border:1px solid var(--border); overflow:hidden; }
+  .adv-bar-fill { height:100%; background:linear-gradient(90deg, #f0b14f, #ff7d7d); border-radius:999px; }
+  .adv-bar-val { font-family:var(--mono); font-size:12px; color:var(--text1); text-align:right; }
+
+  /* Risk badges for advanced wash sale matches */
+  .badge-risk-high   { background:#3f1d1d; color:#ff9f9f; border:1px solid #6d2a2a; }
+  .badge-risk-medium { background:#3c2c13; color:#ffd08c; border:1px solid #6f5223; }
+  .badge-risk-low    { background:#1f2734; color:#b5c0d2; border:1px solid #344155; }
+
+  /* ────────────────────────────────────────────────────────
      @media print — clean accountant-ready output
   ──────────────────────────────────────────────────────── */
   @media print {
