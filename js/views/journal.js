@@ -15,7 +15,8 @@ function inferStrategy(entry) {
     case 'Expired':        return opt === 'put' ? 'Cash-Secured Put'  : opt === 'call' ? 'Covered Call' : null;
     case 'Buy to Open':    return opt === 'put' ? 'Long Put'          : opt === 'call' ? 'Long Call'    : null;
     case 'Sell to Close':  return opt === 'put' ? 'Long Put'          : opt === 'call' ? 'Long Call'    : null;
-    case 'Assigned':       return 'Wheel Strategy';
+    case 'Assigned':       return opt === 'call' ? 'Covered Call' : 'Wheel Strategy';
+    case 'Exercised':      return 'Covered Call';
     case 'Buy':            return 'Stock Buy';
     case 'Sell':           return 'Stock Sale';
     default:               return null;
@@ -158,9 +159,9 @@ function renderJournalTrades() {
     const pnlSign  = pnl >= 0 ? '+' : '';
     const days     = _jtDays(trade);
 
-    const viaLabel = trade.via === 'expired' ? 'Expired' : trade.via === 'assigned' ? 'Assigned' : 'Closed';
-    const viaBg    = trade.via === 'expired'  ? 'var(--bg3)'  : trade.via === 'assigned' ? '#3c2c13'       : 'var(--accent-dim)';
-    const viaColor = trade.via === 'expired'  ? 'var(--text2)': trade.via === 'assigned' ? 'var(--amber)'  : 'var(--accent)';
+    const viaLabel = trade.via === 'expired' ? 'Expired' : trade.via === 'assigned' ? 'Assigned' : trade.via === 'exercised' ? 'Called Away' : 'Closed';
+    const viaBg    = trade.via === 'expired'  ? 'var(--bg3)'  : trade.via === 'assigned' ? '#3c2c13'      : trade.via === 'exercised' ? '#1f2c1f'        : 'var(--accent-dim)';
+    const viaColor = trade.via === 'expired'  ? 'var(--text2)': trade.via === 'assigned' ? 'var(--amber)' : trade.via === 'exercised' ? 'var(--green)'   : 'var(--accent)';
 
     const optDetail = trade.instrument === 'option'
       ? `${(trade.optionType||'').toUpperCase()} · $${trade.strike} · exp ${trade.expiry}`
@@ -216,7 +217,8 @@ function _jtInferStrategy(trade) {
   if (!trade) return null;
   if (trade.instrument !== 'option') return trade.instrument === 'etf' ? 'ETF Trade' : 'Stock Trade';
   const opt = (trade.optionType || '').toLowerCase();
-  if (trade.via === 'assigned')  return 'Wheel Strategy';
+  if (trade.via === 'exercised') return 'Covered Call';
+  if (trade.via === 'assigned')  return opt === 'call' ? 'Covered Call' : 'Wheel Strategy';
   const isCredit = (trade.openCredit || 0) > 0;
   if (isCredit) return opt === 'put' ? 'Cash-Secured Put' : opt === 'call' ? 'Covered Call' : null;
   return opt === 'put' ? 'Long Put' : opt === 'call' ? 'Long Call' : null;
@@ -251,7 +253,7 @@ function openTradeEntry(idx) {
   const days     = _jtDays(trade);
   const strategy = _jtInferStrategy(trade);
 
-  const viaLabel     = trade.via === 'expired' ? 'Expired Worthless' : trade.via === 'assigned' ? 'Assigned' : 'Closed';
+  const viaLabel     = trade.via === 'expired' ? 'Expired Worthless' : trade.via === 'assigned' ? 'Assigned' : trade.via === 'exercised' ? 'Called Away' : 'Closed';
   const isCredit     = (trade.openCredit || 0) > 0;
   const openActLabel = trade.instrument === 'option' ? (isCredit ? 'Sell to Open' : 'Buy to Open') : 'Buy';
 

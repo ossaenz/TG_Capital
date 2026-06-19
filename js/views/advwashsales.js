@@ -6,7 +6,7 @@
 // Sorted transaction order for lot-matching (opens before closes on same date)
 const ADV_ACTION_ORDER = {
   'Sell to Open': 0, 'Buy to Open': 0, 'Buy': 0,
-  'Buy to Close': 1, 'Sell to Close': 1, 'Expired': 1, 'Assigned': 1, 'Sell': 1,
+  'Buy to Close': 1, 'Sell to Close': 1, 'Expired': 1, 'Assigned': 1, 'Exercised': 1, 'Sell': 1,
 };
 
 // HTML-escape helper (not in main app)
@@ -61,7 +61,7 @@ function buildLossEvents(txns) {
       continue;
     }
 
-    if (isOption && ['Buy to Close','Sell to Close','Expired','Assigned'].includes(t.action)) {
+    if (isOption && ['Buy to Close','Sell to Close','Expired','Assigned','Exercised'].includes(t.action)) {
       const lots = openOptionLots[t.symbol] || [];
       let remaining = Math.abs(t.quantity || 0) || 1;
       let matchedQty = 0, openCredit = 0, openDateFirst = null;
@@ -78,7 +78,7 @@ function buildLossEvents(txns) {
       }
 
       if (matchedQty > 0) {
-        const closeAmount = (t.action === 'Expired' || t.action === 'Assigned') ? 0 : (t.amount || 0);
+        const closeAmount = (t.action === 'Expired' || t.action === 'Assigned' || t.action === 'Exercised') ? 0 : (t.amount || 0);
         const pnl = openCredit + closeAmount;
         if (pnl < -0.01) {
           const lossAmount = Math.abs(pnl);

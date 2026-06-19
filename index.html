@@ -725,11 +725,12 @@
     </div>
     <div style="display:flex;flex-direction:column;gap:4px;">
       <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Close Type</label>
-      <select id="jtCloseType" onchange="renderJournal()" style="width:140px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
+      <select id="jtCloseType" onchange="renderJournal()" style="width:150px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
         <option value="">All</option>
         <option value="closed">Closed (BTC/STC)</option>
         <option value="expired">Expired Worthless</option>
-        <option value="assigned">Assigned</option>
+        <option value="assigned">Assigned (Put)</option>
+        <option value="exercised">Called Away (CC)</option>
         <option value="sold">Stock Sold</option>
       </select>
     </div>
