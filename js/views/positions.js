@@ -102,15 +102,17 @@ function renderClosedPositions() {
   document.getElementById('ck-fees').textContent     = '-' + fmt$(fees);
   document.getElementById('ck-net').textContent      = fmt$(net);
   document.getElementById('ck-net').className        = 'kpi-value pos ' + pnlClass(net);
-  document.getElementById('ck-expired').textContent  = closedTrades.filter(t => t.via === 'expired').length;
-  document.getElementById('ck-assigned').textContent = closedTrades.filter(t => t.via === 'assigned').length;
+  document.getElementById('ck-expired').textContent   = closedTrades.filter(t => t.via === 'expired').length;
+  document.getElementById('ck-assigned').textContent  = closedTrades.filter(t => t.via === 'assigned').length;
+  document.getElementById('ck-exercised').textContent = closedTrades.filter(t => t.via === 'exercised').length;
 
   // Filter + sort newest first
   let rows = [...closedTrades].sort((a, b) => (b.closeDate || '').localeCompare(a.closeDate || ''));
   if (search) rows = rows.filter(t => (t.symbol + ' ' + (t.underlying||'')).toLowerCase().includes(search));
   if (closedFilter === 'btc')           rows = rows.filter(t => t.via === 'closed');
   else if (closedFilter === 'expired')  rows = rows.filter(t => t.via === 'expired');
-  else if (closedFilter === 'assigned') rows = rows.filter(t => t.via === 'assigned');
+  else if (closedFilter === 'assigned')  rows = rows.filter(t => t.via === 'assigned');
+  else if (closedFilter === 'exercised') rows = rows.filter(t => t.via === 'exercised');
   else if (closedFilter === 'sold')     rows = rows.filter(t => t.via === 'sold');
   else if (closedFilter === 'wins')     rows = rows.filter(t => (t.netPnl || 0) > 0);
   else if (closedFilter === 'losses')   rows = rows.filter(t => (t.netPnl || 0) < 0);
@@ -180,6 +182,11 @@ function renderClosedPositions() {
       closePriceStr = t.strike != null ? `<span style="color:var(--amber)">$${t.strike.toFixed(2)} strike</span>` : '—';
       closeAmtStr   = '<span style="color:var(--amber)">Stock received</span>';
       viaBadge      = '<span class="badge badge-assigned">ASSIGNED</span>';
+    } else if (t.via === 'exercised') {
+      closeAction2  = 'CALLED AWAY';
+      closePriceStr = t.strike != null ? `<span style="color:var(--green)">$${t.strike.toFixed(2)} strike</span>` : '—';
+      closeAmtStr   = '<span style="color:var(--green)">Shares called away</span>';
+      viaBadge      = '<span class="badge badge-closed" style="background:#1f2c1f;color:var(--green);border-color:#2d4a2d">CALLED AWAY</span>';
     } else if (t.via === 'sold') {
       closeAction2  = 'SELL';
       closePriceStr = t.closePrice ? '$' + t.closePrice.toFixed(2) + '/share' : '—';
@@ -215,6 +222,8 @@ function renderClosedPositions() {
     if (t.via === 'expired') {
       mathLine = `<span style="color:var(--text2);font-size:11px">Premium ${fmt$(t.openCredit)} &minus; fees ${fmt$(t.fees)} = </span>`;
     } else if (t.via === 'assigned') {
+      mathLine = `<span style="color:var(--text2);font-size:11px">Premium ${fmt$(t.openCredit)} &minus; fees ${fmt$(t.fees)} = </span>`;
+    } else if (t.via === 'exercised') {
       mathLine = `<span style="color:var(--text2);font-size:11px">Premium ${fmt$(t.openCredit)} &minus; fees ${fmt$(t.fees)} = </span>`;
     } else if (t.via === 'sold') {
       mathLine = `<span style="color:var(--text2);font-size:11px">Proceeds ${fmt$(t.closeCost)} &minus; cost ${fmt$(Math.abs(t.openCredit))} &minus; fees ${fmt$(t.fees)} = </span>`;
