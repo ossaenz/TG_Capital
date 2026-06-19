@@ -181,7 +181,16 @@ function buildPositions() {
     // ── STOCK SELL ────────────────────────────────────────
     else if (t.action === 'Sell' && !isOption) {
       const k = t.symbol;
-      const lots = stockLots[k] || [];
+      if (!stockLots[k]) stockLots[k] = [];
+      // Same-date lots are consumed first so intraday buy+sell pairs (day trades)
+      // cancel each other without touching pre-existing older lots. Remaining
+      // quantity then falls through to standard FIFO against older lots.
+      const sellDate = t.date;
+      const lots = [
+        ...stockLots[k].filter(l => l.txn.date === sellDate),
+        ...stockLots[k].filter(l => l.txn.date !== sellDate),
+      ];
+      stockLots[k] = lots;
       let remaining = Math.abs(t.quantity || 0);
       let totalCost = 0, openFeesAlloc = 0, openDateFirst = null, openPriceWtd = 0, matchedTotal = 0;
 
@@ -237,15 +246,6 @@ function buildPositions() {
 
   // ── BUILD OPEN POSITIONS ──────────────────────────────
   const openPositions = [];
-
-  // DEBUG: Log what stock trades made it into closedTrades
-  const stockTrades = closedTrades.filter(t => t.instrument !== 'option');
-  if (stockTrades.length > 0) {
-    console.log('%c=== STOCK TRADES IN closedTrades ===', 'color: #ff6b6b; font-weight: bold');
-    stockTrades.forEach((t, i) => {
-      console.log(`${i}: ${t.symbol} qty=${t.qty} openDate=${t.openDate} closeDate=${t.closeDate} netPnl=${t.netPnl}`);
-    });
-  }
 
   for (const [sym, lots] of Object.entries(openLots)) {
     for (const lot of lots) {
