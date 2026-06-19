@@ -491,6 +491,7 @@
       <div class="kpi"><div class="kpi-label">Net P&L</div><div class="kpi-value pos n" id="ck-net">—</div><div class="kpi-sub">After fees</div></div>
       <div class="kpi"><div class="kpi-label">Expired Worthless</div><div class="kpi-value" id="ck-expired" style="color:var(--green)">0</div><div class="kpi-sub">Full premium kept</div></div>
       <div class="kpi"><div class="kpi-label">Assigned</div><div class="kpi-value" id="ck-assigned" style="color:var(--amber)">0</div><div class="kpi-sub">Premium kept</div></div>
+      <div class="kpi"><div class="kpi-label">Called Away</div><div class="kpi-value" id="ck-exercised" style="color:var(--green)">0</div><div class="kpi-sub">CC exercised</div></div>
     </div>
   </div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px;">
@@ -522,6 +523,7 @@
           <button class="filter-btn" onclick="filterClosed('btc',this)">Bought to Close</button>
           <button class="filter-btn" onclick="filterClosed('expired',this)">Expired Worthless</button>
           <button class="filter-btn" onclick="filterClosed('assigned',this)">Assigned</button>
+          <button class="filter-btn" onclick="filterClosed('exercised',this)">Called Away</button>
           <button class="filter-btn" onclick="filterClosed('wins',this)">Wins</button>
           <button class="filter-btn" onclick="filterClosed('losses',this)">Losses</button>
         </div>
