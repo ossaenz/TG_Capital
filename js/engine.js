@@ -6,7 +6,7 @@ function buildPositions() {
   // Opens must always sort before closes on the same date
   const ACTION_ORDER = {
     'Sell to Open': 0, 'Buy to Open': 0, 'Buy': 0,
-    'Buy to Close': 1, 'Sell to Close': 1, 'Expired': 1, 'Assigned': 1, 'Sell': 1,
+    'Buy to Close': 1, 'Sell to Close': 1, 'Expired': 1, 'Assigned': 1, 'Exercised': 1, 'Sell': 1,
   };
   const sorted = [...db.transactions].sort((a, b) => {
     const dateA = a.date || a.rawDate, dateB = b.date || b.rawDate;
@@ -163,6 +163,48 @@ function buildPositions() {
         grossPnl, fees: totalFees,
         netPnl: grossPnl,                  // Amount already net of fees
         via: 'assigned', closeAction: 'Assigned', closeTxn: t,
+      });
+    }
+
+    // ── EXERCISED (covered call called away) ─────────────
+    else if (t.action === 'Exercised' && isOption) {
+      const k = t.symbol;
+      const lots = openLots[k] || [];
+      let remaining = Math.abs(t.quantity || 1);
+      let openCredit = 0, openFeesAlloc = 0, openDateFirst = null, openPriceWtd = 0, matchedTotal = 0;
+
+      while (remaining > 0 && lots.length > 0) {
+        const lot     = lots[0];
+        const matched = Math.min(lot.qty, remaining);
+        const frac    = matched / lot.qty;
+        openCredit   += (lot.openAmount / lot.qty) * matched;
+        openFeesAlloc+= lot.openFees * frac;
+        openPriceWtd += lot.openPrice * matched;
+        matchedTotal += matched;
+        if (!openDateFirst) openDateFirst = lot.txn.date;
+        lot.qty      -= matched;
+        lot.openFees -= lot.openFees * frac;
+        remaining    -= matched;
+        if (lot.qty <= 0) lots.shift();
+      }
+
+      const avgOpenPrice = matchedTotal > 0 ? openPriceWtd / matchedTotal : 0;
+      const grossPnl = openCredit;
+      const totalFees = openFeesAlloc;
+
+      closedTrades.push({
+        symbol: t.symbol, underlying: t.underlying,
+        instrument: 'option', optionType: t.optionType,
+        strike: t.strike, expiry: t.expiry,
+        openDate: openDateFirst, closeDate: t.date,
+        qty: matchedTotal,
+        openPrice: avgOpenPrice,
+        openCredit, openFees: openFeesAlloc,
+        closePrice: t.strike || 0,
+        closeCost: 0, closeFees: 0,
+        grossPnl, fees: totalFees,
+        netPnl: grossPnl,
+        via: 'exercised', closeAction: 'Exercised', closeTxn: t,
       });
     }
 

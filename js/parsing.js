@@ -314,7 +314,7 @@ function importRecords(rawRows, fileName, batchId) {
   db.transactions = dedupeTransactions(db.transactions);
 
   // Create journal entries for trade transactions (actions that represent actual trades)
-  const tradeActions = ['Buy to Open', 'Sell to Open', 'Buy to Close', 'Sell to Close', 'Buy', 'Sell', 'Assigned', 'Expired'];
+  const tradeActions = ['Buy to Open', 'Sell to Open', 'Buy to Close', 'Sell to Close', 'Buy', 'Sell', 'Assigned', 'Expired', 'Exercised'];
   for (const txn of newTxns) {
     if (tradeActions.includes(txn.action)) {
       const entry = {
