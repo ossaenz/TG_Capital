@@ -1,0 +1,15 @@
+{
+  "name": "tg-capital-local",
+  "version": "1.0.0",
+  "description": "Local companion server for TG Capital",
+  "type": "commonjs",
+  "scripts": {
+    "test-auth": "node test-schwab-auth.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-fetch": "^2.7.0",
+    "open": "^8.4.2"
+  }
+}
