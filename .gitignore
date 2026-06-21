@@ -16,4 +16,5 @@ config.json
 # Local Schwab companion — keep tokens and SSL certs out of git
 local/.schwab-tokens.json
 local/.ssl-cert.pem
-local/.ssl-key.pemlocal/.schwab-account-hash.json
+local/.ssl-key.pem
+local/.schwab-account-hash.json
