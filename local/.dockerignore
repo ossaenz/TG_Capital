@@ -1,0 +1,9 @@
+node_modules
+.env
+certs
+data
+*.csv
+*.log
+.ssl-*.pem
+.schwab-*.json
+test-*.js

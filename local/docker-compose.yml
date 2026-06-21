@@ -1,0 +1,12 @@
+services:
+  tg-local:
+    build: .
+    container_name: tg-capital-local
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - ./certs:/app/certs      # SSL cert persisted across restarts
+      - ./data:/app/data        # tokens, account hash, generated CSV
