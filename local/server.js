@@ -162,8 +162,15 @@ function writeCSV(rows) {
   return rows.length;
 }
 
-// ── Sync logic ────────────────────────────────────────────────────────────────
-let syncStatus = { running: false, lastRun: null, lastCount: null, lastError: null };
+// ── Sync status — persisted to disk so restarts don't lose last-run info ──────
+const STATUS_FILE = path.join(DATA_DIR, 'sync-status.json');
+function loadSyncStatus() {
+  try { return fs.existsSync(STATUS_FILE) ? JSON.parse(fs.readFileSync(STATUS_FILE, 'utf8')) : {}; } catch { return {}; }
+}
+function saveSyncStatus(s) {
+  fs.writeFileSync(STATUS_FILE, JSON.stringify(s, null, 2));
+}
+let syncStatus = { running: false, ...loadSyncStatus() };
 
 async function runSync(days = 90) {
   syncStatus.running = true;
@@ -186,9 +193,11 @@ async function runSync(days = 90) {
     for (const r of rows) actionCounts[r.Action] = (actionCounts[r.Action] || 0) + 1;
 
     syncStatus = { running: false, lastRun: new Date().toISOString(), lastCount: count, lastError: null, actionCounts, days, account: acct.accountNumber };
+    saveSyncStatus(syncStatus);
     return syncStatus;
   } catch (err) {
     syncStatus = { running: false, lastRun: new Date().toISOString(), lastCount: null, lastError: err.message };
+    saveSyncStatus(syncStatus);
     throw err;
   }
 }
@@ -216,6 +225,7 @@ app.get('/', (req, res) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>TG-Capital Local</title>
+  ${syncStatus.running ? '<meta http-equiv="refresh" content="2">' : ''}
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
