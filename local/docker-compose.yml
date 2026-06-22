@@ -1,6 +1,8 @@
 services:
   tg-local:
-    build: .
+    build:
+      context: ..          # project root — so Dockerfile can COPY app files
+      dockerfile: local/Dockerfile
     container_name: tg-capital-local
     restart: unless-stopped
     ports:
@@ -9,4 +11,4 @@ services:
       - .env
     volumes:
       - ./certs:/app/certs      # SSL cert persisted across restarts
-      - ./data:/app/data        # tokens, account hash, generated CSV
+      - ./data:/app/data        # tokens, account hash, CSV, sync state

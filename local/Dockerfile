@@ -4,10 +4,18 @@ RUN apk add --no-cache openssl
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+# Install dependencies
+COPY local/package.json local/package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY server.js sync-schwab.js ./
+# Copy server
+COPY local/server.js local/sync-schwab.js ./
+
+# Clone the webapp (read-only snapshot — originals are never touched)
+COPY index.html advanced-wash-sales.html auth-redirect.html faveIcon.png ./webapp/
+COPY js/   ./webapp/js/
+COPY css/  ./webapp/css/
+COPY logos/ ./webapp/logos/
 
 EXPOSE 8080
 
