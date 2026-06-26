@@ -13,8 +13,11 @@ dist/
 exported_data/
 config.json
 
-# Local Schwab companion — keep tokens and SSL certs out of git
+# Local Schwab companion — keep tokens, certs, and runtime data out of git
 local/.schwab-tokens.json
 local/.ssl-cert.pem
 local/.ssl-key.pem
 local/.schwab-account-hash.json
+local/data/
+local/certs/
+local/*.csv

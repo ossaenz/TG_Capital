@@ -164,13 +164,19 @@ async function main() {
     authUrl.searchParams.set('scope', 'readonly');
     authUrl.searchParams.set('state', state);
 
+    const fullUrl = authUrl.toString();
+
     console.log('\n🚀  Schwab OAuth test started');
     console.log('    Listening on https://127.0.0.1:8080');
     console.log('\n⚠️   Your browser will warn about an untrusted certificate.');
     console.log('    That is expected for localhost. Click "Advanced → Proceed".\n');
-    console.log('🔗  Opening Schwab auth page...\n');
+    console.log('─────────────────────────────────────────────────────────────');
+    console.log('🔗  Open this URL in your browser:\n');
+    console.log(fullUrl);
+    console.log('\n─────────────────────────────────────────────────────────────\n');
 
-    open(authUrl.toString());
+    // Try auto-open (works on some systems); URL printed above as fallback
+    open(fullUrl).catch(() => {});
   });
 
   function shutdown(code) {

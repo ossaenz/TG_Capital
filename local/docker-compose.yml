@@ -11,4 +11,6 @@ services:
       - .env
     volumes:
       - ./certs:/app/certs      # SSL cert persisted across restarts
-      - ./data:/app/data        # tokens, account hash, CSV, sync state
+      - ./data:/app/data        # tokens, account hash, CSV, SQLite DB, sync state
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # allows container to reach host Ollama on Linux
