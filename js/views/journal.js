@@ -91,6 +91,23 @@ function _renderJournalEntries() {
     const actionStr = entry.action === 'Buy to Open' ? 'BTO' : entry.action === 'Sell to Open' ? 'STO' :
                       entry.action === 'Buy to Close' ? 'BTC' : entry.action === 'Sell to Close' ? 'STC' : entry.action;
 
+    // EXP: format ISO expiry "2026-07-02" → "07/02/26"
+    const expLabel = (() => {
+      if (!entry.expiry) return null;
+      const m = entry.expiry.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return m ? `${m[2]}/${m[3]}/${m[1].slice(2)}` : entry.expiry;
+    })();
+
+    // Amount: look up from transaction record
+    const txn = db.transactions.find(t => t.id === entry.transactionId);
+    const amount = txn ? txn.amount : null;
+    const amountColor = amount != null && amount >= 0 ? 'var(--green)' : 'var(--red)';
+    const amountStr = amount != null
+      ? `${amount >= 0 ? '+' : ''}$${Math.abs(amount).toFixed(2)}`
+      : null;
+
+    const hasExtra = expLabel || amountStr;
+
     return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:16px;cursor:pointer;transition:all 0.2s;" onclick="openJournalEntry('${entry.id}')" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <div style="font-family:var(--mono);font-weight:700;font-size:14px;color:var(--accent);">${symbol}</div>
@@ -101,6 +118,10 @@ function _renderJournalEntries() {
         <div><span style="color:var(--text2);">Action:</span> ${actionStr}</div>
         <div><span style="color:var(--text2);">Qty:</span> ${entry.quantity}</div>
         <div><span style="color:var(--text2);">Price:</span> ${priceStr}</div>
+        ${hasExtra ? `
+        <div>${expLabel ? `<span style="color:var(--text2);">EXP:</span> <span style="font-family:var(--mono);font-size:11px;">${expLabel}</span>` : ''}</div>
+        <div>${amountStr ? `<span style="color:var(--text2);">Amount:</span> <span style="color:${amountColor};font-weight:600;">${amountStr}</span>` : ''}</div>
+        ` : ''}
       </div>
       <div style="font-size:11px;color:var(--text2);line-height:1.4;max-height:60px;overflow:hidden;text-overflow:ellipsis;">
         ${entry.notes || '<em style="opacity:0.6;">No notes yet — click to add</em>'}
