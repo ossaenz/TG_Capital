@@ -146,6 +146,58 @@ function currentPeriodMetrics(closedTrades, granularity) {
   };
 }
 
+// Reconstructs contiguous long-share holding periods for `symbol` from the
+// full (unfiltered) Buy/Sell history, so a report's date-range filter can't
+// hide a purchase that actually establishes the holding period.
+function _buildStockHoldingRuns(allTxns, symbol) {
+  const txns = allTxns
+    .filter(t => t.symbol === symbol && t.instrument !== 'option' && (t.action === 'Buy' || t.action === 'Sell'))
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  const runs = [];
+  let balance = 0, runStart = null;
+  for (const t of txns) {
+    const qty = Math.abs(t.quantity || 0);
+    if (t.action === 'Buy') {
+      if (balance <= 0) runStart = t.date;
+      balance += qty;
+    } else {
+      balance -= qty;
+      if (balance <= 0 && runStart) {
+        runs.push({ start: runStart, end: t.date });
+        runStart = null;
+        balance = 0; // guard against unmatched carry-in data pushing balance negative
+      }
+    }
+  }
+  if (runStart) runs.push({ start: runStart, end: null }); // still held today
+  return runs;
+}
+
+// Approximates the qualified-dividend holding-period test (IRC §1(h)(11)/§246(c)):
+// the stock must be held for more than 60 days within the 121-day window that
+// begins 60 days before the dividend date. The CSV only gives a dividend
+// transaction date (broker pay date, not the true ex-dividend date), so that
+// date is used as the window's center — an approximation, not exact.
+function isDividendHoldingPeriodMet(symbol, dividendDate, allTxns) {
+  const runs = _buildStockHoldingRuns(allTxns, symbol);
+  const run = runs.find(r => r.start <= dividendDate && (r.end === null || r.end >= dividendDate));
+  if (!run) return false; // no reconstructed position spans the dividend date — treat conservatively as non-qualified
+
+  const center      = new Date(dividendDate + 'T00:00:00Z');
+  const windowStart = new Date(center); windowStart.setUTCDate(windowStart.getUTCDate() - 60);
+  const windowEnd   = new Date(center); windowEnd.setUTCDate(windowEnd.getUTCDate() + 60);
+
+  const runStart = new Date(run.start + 'T00:00:00Z');
+  const runEnd   = run.end ? new Date(run.end + 'T00:00:00Z') : windowEnd;
+
+  const overlapStart = runStart > windowStart ? runStart : windowStart;
+  const overlapEnd   = runEnd   < windowEnd   ? runEnd   : windowEnd;
+  const overlapDays  = Math.round((overlapEnd - overlapStart) / 86400000) + 1;
+
+  return overlapDays > 60;
+}
+
 function computeStatsByDateRange(dateStart, dateEnd) {
   const { openPositions, closedTrades } = buildPositions();
   
@@ -314,21 +366,28 @@ function computeStatsByDateRange(dateStart, dateEnd) {
   const effectiveOptRate = taxOptionsBase > 0 ? taxOptions / taxOptionsBase : STCG_RATE;
 
   // ── Dividend tax ──────────────────────────────────────
-  // Non-qualified: YieldMax / covered-call ETFs always pay ordinary income,
-  // plus any Pr Yr Non-Qual Div action is explicitly non-qualified.
+  // Non-qualified: YieldMax / covered-call ETFs always pay ordinary income
+  // regardless of holding period, and any Pr Yr Non-Qual Div / Pr Yr Cash Div
+  // action is already an explicit non-qualified reclassification from the
+  // broker. Everything else runs through the real holding-period test
+  // (isDividendHoldingPeriodMet) instead of assuming it's qualified.
   const NONQUAL_ETFS = new Set([
     'TSLY','CONY','ULTY','AMDY','NVDY','MSFO','GOOGY','AMZY','NFLY',
     'JPMO','DISO','SQY','HOOD','PYPY','OARK','PLTY','APLY','XOMO',
     'YMAX','YMAG','LFGY','FIAT','SNOY',
   ]);
-  const qualDivs = filteredTxns.filter(t =>
-    t.action === 'Cash Dividend' && !NONQUAL_ETFS.has((t.symbol || '').toUpperCase())
-  ).reduce((s, t) => s + (t.amount || 0), 0);
-  const nonQualDivs = filteredTxns.filter(t =>
-    (t.action === 'Pr Yr Non-Qual Div') ||
-    (t.action === 'Cash Dividend' && NONQUAL_ETFS.has((t.symbol || '').toUpperCase())) ||
-    (t.action === 'Pr Yr Cash Div')
-  ).reduce((s, t) => s + (t.amount || 0), 0);
+  let qualDivs = 0, nonQualDivs = 0;
+  for (const t of filteredTxns) {
+    if (t.action === 'Pr Yr Non-Qual Div' || t.action === 'Pr Yr Cash Div') {
+      nonQualDivs += (t.amount || 0);
+      continue;
+    }
+    if (t.action !== 'Cash Dividend') continue;
+    const sym = (t.symbol || '').toUpperCase();
+    const amt = t.amount || 0;
+    const qualifies = !NONQUAL_ETFS.has(sym) && t.date && isDividendHoldingPeriodMet(sym, t.date, db.transactions);
+    if (qualifies) qualDivs += amt; else nonQualDivs += amt;
+  }
 
   const taxDivQual    = qualDivs    > 0 ? qualDivs    * LTCG_RATE  : 0;  // 20% qualified
   const taxDivNonQual = nonQualDivs > 0 ? nonQualDivs * STCG_RATE  : 0;  // 37% ordinary
