@@ -6,6 +6,9 @@ let journalChartInstance = null;
 let journalViewMode = 'entries'; // 'entries' | 'trades'
 let currentTradeEntry = null;    // { trade, closeEntry, openEntry }
 
+const JOURNAL_OPEN_ACTIONS  = ['Sell to Open', 'Buy to Open', 'Buy'];
+const JOURNAL_CLOSE_ACTIONS = ['Buy to Close', 'Sell to Close', 'Expired', 'Assigned', 'Exercised', 'Sell'];
+
 function inferStrategy(entry) {
   const action = entry.action || '';
   const opt = (entry.optionType || '').toLowerCase();
@@ -247,15 +250,19 @@ function _jtInferStrategy(trade) {
 
 function _jtFindCloseEntry(trade) {
   if (!trade.closeTxn) return null;
-  const id = trade.closeTxn.id || trade.closeTxn.rowId;
-  return db.journalEntries.find(e => e.id === id) || null;
+  return db.journalEntries.find(e => e.transactionId === trade.closeTxn.id) || null;
 }
 
 function _jtFindOpenEntry(trade) {
+  // Prefer the user's explicit pairing (set from the journal entry popup) over the heuristic.
+  const closeEntry = _jtFindCloseEntry(trade);
+  if (closeEntry?.linkedOpenTransactionId) {
+    const linked = db.journalEntries.find(e => e.transactionId === closeEntry.linkedOpenTransactionId);
+    if (linked) return linked;
+  }
   if (!trade.openDate || !trade.symbol) return null;
-  const openActions = ['Sell to Open', 'Buy to Open', 'Buy'];
   return db.journalEntries.find(e =>
-    e.date === trade.openDate && e.symbol === trade.symbol && openActions.includes(e.action)
+    e.date === trade.openDate && e.symbol === trade.symbol && JOURNAL_OPEN_ACTIONS.includes(e.action)
   ) || null;
 }
 
@@ -454,10 +461,94 @@ function openJournalEntry(entryId) {
   }
 
   updateJournalSummary();
+  renderJournalEntryPositionSection();
   renderJournalScreenshots();
   fetchAndRenderPriceChart();
   document.getElementById('journalModal').style.display = 'block';
   document.addEventListener('paste', handleJournalPaste);
+}
+
+// ════════════════════════════════════════════════════════
+// ENTRY POSITION — link a closing entry back to the trade that opened it
+// ════════════════════════════════════════════════════════
+
+function _findEntryPositionCandidates(entry) {
+  return db.transactions
+    .filter(t => t.symbol === entry.symbol && JOURNAL_OPEN_ACTIONS.includes(t.action) && t.id !== entry.transactionId)
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+}
+
+function _defaultEntryPositionMatch(entry, candidates) {
+  if (entry.linkedOpenTransactionId && candidates.some(c => c.id === entry.linkedOpenTransactionId)) {
+    return entry.linkedOpenTransactionId;
+  }
+  // Prefer whatever the position engine actually matched this close to.
+  const { closedTrades } = buildPositions();
+  const trade = closedTrades.find(ct => ct.closeTxn && ct.closeTxn.id === entry.transactionId);
+  if (trade?.openDate) {
+    const sameDate = candidates.filter(c => c.date === trade.openDate);
+    if (sameDate.length) return sameDate[0].id;
+  }
+  // Otherwise fall back to the nearest candidate on or before this entry's date.
+  const before = candidates.filter(c => (c.date || '') <= (entry.date || ''));
+  if (before.length) return before[before.length - 1].id;
+  return candidates.length ? candidates[candidates.length - 1].id : null;
+}
+
+function renderJournalEntryPositionSection() {
+  const card = document.getElementById('journalEntryPositionCard');
+  if (!currentJournalEntry || !JOURNAL_CLOSE_ACTIONS.includes(currentJournalEntry.action)) {
+    card.style.display = 'none';
+    return;
+  }
+
+  const candidates = _findEntryPositionCandidates(currentJournalEntry);
+  if (candidates.length === 0) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+
+  const defaultId = _defaultEntryPositionMatch(currentJournalEntry, candidates);
+  const picker = document.getElementById('journalEntryPositionPicker');
+  picker.innerHTML = candidates.map(c => {
+    const label = `${c.date || '—'} · ${c.action} · qty ${c.quantity} · $${(c.price || 0).toFixed(2)}`;
+    return `<option value="${c.id}" ${c.id === defaultId ? 'selected' : ''}>${label}</option>`;
+  }).join('');
+
+  currentJournalEntry.linkedOpenTransactionId = defaultId;
+  _renderEntryPositionSummary(defaultId);
+}
+
+function onJournalEntryPositionPick() {
+  const picker = document.getElementById('journalEntryPositionPicker');
+  if (!currentJournalEntry || !picker.value) return;
+  currentJournalEntry.linkedOpenTransactionId = picker.value;
+  _renderEntryPositionSummary(picker.value);
+}
+
+function _renderEntryPositionSummary(openTxnId) {
+  const el = document.getElementById('journalEntryPositionSummary');
+  const openTxn = db.transactions.find(t => t.id === openTxnId);
+  if (!openTxn) {
+    el.innerHTML = '<em style="opacity:0.6;">No matching open trade found.</em>';
+    return;
+  }
+
+  const openEntry = db.journalEntries.find(e => e.transactionId === openTxnId);
+  const { closedTrades } = buildPositions();
+  const trade = closedTrades.find(ct => ct.closeTxn && ct.closeTxn.id === currentJournalEntry.transactionId);
+  const pnlLine = trade
+    ? `<div><span style="color:var(--text2);">Net P&amp;L:</span> <strong style="color:${trade.netPnl >= 0 ? 'var(--green)' : 'var(--red)'};">${trade.netPnl >= 0 ? '+' : ''}$${trade.netPnl.toFixed(2)}</strong></div>`
+    : '';
+
+  el.innerHTML = `
+    <div><span style="color:var(--text2);">Opened:</span> ${openTxn.date} · ${openTxn.action} · qty ${openTxn.quantity} @ $${(openTxn.price || 0).toFixed(2)}</div>
+    ${pnlLine}
+    ${openEntry?.notes
+      ? `<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px;font-size:12px;color:var(--text2);">${openEntry.notes.slice(0, 140)}${openEntry.notes.length > 140 ? '…' : ''}</div>`
+      : '<div style="margin-top:6px;font-size:12px;color:var(--text2);"><em style="opacity:0.6;">No notes on the opening entry yet.</em></div>'}
+  `;
 }
 
 function closeJournalModal() {
