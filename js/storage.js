@@ -443,6 +443,23 @@ async function openDataFile() {
             }
             // CRITICAL: Deduplicate after JSON merge (matches CSV import behavior)
             db.transactions = dedupeTransactions(db.transactions);
+
+            // Merge journal entries and import batches too — previously only
+            // transactions were restored here, silently dropping saved notes.
+            const journalById = new Map(db.journalEntries.map(j => [j.id, j]));
+            for (const entry of coerced.journalEntries || []) {
+              journalById.set(entry.id, entry); // file's saved version wins for matching ids
+            }
+            db.journalEntries = Array.from(journalById.values());
+
+            const batchIds = new Set(db.importBatches.map(b => b.id));
+            for (const batch of coerced.importBatches || []) {
+              if (batch?.id && !batchIds.has(batch.id)) {
+                db.importBatches.push(batch);
+                batchIds.add(batch.id);
+              }
+            }
+
             totalRows += coerced.transactions?.length || 0;
             addLog(`✓ ${fileName}: ${coerced.transactions?.length || 0} records (${totalAdded - (beforeCount > 0 ? totalAdded - (coerced.transactions?.length || 0) : totalAdded)} new, ${totalDupes} dupes)`, 'ok');
           }
