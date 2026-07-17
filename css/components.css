@@ -271,9 +271,13 @@
     .seg-ctrl button { flex: 1; }
   }
 
+  /* ── Journal/Trade detail modals ── */
+  .jt-modal-box { width: calc(100% - 24px); }
+
   /* ── Mobile Responsive ── */
   @media (max-width: 768px) {
     body { font-size: 13px; }
+    .jt-modal-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
     .section-title { margin-top: 12px; margin-bottom: 6px; font-size: 10px; }
     .main { padding: 8px 8px 36px; max-width: 100%; }
     .topbar { 
@@ -385,6 +389,8 @@
 
   @media (max-width: 480px) {
     body { font-size: 12px; }
+    .jt-modal-box { width: calc(100% - 12px); }
+    .jt-modal-grid { padding: 12px !important; }
     .app { min-height: 100vh; }
     .main { 
       padding: 6px;

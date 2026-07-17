@@ -770,12 +770,12 @@
 
 <!-- ===== JOURNAL DETAIL MODAL ===== -->
 <div id="journalModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
-  <div style="background:var(--bg0);margin:20px auto;max-width:900px;border-radius:6px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+  <div class="jt-modal-box" style="background:var(--bg0);margin:20px auto;max-width:900px;border-radius:6px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
     <div style="padding:20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
       <h2 style="margin:0;color:var(--text0);">Trade Journal Entry</h2>
       <button onclick="closeJournalModal()" style="background:none;border:none;color:var(--text1);font-size:20px;cursor:pointer;">&times;</button>
     </div>
-    <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+    <div class="jt-modal-grid" style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px;">
       <!-- Left: Trade Summary & Chart -->
       <div>
         <div style="background:var(--bg2);padding:16px;border-radius:6px;margin-bottom:16px;">
@@ -838,7 +838,7 @@
 
 <!-- ===== TRADE DETAIL MODAL ===== -->
 <div id="tradeModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
-  <div style="background:var(--bg0);margin:20px auto;max-width:920px;border-radius:6px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+  <div class="jt-modal-box" style="background:var(--bg0);margin:20px auto;max-width:920px;border-radius:6px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">
     <!-- Header -->
     <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
       <div>
@@ -851,7 +851,7 @@
       </div>
     </div>
     <!-- Body -->
-    <div style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+    <div class="jt-modal-grid" style="padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px;">
       <!-- Left: Timeline + chart -->
       <div>
         <div id="tradeTimeline" style="background:var(--bg2);padding:16px;border-radius:6px;margin-bottom:16px;"></div>
