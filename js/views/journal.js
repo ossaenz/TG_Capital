@@ -51,6 +51,24 @@ function renderJournal() {
   _renderJournalEntries();
 }
 
+function journalQuickRange(range) {
+  const now = new Date();
+  if (range === 'ytd') {
+    document.getElementById('journalDateStart').value = `${now.getFullYear()}-01-01`;
+    document.getElementById('journalDateEnd').value = now.toISOString().slice(0, 10);
+  }
+  renderJournal();
+}
+
+function resetJournalFilter() {
+  document.getElementById('journalDateStart').value = '';
+  document.getElementById('journalDateEnd').value = '';
+  document.getElementById('journalStrategyFilter').value = '';
+  document.getElementById('journalSearch').value = '';
+  document.getElementById('journalSort').value = 'date-desc';
+  renderJournal();
+}
+
 function _renderJournalEntries() {
   const search = (document.getElementById('journalSearch')?.value || '').toLowerCase();
   const dateStart = document.getElementById('journalDateStart')?.value || '';

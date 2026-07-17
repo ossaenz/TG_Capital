@@ -391,11 +391,7 @@
     <div class="card-header">
       <span class="card-title">Period Performance</span>
       <div class="filter-bar" id="perfFilterBar" style="padding:0;background:transparent;border:none;gap:6px;flex-wrap:wrap;width:100%;flex-direction:row;">
-        <button class="filter-btn active" id="perf-daily" onclick="setPerformancePeriod('daily', this)">Daily</button>
-        <button class="filter-btn" id="perf-weekly" onclick="setPerformancePeriod('weekly', this)">Weekly</button>
-        <button class="filter-btn" id="perf-monthly" onclick="setPerformancePeriod('monthly', this)">Monthly</button>
-        <button class="filter-btn" id="perf-yearly" onclick="setPerformancePeriod('yearly', this)">Yearly</button>
-        <span style="margin-left:auto;border-left:1px solid var(--border);padding-left:12px;display:flex;gap:6px;" id="perfInstFilter">
+        <span style="display:flex;gap:6px;" id="perfInstFilter">
           <button class="filter-btn active" id="perf-opts-only" onclick="setPerformanceInstruments('options-only', this)">Options Only</button>
           <button class="filter-btn" id="perf-all-inst" onclick="setPerformanceInstruments('all', this)">All Instruments</button>
         </span>
@@ -426,6 +422,15 @@
   <div class="card" style="margin-bottom:16px;background:linear-gradient(160deg, var(--bg2), var(--bg1));border:1px solid var(--border);">
     <div class="card-header"><span class="card-title">Quick Filters</span></div>
     <div style="padding:12px 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Period</label>
+        <div style="display:flex;gap:6px;">
+          <button class="filter-btn active" id="perf-daily" onclick="setPerformancePeriod('daily', this)">Daily</button>
+          <button class="filter-btn" id="perf-weekly" onclick="setPerformancePeriod('weekly', this)">Weekly</button>
+          <button class="filter-btn" id="perf-monthly" onclick="setPerformancePeriod('monthly', this)">Monthly</button>
+          <button class="filter-btn" id="perf-yearly" onclick="setPerformancePeriod('yearly', this)">Yearly</button>
+        </div>
+      </div>
       <div style="display:flex;flex-direction:column;gap:4px;">
         <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Year</label>
         <select id="perfYearSelect" onchange="applyPerformanceFilter()" style="width:100px;padding:6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
@@ -677,6 +682,8 @@
       <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">To Date</label>
       <input type="date" id="journalDateEnd" style="width:130px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);" oninput="renderJournal()">
     </div>
+    <button class="btn btn-sm" onclick="journalQuickRange('ytd')" style="align-self:flex-end;background:var(--bg3);color:var(--text1);border:1px solid var(--border);">YTD</button>
+    <button class="btn btn-sm" onclick="resetJournalFilter()" style="align-self:flex-end;background:var(--bg3);color:var(--text1);border:1px solid var(--border);">Reset</button>
     <div style="display:flex;flex-direction:column;gap:4px;">
       <label style="font-size:10px;color:var(--text2);font-weight:700;letter-spacing:0.1em;text-transform:uppercase;">Strategy</label>
       <select id="journalStrategyFilter" onchange="renderJournal()" style="width:150px;padding:5px 6px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;color:var(--text0);">
