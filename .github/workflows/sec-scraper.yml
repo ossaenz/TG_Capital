@@ -1,0 +1,63 @@
+# Output target: https://osflex.me/chamuco (Caddy-proxied to this app's own
+# POST /api/v1/ingest — see local/server.js). Script and its default watchlist
+# live in local/ alongside the app that ultimately consumes the ingested data.
+name: Proactive Scout SEC Scraper
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Comma-separated stock tickers, e.g. TSLA,NVDA,PLTR (leave blank for the default watchlist)"
+        required: false
+        type: string
+      start_date:
+        description: "Start date YYYY-MM-DD (leave blank for yesterday)"
+        required: false
+        type: string
+      end_date:
+        description: "End date YYYY-MM-DD (leave blank for today)"
+        required: false
+        type: string
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r local/requirements.txt
+
+      - name: Run scraper
+        env:
+          TICKERS_INPUT: ${{ github.event.inputs.tickers }}
+          START_DATE_INPUT: ${{ github.event.inputs.start_date }}
+          END_DATE_INPUT: ${{ github.event.inputs.end_date }}
+          SCOUT_INGEST_TOKEN: ${{ secrets.SCOUT_INGEST_TOKEN }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          START="${START_DATE_INPUT:-$(date -d yesterday +%F)}"
+          END="${END_DATE_INPUT:-$(date +%F)}"
+          if [ -n "$TICKERS_INPUT" ]; then
+            python local/sec_scraper.py --tickers "$TICKERS_INPUT" --start_date "$START" --end_date "$END"
+          else
+            python local/sec_scraper.py --start_date "$START" --end_date "$END"
+          fi
+
+      - name: Report failure
+        if: failure()
+        run: echo "❌ SEC scraper failed. Check logs." >> $GITHUB_STEP_SUMMARY
+
+      - name: Report success
+        if: success()
+        run: echo "✅ SEC filings sent to https://osflex.me/chamuco" >> $GITHUB_STEP_SUMMARY
