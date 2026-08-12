@@ -21,3 +21,22 @@ local/.schwab-account-hash.json
 local/data/
 local/certs/
 local/*.csv
+
+# Schwab SQLite bridge (local/schwab-bridge/)
+local/schwab-bridge/vault.db
+local/schwab-bridge/vault-data/
+local/schwab-bridge/.venv/
+local/schwab-bridge/__pycache__/
+local/schwab-bridge/.env
+
+# Python bytecode cache anywhere under local/ (sec_scraper.py, schwab-bridge, etc.)
+**/__pycache__/
+*.pyc
+
+# Personal reference material — not app code, not meant for distribution
+local/ebooks/
+
+# Claude Code's own local tool config/session state — machine- and user-specific,
+# irrelevant to anyone else cloning this repo
+.claude/
+local/.claude/
