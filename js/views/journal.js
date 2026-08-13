@@ -26,6 +26,31 @@ function inferStrategy(entry) {
   }
 }
 
+// These three outcomes are mechanical (the broker/counterparty decided, not the trader), so unlike
+// a manual close there's rarely anything to say — auto-fill a factual note from the matched
+// closedTrades record so the entry isn't left blank forever. Never overwrites a note the user wrote.
+function _autoNoteForOutcome(entry) {
+  if (!['Expired', 'Assigned', 'Exercised'].includes(entry.action)) return null;
+  const { closedTrades } = buildPositions();
+  const trade = closedTrades.find(ct => ct.closeTxn && ct.closeTxn.id === entry.transactionId);
+  if (!trade || !['expired', 'assigned', 'exercised'].includes(trade.via)) return null;
+
+  const sym = trade.underlying || trade.symbol;
+  const opt = (trade.optionType || '').toUpperCase();
+  const contracts = trade.qty || 0;
+  const shares = contracts * 100;
+  const premium = `$${Math.abs(trade.netPnl || 0).toFixed(2)}`;
+
+  if (trade.via === 'expired') {
+    return `Auto-note: ${sym} $${trade.strike} ${opt} (exp ${trade.expiry}) expired worthless — kept full premium of ${premium} on ${contracts} contract${contracts !== 1 ? 's' : ''}.`;
+  }
+  if (trade.via === 'assigned') {
+    return `Auto-note: ${sym} $${trade.strike} put assigned — bought ${shares} share${shares !== 1 ? 's' : ''} of ${sym} at $${trade.strike}. Kept premium of ${premium} on the option leg.`;
+  }
+  // via === 'exercised' — covered call assigned/called away
+  return `Auto-note: ${sym} $${trade.strike} call assigned — ${shares} share${shares !== 1 ? 's' : ''} of ${sym} called away at $${trade.strike}. Kept premium of ${premium} on the option leg.`;
+}
+
 function switchJournalView(mode) {
   journalViewMode = mode;
   document.getElementById('jvBtnEntries')?.classList.toggle('active', mode === 'entries');
@@ -38,12 +63,16 @@ function switchJournalView(mode) {
 }
 
 function renderJournal() {
-  // Backfill strategy on entries that don't have one yet
+  // Backfill strategy and mechanical-outcome notes on entries that don't have them yet
   let backfilled = 0;
   for (const e of db.journalEntries) {
     if (!e.strategy) {
       const s = inferStrategy(e);
       if (s) { e.strategy = s; backfilled++; }
+    }
+    if (!e.notes) {
+      const n = _autoNoteForOutcome(e);
+      if (n) { e.notes = n; backfilled++; }
     }
   }
   if (backfilled > 0) saveDB(db);
@@ -127,7 +156,7 @@ function _renderJournalEntries() {
       ? `${amount >= 0 ? '+' : ''}$${Math.abs(amount).toFixed(2)}`
       : null;
 
-    const hasExtra = expLabel || amountStr;
+    const strikeStr = entry.strike != null ? '$' + Number(entry.strike).toFixed(2) : null;
 
     return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:16px;cursor:pointer;transition:all 0.2s;" onclick="openJournalEntry('${entry.id}')" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -139,10 +168,9 @@ function _renderJournalEntries() {
         <div><span style="color:var(--text2);">Action:</span> ${actionStr}</div>
         <div><span style="color:var(--text2);">Qty:</span> ${entry.quantity}</div>
         <div><span style="color:var(--text2);">Price:</span> ${priceStr}</div>
-        ${hasExtra ? `
-        <div>${expLabel ? `<span style="color:var(--text2);">EXP:</span> <span style="font-family:var(--mono);font-size:11px;">${expLabel}</span>` : ''}</div>
-        <div>${amountStr ? `<span style="color:var(--text2);">Amount:</span> <span style="color:${amountColor};font-weight:600;">${amountStr}</span>` : ''}</div>
-        ` : ''}
+        ${strikeStr ? `<div><span style="color:var(--text2);">Strike:</span> <span style="font-family:var(--mono);">${strikeStr}</span></div>` : ''}
+        ${expLabel ? `<div><span style="color:var(--text2);">EXP:</span> <span style="font-family:var(--mono);font-size:11px;">${expLabel}</span></div>` : ''}
+        ${amountStr ? `<div><span style="color:var(--text2);">Amount:</span> <span style="color:${amountColor};font-weight:600;">${amountStr}</span></div>` : ''}
       </div>
       <div style="font-size:11px;color:var(--text2);line-height:1.4;max-height:60px;overflow:hidden;text-overflow:ellipsis;">
         ${entry.notes || '<em style="opacity:0.6;">No notes yet — click to add</em>'}
@@ -513,6 +541,8 @@ function _defaultEntryPositionMatch(entry, candidates) {
   return candidates.length ? candidates[candidates.length - 1].id : null;
 }
 
+const JOURNAL_MAX_ENTRY_LOTS = 3; // "2 or 3 dropdowns" — a sell rarely spans more entry lots than that
+
 function renderJournalEntryPositionSection() {
   const card = document.getElementById('journalEntryPositionCard');
   if (!currentJournalEntry || !JOURNAL_CLOSE_ACTIONS.includes(currentJournalEntry.action)) {
@@ -527,46 +557,114 @@ function renderJournalEntryPositionSection() {
   }
   card.style.display = '';
 
-  const defaultId = _defaultEntryPositionMatch(currentJournalEntry, candidates);
-  const picker = document.getElementById('journalEntryPositionPicker');
-  picker.innerHTML = candidates.map(c => {
+  // Reuse whatever the user already linked (supports the old single-id shape too), else seed
+  // with just the one best-guess default lot — additional lots are added manually via the button.
+  let ids = Array.isArray(currentJournalEntry.linkedOpenTransactionIds)
+    ? currentJournalEntry.linkedOpenTransactionIds.filter(id => candidates.some(c => c.id === id))
+    : [];
+  if (!ids.length) {
+    const defaultId = _defaultEntryPositionMatch(currentJournalEntry, candidates);
+    ids = defaultId ? [defaultId] : [];
+  }
+  currentJournalEntry.linkedOpenTransactionIds = ids;
+  currentJournalEntry.linkedOpenTransactionId = ids[0] || null; // kept in sync for the Trades-view pairing lookup
+
+  _renderEntryPositionRows(candidates);
+}
+
+function _entryPositionRowHtml(candidates, selectedId, rowIdx) {
+  const options = candidates.map(c => {
     const label = `${c.date || '—'} · ${c.action} · qty ${c.quantity} · $${(c.price || 0).toFixed(2)}`;
-    return `<option value="${c.id}" ${c.id === defaultId ? 'selected' : ''}>${label}</option>`;
+    return `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${label}</option>`;
   }).join('');
-
-  currentJournalEntry.linkedOpenTransactionId = defaultId;
-  _renderEntryPositionSummary(defaultId);
+  const removeBtn = rowIdx > 0
+    ? `<button onclick="removeJournalEntryPositionRow(${rowIdx})" type="button" title="Remove this entry lot" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:14px;line-height:1;padding:0 4px;">&times;</button>`
+    : '<span style="width:22px;"></span>';
+  return `
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+      <select onchange="onJournalEntryPositionPick(${rowIdx}, this.value)" style="flex:1;font-size:11px;padding:3px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text0);">
+        ${options}
+      </select>
+      ${removeBtn}
+    </div>`;
 }
 
-function onJournalEntryPositionPick() {
-  const picker = document.getElementById('journalEntryPositionPicker');
-  if (!currentJournalEntry || !picker.value) return;
-  currentJournalEntry.linkedOpenTransactionId = picker.value;
-  _renderEntryPositionSummary(picker.value);
+function _renderEntryPositionRows(candidates) {
+  const rows = document.getElementById('journalEntryPositionRows');
+  const ids = currentJournalEntry.linkedOpenTransactionIds || [];
+  rows.innerHTML = ids.map((id, i) => _entryPositionRowHtml(candidates, id, i)).join('');
+
+  const addBtn = document.getElementById('journalEntryPositionAddBtn');
+  const canAdd = ids.length < JOURNAL_MAX_ENTRY_LOTS && ids.length < candidates.length;
+  addBtn.style.display = canAdd ? '' : 'none';
+
+  _renderEntryPositionSummary();
 }
 
-function _renderEntryPositionSummary(openTxnId) {
+function onJournalEntryPositionPick(rowIdx, value) {
+  if (!currentJournalEntry || !value) return;
+  currentJournalEntry.linkedOpenTransactionIds[rowIdx] = value;
+  currentJournalEntry.linkedOpenTransactionId = currentJournalEntry.linkedOpenTransactionIds[0] || null;
+  _renderEntryPositionSummary();
+}
+
+function addJournalEntryPositionRow() {
+  if (!currentJournalEntry) return;
+  const candidates = _findEntryPositionCandidates(currentJournalEntry);
+  const ids = currentJournalEntry.linkedOpenTransactionIds || [];
+  if (ids.length >= JOURNAL_MAX_ENTRY_LOTS || ids.length >= candidates.length) return;
+  const unused = candidates.find(c => !ids.includes(c.id));
+  if (!unused) return;
+  ids.push(unused.id);
+  _renderEntryPositionRows(candidates);
+}
+
+function removeJournalEntryPositionRow(rowIdx) {
+  if (!currentJournalEntry) return;
+  const ids = currentJournalEntry.linkedOpenTransactionIds || [];
+  if (ids.length <= 1) return;
+  ids.splice(rowIdx, 1);
+  currentJournalEntry.linkedOpenTransactionId = ids[0] || null;
+  _renderEntryPositionRows(_findEntryPositionCandidates(currentJournalEntry));
+}
+
+function _renderEntryPositionSummary() {
   const el = document.getElementById('journalEntryPositionSummary');
-  const openTxn = db.transactions.find(t => t.id === openTxnId);
-  if (!openTxn) {
+  const ids = (currentJournalEntry.linkedOpenTransactionIds || []).filter(Boolean);
+  if (!ids.length) {
     el.innerHTML = '<em style="opacity:0.6;">No matching open trade found.</em>';
     return;
   }
 
-  const openEntry = db.journalEntries.find(e => e.transactionId === openTxnId);
   const { closedTrades } = buildPositions();
   const trade = closedTrades.find(ct => ct.closeTxn && ct.closeTxn.id === currentJournalEntry.transactionId);
   const pnlLine = trade
-    ? `<div><span style="color:var(--text2);">Net P&amp;L:</span> <strong style="color:${trade.netPnl >= 0 ? 'var(--green)' : 'var(--red)'};">${trade.netPnl >= 0 ? '+' : ''}$${trade.netPnl.toFixed(2)}</strong></div>`
+    ? `<div style="margin-top:4px;"><span style="color:var(--text2);">Net P&amp;L (this close):</span> <strong style="color:${trade.netPnl >= 0 ? 'var(--green)' : 'var(--red)'};">${trade.netPnl >= 0 ? '+' : ''}$${trade.netPnl.toFixed(2)}</strong></div>`
     : '';
 
-  el.innerHTML = `
-    <div><span style="color:var(--text2);">Opened:</span> ${openTxn.date} · ${openTxn.action} · qty ${openTxn.quantity} @ $${(openTxn.price || 0).toFixed(2)}</div>
-    ${pnlLine}
-    ${openEntry?.notes
-      ? `<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px;font-size:12px;color:var(--text2);">${openEntry.notes.slice(0, 140)}${openEntry.notes.length > 140 ? '…' : ''}</div>`
-      : '<div style="margin-top:6px;font-size:12px;color:var(--text2);"><em style="opacity:0.6;">No notes on the opening entry yet.</em></div>'}
-  `;
+  let totalQty = 0, totalCost = 0;
+  const lotLines = ids.map(id => {
+    const openTxn = db.transactions.find(t => t.id === id);
+    if (!openTxn) return '';
+    const qty = Number(openTxn.quantity || 0);
+    const price = Number(openTxn.price || 0);
+    totalQty += qty;
+    totalCost += qty * price;
+    const openEntry = db.journalEntries.find(e => e.transactionId === id);
+    return `
+      <div style="margin-bottom:4px;">
+        <div><span style="color:var(--text2);">Opened:</span> ${openTxn.date} · ${openTxn.action} · qty ${qty} @ $${price.toFixed(2)}</div>
+        ${openEntry?.notes
+          ? `<div style="font-size:12px;color:var(--text2);">${openEntry.notes.slice(0, 120)}${openEntry.notes.length > 120 ? '…' : ''}</div>`
+          : ''}
+      </div>`;
+  }).join('<div style="border-top:1px solid var(--border);margin:4px 0;"></div>');
+
+  const avgLine = ids.length > 1 && totalQty
+    ? `<div style="margin-top:4px;"><span style="color:var(--text2);">Combined:</span> qty ${totalQty} @ avg $${(totalCost / totalQty).toFixed(2)}</div>`
+    : '';
+
+  el.innerHTML = lotLines + avgLine + pnlLine;
 }
 
 function closeJournalModal() {
@@ -579,7 +677,9 @@ function updateJournalSummary() {
   if (!currentJournalEntry) return;
   const e = currentJournalEntry;
   const symbol = e.underlying || e.symbol;
-  const strikeExp = e.strike ? ` ${e.strike}${e.expiry ? ' exp ' + e.expiry : ''}` : '';
+  const strikeExp = e.strike
+    ? ` ${(e.optionType || '').toUpperCase()} $${Number(e.strike).toFixed(2)}${e.expiry ? ' exp ' + e.expiry : ''}`
+    : '';
   const summary = `
     <div style="margin-bottom:12px;"><strong>${symbol}${strikeExp}</strong></div>
     <div><strong>Action:</strong> ${e.action}</div>

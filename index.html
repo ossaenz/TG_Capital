@@ -784,10 +784,11 @@
         </div>
         <div id="journalEntryPositionCard" style="background:var(--bg2);padding:16px;border-radius:6px;margin-bottom:16px;display:none;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Entry Position</div>
-            <select id="journalEntryPositionPicker" onchange="onJournalEntryPositionPick()" style="font-size:11px;padding:3px 6px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text0);max-width:220px;"></select>
+            <div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;">Entry Position(s)</div>
+            <button id="journalEntryPositionAddBtn" onclick="addJournalEntryPositionRow()" type="button" style="font-size:11px;padding:2px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text0);cursor:pointer;">+ Add Entry Lot</button>
           </div>
-          <div id="journalEntryPositionSummary" style="font-size:13px;color:var(--text1);line-height:1.6;"></div>
+          <div id="journalEntryPositionRows"></div>
+          <div id="journalEntryPositionSummary" style="font-size:13px;color:var(--text1);line-height:1.6;margin-top:6px;"></div>
         </div>
         <div id="journalChartContainer" style="background:var(--bg2);padding:16px;border-radius:6px;height:300px;position:relative;">
           <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text2);font-size:12px;">Loading chart...</div>
