@@ -1,11 +1,14 @@
 # Output target: https://osflex.me/chamuco (Caddy-proxied to this app's own
 # POST /api/v1/ingest — see local/server.js). Script and its default watchlist
 # live in local/ alongside the app that ultimately consumes the ingested data.
+#
+# Daily schedule disabled by choice — ongoing filing refresh now happens locally
+# instead (POST /api/scout/sec-filings/refresh, "Refresh SEC Filings" button on
+# /scout — see fetchAndStoreSecFilingsForNewTicker in local/server.js). This
+# workflow is kept for manual/bulk runs (workflow_dispatch) only.
 name: Proactive Scout SEC Scraper
 
 on:
-  schedule:
-    - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       tickers:
