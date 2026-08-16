@@ -10,6 +10,7 @@ dist/
 .DS_Store
 /.idea
 /.vscode
+/.config.json
 exported_data/
 config.json
 
