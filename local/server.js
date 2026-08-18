@@ -1694,7 +1694,7 @@ async function syncTickerUniverse({ force = false } = {}) {
 // "unknown," not "illiquid," so a ticker isn't silently excluded from the
 // firehose during the brief window before its first volume check completes;
 // ingestUniverseFilingsFromDailyIndex, the recent-filings dashboard endpoint,
-// and dispatchMaterialAlerts all apply this same floor.
+// and sendConsolidatedMaterialAlert all apply this same floor.
 const UNIVERSE_MIN_AVG_VOLUME = 500000;
 const UNIVERSE_VOLUME_SYNC_INTERVAL_DAYS = 1; // volume moves daily, unlike exchange listing/sector
 // Schwab's /quotes batch endpoint (confirmed live: 200 symbols/call succeeds
@@ -2434,7 +2434,7 @@ app.get('/api/scout/edgar/recent-filings', (req, res) => {
     // everything else the firehose ingests stays DB-only, visible by
     // searching that specific ticker (which auto-onboards it onto the
     // watchlist, see onboardOrResumeTicker in osterm.html) rather than in
-    // this glance feed. Mirrors dispatchMaterialAlerts' own filter exactly, so
+    // this glance feed. Mirrors sendConsolidatedMaterialAlert's own filter exactly, so
     // "shows on the dashboard" and "would trigger an email" agree with each
     // other for universe tickers.
     const rows = db.prepare(`
@@ -3038,12 +3038,12 @@ const EIGHT_K_ANALYSIS_MAX_AGE_DAYS = 7;
 // llama_retry_count and sets llama_next_retry_at, this function moves on to the next one.
 // Scoped to watchlist tickers and recent filings only (see EIGHT_K_ANALYSIS_MAX_AGE_DAYS) —
 // this is the single choke point that keeps a bulk historical fetch from ever reaching
-// dispatchMaterialAlerts, so there's nothing further downstream that needs its own guard.
+// sendConsolidatedMaterialAlert, so there's nothing further downstream that needs its own guard.
 // Optional { ticker, maxAgeDays } scopes this to one ticker with a wider window —
 // used by the osterm.html on-demand ticker-onboarding flow (POST /api/scout/
 // 8k-analysis/run), which explicitly must NOT touch the rest of the watchlist (see
 // the 73-email incident earlier this session). Safe to widen maxAgeDays there
-// because that path never calls dispatchMaterialAlerts — the freshness guard's
+// because that path never calls sendConsolidatedMaterialAlert — the freshness guard's
 // whole purpose was preventing a stale-filing *alert* flood, not limiting analysis
 // itself. Called with no args (the discovery loop's normal case), behavior is
 // unchanged: every watchlist ticker, the default freshness window.
@@ -3130,20 +3130,22 @@ let discoveryLoopRunning = false;
 function getAlertSettings() { return db.prepare(`SELECT * FROM scout_alert_settings WHERE id = 1`).get(); }
 function gmailReady() { return !!(loadGmailTokens()?.refresh_token && GMAIL_SEND_TO); }
 
-async function dispatchMaterialAlerts() {
+// One email covering every currently-unsent qualifying material 8-K, grouped
+// by ticker — per explicit user requirement, replacing the old one-email-per-
+// filing behavior (dispatchMaterialAlerts, removed) which was flooding the
+// inbox with a separate email per ticker. Also reachable on demand via
+// POST /api/scout/alerts/send-consolidated for clearing a backlog.
+async function sendConsolidatedMaterialAlert() {
   const settings = getAlertSettings();
-  if (settings?.alerts_paused) return { sent: 0, skipped: 'paused' };
-  if (!gmailReady()) return { sent: 0, skipped: 'gmail_not_configured' };
+  if (settings?.alerts_paused) return { sent: false, skipped: 'paused' };
+  if (!gmailReady()) return { sent: false, skipped: 'gmail_not_configured' };
 
-  // Positive sentiment only, per explicit user requirement — neutral/negative
-  // material events aren't dropped, they just don't get alert_sent_at stamped
-  // here, so they still flow into the daily digest (its own query only
-  // excludes alert_sent_at IS NOT NULL rows) instead of an immediate email.
-  // Watchlist tickers always qualify regardless of sector/liquidity (that's
-  // the point of a hand-curated watchlist); universe (non-watchlist) tickers
-  // additionally need Technology sector AND the same liquidity floor as
-  // everywhere else in the firehose — all three (sentiment, sector, volume)
-  // required together per explicit user requirement.
+  // Same filter as recent-filings' dashboard query — positive sentiment only
+  // (neutral/negative material events aren't dropped, they just don't get
+  // alert_sent_at stamped here, so they flow into the daily digest instead).
+  // Watchlist tickers always qualify; universe tickers additionally need
+  // Technology sector AND the same liquidity floor as everywhere else in the
+  // firehose — all three required together per explicit user requirement.
   const pending = db.prepare(`
     SELECT * FROM scout_sec_filings
     WHERE form_type = '8-K' AND llama_material_event = 1
@@ -3156,47 +3158,8 @@ async function dispatchMaterialAlerts() {
           AND ticker IN (SELECT ticker FROM scout_ticker_universe WHERE avg_volume IS NULL OR avg_volume >= ?)
         )
       )
-  `).all(UNIVERSE_MIN_AVG_VOLUME);
-
-  let sent = 0;
-  for (const f of pending) {
-    try {
-      const keyItems = (JSON.parse(f.llama_key_items || '[]') || []).join(', ');
-      const subject = `${f.llama_bearish_signal ? '[SEC Alert ⚠ BEARISH] ' : '[SEC Alert] '}${f.ticker} — ${keyItems} — ${(f.filed_at || '').slice(0, 10)}`;
-      const body = [
-        f.llama_summary || '(no summary)',
-        '',
-        `Sentiment: ${f.llama_sentiment || '—'}`,
-        `Confidence: ${f.llama_confidence != null ? Math.round(f.llama_confidence * 100) + '%' : '—'}`,
-        f.llama_catalyst ? `Potential catalyst: ${f.llama_catalyst}` : null,
-        f.llama_bearish_signal ? `⚠ Bearish signal: this filing discloses something concretely negative — worth adding to a watchlist.` : null,
-        '',
-        `Filing: ${f.filing_url}`,
-      ].filter(x => x !== null).join('\n');
-      await sendGmailAlert(subject, body);
-      db.prepare(`UPDATE scout_sec_filings SET alert_sent_at = datetime('now') WHERE id = ?`).run(f.id);
-      sent++;
-    } catch (e) {
-      scoutLogLine({ event: 'material_alert_failed', ticker: f.ticker, accession: f.accession_number, error: e.message });
-    }
-  }
-  return { sent, checked: pending.length };
-}
-
-// On-demand alternative to dispatchMaterialAlerts' one-email-per-filing behavior —
-// batches every currently-unsent material 8-K into a SINGLE email grouped by ticker.
-// Meant for clearing a backlog (e.g. after a period the discovery loop wasn't running,
-// or right after first configuring Gmail) without flooding the inbox with one email per
-// filing. Not wired into the automatic discovery loop — triggered on demand only.
-async function sendConsolidatedMaterialAlert() {
-  if (!gmailReady()) return { sent: false, skipped: 'gmail_not_configured' };
-
-  const pending = db.prepare(`
-    SELECT * FROM scout_sec_filings
-    WHERE form_type = '8-K' AND llama_material_event = 1
-      AND llama_analyzed_at IS NOT NULL AND alert_sent_at IS NULL
     ORDER BY ticker, filed_at DESC
-  `).all();
+  `).all(UNIVERSE_MIN_AVG_VOLUME);
   if (!pending.length) return { sent: false, skipped: 'nothing_pending' };
 
   const byTicker = {};
@@ -3252,12 +3215,14 @@ async function maybeSendDailyDigest() {
   if (now.getHours() * 60 + now.getMinutes() < hh * 60 + mm) return { sent: false, skipped: 'not_yet_time' };
 
   // Everything not already alert_sent_at-stamped — watchlist non-material
-  // filings (as before) PLUS every ticker-universe filing regardless of
-  // materiality, since dispatchMaterialAlerts is watchlist-only now and never
-  // stamps universe rows. This is the "essential notifications only" compromise
-  // for the firehose per explicit user requirement: universe material events
-  // still surface (tagged [MATERIAL] below, sorted first), just batched into
-  // one daily email instead of one email per filing.
+  // filings (as before) PLUS any universe filing that didn't clear
+  // sendConsolidatedMaterialAlert's full bar (material + positive sentiment +
+  // Technology sector + liquidity) — a universe filing that fails any one of
+  // those never gets alert_sent_at stamped, so it lands here instead. This is
+  // the "essential notifications only" compromise for the firehose per
+  // explicit user requirement: universe material events still surface (tagged
+  // [MATERIAL] below, sorted first), just in the daily digest instead of an
+  // immediate email.
   const digestItems = db.prepare(`
     SELECT * FROM scout_sec_filings
     WHERE form_type = '8-K'
@@ -3335,7 +3300,7 @@ async function runDiscoveryLoop() {
     // own fetched_at/stale bookkeeping is what makes that resumable, see
     // refreshUniverseSectorCache's comment in sectors.js. Restored per explicit
     // user requirement — Technology sector is required again alongside
-    // sentiment/volume in dispatchMaterialAlerts and recent-filings.
+    // sentiment/volume in sendConsolidatedMaterialAlert and recent-filings.
     const universeSectorResult = await sectors.refreshUniverseSectorCache(db, FINNHUB_API_KEY, { limit: 50 })
       .catch(e => { scoutLogLine({ event: 'universe_sector_sync_failed', error: e.message }); return { error: e.message }; });
     const universeIngestResult = await ingestUniverseFilingsFromDailyIndex().catch(e => {
@@ -3344,7 +3309,7 @@ async function runDiscoveryLoop() {
     });
     const universeAnalysisResult = await analyzeAndStorePending8Ks({ scope: 'universe' });
 
-    const alertResult = await dispatchMaterialAlerts();
+    const alertResult = await sendConsolidatedMaterialAlert();
     const digestResult = await maybeSendDailyDigest();
     evictSecCache(); // per spec: run the eviction check after every discovery loop iteration
     scoutLogLine({ event: 'discovery_loop_end', tickers: tickers.length, ...analysisResult, universe: { volumeSync: universeVolumeResult, sectorSync: universeSectorResult, ingest: universeIngestResult, ...universeAnalysisResult }, alerts: alertResult, digest: digestResult });
