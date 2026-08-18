@@ -1689,12 +1689,13 @@ async function syncTickerUniverse({ force = false } = {}) {
 
 // Per explicit user requirement: trim the universe to liquid-enough-to-trade
 // names, not every non-OTC filer regardless of size — raised from an initial
-// 500k to 1M per explicit follow-up ("that is a lot"). NULL (not yet checked)
-// still passes — treated as "unknown," not "illiquid," so a ticker isn't
-// silently excluded from the firehose during the brief window before its
-// first volume check completes; ingestUniverseFilingsFromDailyIndex and the
-// recent-filings dashboard endpoint both apply this same floor.
-const UNIVERSE_MIN_AVG_VOLUME = 1000000;
+// 500k to 1M, then back down to 500k once sentiment (not sector) became the
+// primary quality signal. NULL (not yet checked) still passes — treated as
+// "unknown," not "illiquid," so a ticker isn't silently excluded from the
+// firehose during the brief window before its first volume check completes;
+// ingestUniverseFilingsFromDailyIndex, the recent-filings dashboard endpoint,
+// and dispatchMaterialAlerts all apply this same floor.
+const UNIVERSE_MIN_AVG_VOLUME = 500000;
 const UNIVERSE_VOLUME_SYNC_INTERVAL_DAYS = 1; // volume moves daily, unlike exchange listing/sector
 // Schwab's /quotes batch endpoint (confirmed live: 200 symbols/call succeeds
 // cleanly) is dramatically cheaper than Finnhub's 1-symbol-per-1.1s throttle
@@ -2427,14 +2428,15 @@ app.get('/api/scout/edgar/recent-filings', (req, res) => {
   try {
     const days = Math.min(180, Math.max(1, parseInt(req.query.days, 10) || 30));
     const ticker = req.query.ticker ? String(req.query.ticker).trim().toUpperCase() : null;
-    // Watchlist filings as before, PLUS material ticker-universe filings for
-    // Tech-sector, liquid-enough-to-trade names (per explicit user requirement)
-    // — everything else the firehose ingests stays DB-only, visible by
-    // searching that specific ticker (which auto-onboards it onto the
-    // watchlist, see onboardOrResumeTicker in osterm.html) rather than in this
-    // glance feed. Mirrors the same avg_volume floor ingestUniverseFilingsFrom
-    // DailyIndex applies at ingest time, so a ticker that was liquid when
-    // ingested but has since gone stale-unchecked doesn't disappear here.
+    // Watchlist filings as before, PLUS material, positive-sentiment
+    // ticker-universe filings for liquid-enough-to-trade names (per explicit
+    // user requirement — sector is no longer a factor here, replaced by
+    // sentiment) — everything else the firehose ingests stays DB-only,
+    // visible by searching that specific ticker (which auto-onboards it onto
+    // the watchlist, see onboardOrResumeTicker in osterm.html) rather than in
+    // this glance feed. Mirrors dispatchMaterialAlerts' own filter exactly, so
+    // "shows on the dashboard" and "would trigger an email" agree with each
+    // other for universe tickers.
     const rows = db.prepare(`
       SELECT ticker, form_type, filed_at, description, filing_url,
              llama_summary, llama_sentiment, llama_material_event,
@@ -2445,7 +2447,7 @@ app.get('/api/scout/edgar/recent-filings', (req, res) => {
           ticker IN (SELECT ticker FROM scout_watchlist)
           OR (
             llama_material_event = 1
-            AND ticker IN (SELECT symbol FROM sector_cache WHERE sector = 'Technology')
+            AND llama_sentiment = 'positive'
             AND ticker IN (SELECT ticker FROM scout_ticker_universe WHERE avg_volume IS NULL OR avg_volume >= ?)
           )
         )
@@ -3132,22 +3134,25 @@ async function dispatchMaterialAlerts() {
   if (settings?.alerts_paused) return { sent: 0, skipped: 'paused' };
   if (!gmailReady()) return { sent: 0, skipped: 'gmail_not_configured' };
 
-  // Watchlist only, per explicit user requirement to minimize email volume —
-  // the ticker-universe firehose can flag material events on hundreds of
-  // filings/day; those go into the daily digest (maybeSendDailyDigest) instead
-  // of an immediate one-email-per-filing, which stays reserved for the small
-  // hand-curated watchlist. Further restricted to positive sentiment only per
-  // explicit user requirement — neutral/negative material events aren't
-  // dropped, they just don't get alert_sent_at stamped here, so they still
-  // flow into the daily digest (its own query only excludes alert_sent_at IS
-  // NOT NULL rows) instead of an immediate email.
+  // Positive sentiment only, per explicit user requirement — neutral/negative
+  // material events aren't dropped, they just don't get alert_sent_at stamped
+  // here, so they still flow into the daily digest (its own query only
+  // excludes alert_sent_at IS NOT NULL rows) instead of an immediate email.
+  // Watchlist tickers always qualify regardless of liquidity (that's the point
+  // of a hand-curated watchlist); universe (non-watchlist) tickers additionally
+  // need the same liquidity floor as everywhere else in the firehose, so a
+  // thinly-traded name doesn't email an "essential" alert for something you
+  // can't actually trade.
   const pending = db.prepare(`
     SELECT * FROM scout_sec_filings
     WHERE form_type = '8-K' AND llama_material_event = 1
       AND llama_analyzed_at IS NOT NULL AND alert_sent_at IS NULL
-      AND ticker IN (SELECT ticker FROM scout_watchlist)
       AND llama_sentiment = 'positive'
-  `).all();
+      AND (
+        ticker IN (SELECT ticker FROM scout_watchlist)
+        OR ticker IN (SELECT ticker FROM scout_ticker_universe WHERE avg_volume IS NULL OR avg_volume >= ?)
+      )
+  `).all(UNIVERSE_MIN_AVG_VOLUME);
 
   let sent = 0;
   for (const f of pending) {
@@ -3316,17 +3321,14 @@ async function runDiscoveryLoop() {
     // cheap EIGHT_K_TRIAGE_MODEL. Sync is staleness-guarded internally so this
     // is a cheap no-op call on every loop except roughly once a week.
     await syncTickerUniverse().catch(e => scoutLogLine({ event: 'ticker_universe_sync_failed', error: e.message }));
-    // Runs to completion every tick (not bounded like sector, below) — Schwab's
-    // batched /quotes endpoint makes a full pass affordable in ~40 calls, so
-    // ingest below always sees current volume rather than needing days to warm up.
+    // Runs to completion every tick — Schwab's batched /quotes endpoint makes
+    // a full pass affordable in ~40 calls, so ingest below always sees current
+    // volume rather than needing days to warm up. (Sector classification was
+    // dropped from this loop — sentiment replaced sector as the universe
+    // quality signal, see dispatchMaterialAlerts/recent-filings, so paying
+    // Finnhub's per-symbol throttle for sector_cache here had no consumer left.)
     const universeVolumeResult = await refreshUniverseVolume()
       .catch(e => { scoutLogLine({ event: 'universe_volume_sync_failed', error: e.message }); return { error: e.message }; });
-    // Bounded batch per tick (~55s at Finnhub's throttle) — a full pass over
-    // ~7,700 symbols takes days of ticks to complete, not one call; sector_cache's
-    // own fetched_at/stale bookkeeping is what makes that resumable, see
-    // refreshUniverseSectorCache's comment in sectors.js.
-    const universeSectorResult = await sectors.refreshUniverseSectorCache(db, FINNHUB_API_KEY, { limit: 50 })
-      .catch(e => { scoutLogLine({ event: 'universe_sector_sync_failed', error: e.message }); return { error: e.message }; });
     const universeIngestResult = await ingestUniverseFilingsFromDailyIndex().catch(e => {
       scoutLogLine({ event: 'universe_firehose_ingest_failed', error: e.message });
       return { fetched: 0, inserted: 0, error: e.message };
@@ -3336,8 +3338,8 @@ async function runDiscoveryLoop() {
     const alertResult = await dispatchMaterialAlerts();
     const digestResult = await maybeSendDailyDigest();
     evictSecCache(); // per spec: run the eviction check after every discovery loop iteration
-    scoutLogLine({ event: 'discovery_loop_end', tickers: tickers.length, ...analysisResult, universe: { volumeSync: universeVolumeResult, sectorSync: universeSectorResult, ingest: universeIngestResult, ...universeAnalysisResult }, alerts: alertResult, digest: digestResult });
-    return { tickers: tickers.length, ...analysisResult, universe: { volumeSync: universeVolumeResult, sectorSync: universeSectorResult, ingest: universeIngestResult, ...universeAnalysisResult }, alerts: alertResult, digest: digestResult };
+    scoutLogLine({ event: 'discovery_loop_end', tickers: tickers.length, ...analysisResult, universe: { volumeSync: universeVolumeResult, ingest: universeIngestResult, ...universeAnalysisResult }, alerts: alertResult, digest: digestResult });
+    return { tickers: tickers.length, ...analysisResult, universe: { volumeSync: universeVolumeResult, ingest: universeIngestResult, ...universeAnalysisResult }, alerts: alertResult, digest: digestResult };
   } catch (e) {
     scoutLogLine({ event: 'discovery_loop_error', error: e.message });
     throw e;
