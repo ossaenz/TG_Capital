@@ -1,0 +1,32 @@
+# Modelfile for qwen3-vl:32b (bare tag — the one with `thinking` in its Ollama
+# capability list; the explicit `-instruct-q4_K_M` tag does NOT have `thinking`,
+# confirmed via `ollama show` on both — they're genuinely different pulled
+# artifacts, not aliases of each other. This is the size-scaled equivalent of
+# the qwen3-vl:8b this app was already running (same bare-tag convention, same
+# completion+vision+tools+thinking capability set), just a much larger model.
+#
+# Build:   cd local && ollama create qwen3-vl-32b-tgcapital -f Qwen3VL32B.Modelfile
+# Use:     set CHAT_MODEL=qwen3-vl-32b-tgcapital and
+#          CONTRADICTION_MODEL=qwen3-vl-32b-tgcapital in local/.env
+#
+# VRAM sizing (R9700, 32GB/34.2GB actual): target ceiling is 85% of total, i.e.
+# ~29GB for everything on the card combined, including the standing NexOS voice
+# service (nexos-voice.service, ~7.4GB when running) and OS/driver overhead
+# (~1-1.5GB observed). Model weights alone are 20GB (`ollama list`), so the real
+# per-request budget for KV cache + compute buffers is whatever's left after
+# those fixed costs — verified empirically against `rocm-smi --showmeminfo vram`
+# after a real load, not just calculated, since KV-cache-per-token isn't
+# something to guess at for a new architecture (qwen3vl) this app hasn't run
+# before. See the commit message / session notes for the actual measured
+# num_ctx <-> VRAM figures this value was tuned against.
+FROM qwen3-vl:32b
+
+PARAMETER num_ctx 24576
+
+# Low temperature for JSON-mode structured output (Contradiction Engine,
+# 8-K analysis) — server.js's own request-time `options.temperature` (0.2 for
+# CONTRADICTION_MODEL) overrides this when called through the app; only
+# matters for standalone `ollama run qwen3-vl-32b-tgcapital` use.
+PARAMETER temperature 0.3
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.1

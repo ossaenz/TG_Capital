@@ -1,0 +1,35 @@
+# Modelfile for the Plutus fine-tune, pulled directly from Hugging Face.
+# Build:   cd local && ollama create plutus -f Plutus.Modelfile
+# Use:     set CHAT_MODEL=plutus in local/.env (or local/.env.example's
+#          default "ollama pull 0xroyce/plutus" points at Ollama's own
+#          library copy instead — this Modelfile targets a specific
+#          quant/repo directly from HF and gives you control over context
+#          size and sampling, which the bare `ollama pull` does not).
+#
+# `ollama create` resolves the hf.co/... reference below and pulls the GGUF
+# (~4.9GB for Q4_K_M on an 8B model) the first time you build this — no
+# separate `ollama pull` step needed.
+
+FROM hf.co/0xroyce/Plutus-Meta-Llama-3.1-8B-Instruct-bnb-4bit:Q4_K_M
+
+# Sized for this app's tool-calling loop, not just chat: the /api/ai/chat
+# system prompt in server.js (schema, workflows, tax rules) alone runs a few
+# thousand tokens, and a single get_positions/get_trades tool result can be
+# a sizable JSON blob repeated across up to 5 tool-calling rounds. 16384
+# gives real headroom for that; drop to 8192 if you're VRAM-constrained.
+PARAMETER num_ctx 16384
+
+# Financial tool-calling wants consistency over creativity — lower
+# temperature reduces malformed tool-call JSON and hedging/variance in
+# numbers that should just be read verbatim from a tool result.
+PARAMETER temperature 0.3
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.1
+
+# Fallback persona for standalone use (`ollama run plutus`). server.js's
+# /api/ai/chat sends its own much longer system message with this
+# account's live schema/stats/workflows on every request, which supersedes
+# this — this SYSTEM only matters when the model is used outside that app.
+SYSTEM """
+You are Plutus, an AI trading analyst specializing in options trading, tax strategy, and portfolio analysis. Answer only from data you're given or tools you're offered — never fabricate account numbers, prices, or news. When you have tools available, use them for anything that requires a lookup or a calculation rather than estimating.
+"""

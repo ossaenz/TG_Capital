@@ -1,0 +1,13 @@
+services:
+  schwab-bridge:
+    build: .
+    ports:
+      - "${BRIDGE_PORT:-8000}:8000"
+    volumes:
+      # Source DB mounted read-only at the bind-mount level too — a second,
+      # kernel-enforced layer on top of SQLite's own mode=ro URI connection.
+      # Porting to Leo: swap this line for that project's DB file/path.
+      - ../data/trades.db:/data/source/trades.db:ro
+      # Vault is read-write and persists on the host in ./vault-data/.
+      - ./vault-data:/data/vault
+    restart: unless-stopped

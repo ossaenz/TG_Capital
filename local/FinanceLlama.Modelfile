@@ -1,0 +1,36 @@
+# Modelfile for martain7r/finance-llama-8b:q4_k_m with a widened context window.
+# Base: Llama 3.1 8B fine-tuned on Josephgflowers/Finance-Instruct-500k. `ollama show`
+# confirms 131072 native architecture context, but Ollama ships it defaulting to
+# PARAMETER num_ctx 4096 — nowhere near enough for this app's Contradiction Engine,
+# which can feed it two full extracted filing sections (Item 1A + MD&A) plus prompt
+# scaffolding — up to ~80000 chars, roughly 20-25k tokens worst case.
+# Not tool-calling capable (`ollama show` lists only "completion", no "tools") — usable
+# as CONTRADICTION_MODEL (JSON-mode completion only), not as CHAT_MODEL for Plutus'
+# tool-calling loop.
+#
+# Build:   cd local && ollama create finance-llama-32k -f FinanceLlama.Modelfile
+# Use:     set CONTRADICTION_MODEL=finance-llama-32k in local/.env
+#
+# SWITCHED from :fp16 (16GB) to :q4_k_m (4.9GB) — confirmed via `ollama ps` timing that
+# the fp16 version (~19GB resident incl. KV cache) couldn't coexist with CHAT_MODEL
+# (qwen2.5:7b-instruct, ~6.6GB) on this machine's 34GB GPU: every switch between the
+# Contradiction Engine and chat/trade-ideas forced a full evict+cold-reload (~20-40s
+# tax, confirmed by watching `ollama ps` transition to empty mid-swap), which compounded
+# into real request timeouts when two Ollama-dependent actions fired close together.
+# Q4_K_M weights (4.9GB) + ~4GB KV cache at this context (same ~128KB/token estimate —
+# quantization affects weights, not KV cache dtype) ≈ 9GB total, comfortably coexisting
+# with the 6.6GB chat model without eviction. Tradeoff: quantization can cost some output
+# quality vs fp16 — accepted here since fp16 wasn't clearly better in practice anyway
+# (observed repeating a citation across contradiction entries in one real run).
+FROM martain7r/finance-llama-8b:q4_k_m
+
+PARAMETER num_ctx 32768
+
+# Low temperature for JSON-mode structured output (citation-grounded contradiction
+# analysis) — consistency over creativity, same reasoning as this app's other
+# analysis-persona Modelfiles. server.js's own request-time `options.temperature`
+# (CONTRADICTION_MODEL is called with 0.2) overrides this when called through the app;
+# it only matters for standalone use (`ollama run finance-llama-32k`).
+PARAMETER temperature 0.2
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.1

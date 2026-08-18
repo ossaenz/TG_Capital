@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OS Sentiment Terminal</title>
+  <!--
+    OS SENTIMENT TERMINAL — standalone public page, served at /osterm.html.
+    Same origin as the rest of this app (Caddy reverse-proxies straight through,
+    same pattern as /chamuco → POST /api/v1/ingest), so every fetch() below uses a
+    plain relative /api/... path.
+
+    HARD BOUNDARY: this page calls ONLY /api/scout/* routes. It never calls
+    /api/account, /api/positions, /api/quote, /api/dashboard, /api/journal/*, or
+    any other Schwab-touching endpoint — grep this file for '/api/' to verify.
+
+    ACCESS CONTROL: handled entirely by Caddy (basic_auth on the public
+    osflex.me/osterm.html and /api/scout/* routes), not by this page — there is
+    deliberately no client-side gate here. Direct LAN access to the container
+    (bypassing Caddy) stays open, which is the intended behavior.
+
+    ── ARCHITECTURE ──────────────────────────────────────────────────────────
+    Mobile-first "glance and dive" terminal, vanilla JS, no build step (this repo
+    has no frontend bundler anywhere — see root/local CLAUDE.md). The main script
+    block at the bottom is organized into clearly-labeled layers, in this order:
+      STORE          — the one place app state lives (§ STORE)
+      API            — thin fetch wrappers, zero rendering logic (§ API)
+      PRESENTATIONAL — pure (props) => htmlString components (§ COMPONENTS)
+      CARD           — the collapse/expand primitive every section is built from
+      SECTIONS       — one function per card/section — ADD NEW CARDS HERE
+      VIEWS + ROUTER — hash-based routing, ties sections into screens
+      INIT           — boot sequence
+
+    Mobile shows one view at a time (Home / Watchlist / Ticker / Search /
+    Settings), switched via the bottom nav and #/hash routes. Desktop (≥1024px,
+    Tailwind's `lg:` breakpoint) reveals ALL "dashboard" panels simultaneously in
+    a denser CSS grid — same section functions, no separate desktop render path;
+    see the `.view-panel-group[data-kind="dashboard"]` media-query override in
+    <style> below for the actual mechanism.
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script>
+    // Palette matches this app's real dashboard (scout-dashboard.html :root).
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'Segoe UI', 'sans-serif'],
+            mono: ["'IBM Plex Mono'", 'ui-monospace', 'monospace'],
+          },
+          colors: {
+            terminal: {
+              bg: '#0b0e17', panel: '#111827', panelSoft: '#1a2235', border: '#1e2d40',
+              accent: '#3b82f6', accentSoft: '#60a5fa',
+              positive: '#22c55e', negative: '#ef4444', neutral: '#e2e8f0', muted: '#64748b',
+            },
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    .custom-scrollbar::-webkit-scrollbar{ width:8px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb{ background:#1e2d40; border-radius:4px; }
+    .line-clamp-4{ display:-webkit-box; -webkit-line-clamp:4; line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
+
+    /* ── Progressive disclosure: mobile shows one view-panel-group at a time
+       (toggled by JS adding/removing .active), desktop forces every "dashboard"
+       group to be visible together — this single media query is the entire
+       mobile→desktop reflow mechanism described in the head comment. */
+    .view-panel-group{ display:none; }
+    .view-panel-group.active{ display:block; }
+    @media (min-width:1024px){
+      .view-panel-group[data-kind="dashboard"]{ display:block !important; }
+    }
+
+    .card-chevron{ transition: transform .15s ease; }
+    .card-chevron.rotate-180{ transform: rotate(180deg); }
+    .card-body{ transition: opacity .12s ease; }
+  </style>
+</head>
+<body class="h-full bg-terminal-bg text-slate-100 font-sans">
+  <div id="app" class="min-h-screen flex flex-col">
+
+    <!-- ── HEADER: brand, global sentiment glance, search ─────────────────── -->
+    <header class="border-b border-terminal-border bg-terminal-panel/80 backdrop-blur flex items-center px-3 sm:px-6 py-2 gap-3 sticky top-0 z-10">
+      <div id="brand-mark-header" class="shrink-0"></div>
+      <div class="h-6 w-px bg-terminal-border/70 hidden sm:block"></div>
+      <button id="header-sentiment-pill" class="hidden sm:flex items-center gap-1.5 text-[11px] font-mono px-2 py-1 rounded-md bg-terminal-panelSoft border border-terminal-border" data-goto-view="home">
+        <span class="text-slate-500">Market</span><span id="header-sentiment-value">—</span>
+      </button>
+      <div class="flex-1 flex items-center gap-2 max-w-sm ml-auto">
+        <div class="flex items-center gap-2 bg-terminal-panelSoft border border-terminal-border rounded-md px-2.5 py-1.5 w-full">
+          <span class="text-[10px] text-slate-500 select-none font-mono">TICKER</span>
+          <input id="ticker-input" type="text" placeholder="search…" autocomplete="off"
+            class="bg-transparent text-sm placeholder-slate-600 focus:outline-none flex-1 font-mono uppercase min-w-0" />
+        </div>
+      </div>
+    </header>
+
+    <!-- ── MAIN — all view-panel-groups live here, visibility per the CSS above -->
+    <main id="main-content" class="flex-1 overflow-y-auto custom-scrollbar px-3 sm:px-6 py-4 pb-24 lg:pb-6">
+
+      <!-- Dashboard groups: Home, Watchlist, Ticker Detail — always-together on desktop -->
+      <div id="dashboard-grid" class="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
+        <div class="view-panel-group lg:col-span-4 flex flex-col gap-4" data-view="home" data-kind="dashboard" id="panel-home"></div>
+        <div class="view-panel-group lg:col-span-4 flex flex-col gap-4" data-view="watchlist" data-kind="dashboard" id="panel-watchlist"></div>
+        <div class="view-panel-group lg:col-span-4 flex flex-col gap-4" data-view="ticker" data-kind="dashboard" id="panel-ticker"></div>
+      </div>
+
+      <!-- Utility screens: single-screen even on desktop, not part of the dashboard grid -->
+      <div class="view-panel-group" data-view="search" data-kind="utility" id="panel-search"></div>
+      <div class="view-panel-group" data-view="settings" data-kind="utility" id="panel-settings"></div>
+    </main>
+
+    <!-- ── BOTTOM NAV — mobile only ─────────────────────────────────────────── -->
+    <nav class="lg:hidden fixed bottom-0 inset-x-0 border-t border-terminal-border bg-terminal-panel/95 backdrop-blur flex items-stretch text-[10px] z-20">
+      <button class="nav-item flex-1 flex flex-col items-center gap-1 py-2.5 text-slate-500" data-goto-view="home">
+        <span>⌂</span><span>Home</span>
+      </button>
+      <button class="nav-item flex-1 flex flex-col items-center gap-1 py-2.5 text-slate-500" data-goto-view="watchlist">
+        <span>☰</span><span>Watchlist</span>
+      </button>
+      <button class="nav-item flex-1 flex flex-col items-center gap-1 py-2.5 text-slate-500" data-goto-view="search">
+        <span>⌕</span><span>Search</span>
+      </button>
+      <button class="nav-item flex-1 flex flex-col items-center gap-1 py-2.5 text-slate-500" data-goto-view="settings">
+        <span>⚙</span><span>Settings</span>
+      </button>
+    </nav>
+
+    <!-- ── FOOTER — same disclaimer + byline used on the downloadable Truth Check report -->
+    <footer class="hidden lg:flex px-4 sm:px-6 py-3 border-t border-terminal-border/60 items-center justify-between gap-3">
+      <p class="text-[10px] text-slate-500 max-w-2xl leading-relaxed">
+        Decision support for your own review — not a recommendation, not an auto-trade.
+        Nothing on this page is tax, legal, or investment advice. Generated locally by Plutus / Proactive Scout.
+      </p>
+      <div id="footer-badge"></div>
+    </footer>
+  </div>
+
+  <script>
+    /* ════════════════════════════════════════════════════════════════════
+       HELPERS
+       ════════════════════════════════════════════════════════════════════ */
+    const $ = id => document.getElementById(id);
+    function esc(s){ const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
+    const fmtDate = s => (s || '').replace('T',' ').slice(0, 10);
+
+    /* ════════════════════════════════════════════════════════════════════
+       STORE — the one centralized place app state lives. Views read from
+       Store.state and re-render themselves; nothing mutates state directly
+       from outside Store.set()/Store.state's own containers (tickerCache,
+       openCards) which are intentionally mutable maps/sets for cheap lookups.
+       ════════════════════════════════════════════════════════════════════ */
+    const Store = {
+      state: {
+        watchlist: [],                 // [ticker, ...]
+        tickerCache: {},               // ticker -> { latest, history, sentimentRows, filings, loadedAt }
+        selectedTicker: null,
+        activeView: 'home',            // 'home' | 'watchlist' | 'ticker' | 'search' | 'settings'
+        openCards: new Set(),          // card ids currently expanded (mobile+desktop share this)
+        recentFilings: [],             // all-watchlist, last 30d — backs Top Alerts
+      },
+      listeners: [],
+      subscribe(fn){ this.listeners.push(fn); },
+      set(patch){ Object.assign(this.state, patch); this.listeners.forEach(fn => fn(this.state)); },
+    };
+
+    /* ════════════════════════════════════════════════════════════════════
+       API — thin fetch wrappers, one per endpoint, no rendering logic.
+       Every one of these is /api/scout/* — that boundary is enforced by
+       convention here, not just by comment (see head-of-file note).
+       ════════════════════════════════════════════════════════════════════ */
+    const api = {
+      async getWatchlist(){
+        const r = await fetch('/api/scout/watchlist');
+        const d = await r.json();
+        return (d.watchlist || []).map(w => w.ticker);
+      },
+      async getRecentFilings({ ticker, days = 30 } = {}){
+        const qs = new URLSearchParams({ days: String(days) });
+        if (ticker) qs.set('ticker', ticker);
+        const r = await fetch(`/api/scout/edgar/recent-filings?${qs}`);
+        const d = await r.json();
+        return d.ok ? (d.filings || []) : [];
+      },
+      async getContradictionHistory(ticker){
+        const r = await fetch(`/api/scout/contradiction?ticker=${encodeURIComponent(ticker)}`);
+        const d = await r.json();
+        return d.ok ? (d.contradictions || []) : [];
+      },
+      async getSentiment(ticker){
+        const r = await fetch(`/api/scout/sentiment?ticker=${encodeURIComponent(ticker)}`);
+        const d = await r.json();
+        return d.ok ? (d.sentiment || []) : [];
+      },
+      // Onboarding steps for a ticker not yet tracked — each a real, awaited POST,
+      // used by onboardNewTicker() below to show genuine (not simulated) progress.
+      async addToWatchlist(ticker){
+        const r = await fetch('/api/scout/watchlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker }) });
+        return r.json();
+      },
+      async refreshFilings(ticker){
+        const r = await fetch('/api/scout/sec-filings/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker }) });
+        const d = await r.json();
+        return d.results?.[0] || { ok: false, reason: 'no result' };
+      },
+      async run8kAnalysis(ticker){
+        const r = await fetch('/api/scout/8k-analysis/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker }) });
+        return r.json();
+      },
+      async runTruthCheck(ticker){
+        const r = await fetch('/api/scout/contradiction', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker }) });
+        return r.json();
+      },
+    };
+
+    /* ════════════════════════════════════════════════════════════════════
+       PRESENTATIONAL COMPONENTS — pure (props) => htmlString. No fetch, no
+       Store access. Swap/extend these without touching Sections below.
+       ════════════════════════════════════════════════════════════════════ */
+
+    // sentiment_score (0-100, real — from the Contradiction Engine) is the one
+    // consistent scale used for bullish/neutral/bearish everywhere on this page.
+    function scoreToStatus(score){
+      if (score == null) return 'unknown';
+      if (score >= 60) return 'bullish';
+      if (score <= 40) return 'bearish';
+      return 'neutral';
+    }
+    function scoreToIntensity(score){
+      if (score == null) return 0;
+      return Math.min(3, Math.max(1, Math.round(Math.abs(score - 50) / 17)));
+    }
+    // llama_sentiment (positive/neutral/negative — from 8-K analysis) is a
+    // separate, categorical field; kept as its own small helper.
+    function sentimentColorClass(s){
+      if (s === 'positive') return 'text-terminal-positive';
+      if (s === 'negative') return 'text-terminal-negative';
+      if (s === 'neutral') return 'text-slate-400';
+      return 'text-slate-600';
+    }
+
+    function SentimentPill({ status, intensity = 0 }){
+      const map = {
+        bullish: { bg: 'bg-terminal-positive/15', text: 'text-terminal-positive', label: 'Bullish' },
+        bearish: { bg: 'bg-terminal-negative/15', text: 'text-terminal-negative', label: 'Bearish' },
+        neutral: { bg: 'bg-slate-500/15', text: 'text-slate-300', label: 'Neutral' },
+        unknown: { bg: 'bg-slate-700/20', text: 'text-slate-600', label: 'Unrated' },
+      };
+      const m = map[status] || map.unknown;
+      const dots = intensity > 0 ? ` <span class="opacity-50">${'●'.repeat(intensity)}</span>` : '';
+      return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${m.bg} ${m.text}">${m.label}${dots}</span>`;
+    }
+
+    function TickerRow({ ticker }){
+      const cache = Store.state.tickerCache[ticker];
+      const score = cache?.latest?.sentiment_score;
+      const status = scoreToStatus(score);
+      return `
+        <button class="w-full flex items-center justify-between px-3 py-2.5 hover:bg-terminal-panelSoft/60 rounded-md transition" data-goto-ticker="${esc(ticker)}">
+          <span class="text-[12px] font-semibold text-slate-100 font-mono tracking-wide">${esc(ticker)}</span>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] text-slate-500 font-mono">${score != null ? score + '/100' : '—'}</span>
+            ${SentimentPill({ status, intensity: scoreToIntensity(score) })}
+          </div>
+        </button>`;
+    }
+
+    function StatBlock({ label, value, color = 'text-slate-100' }){
+      return `<div class="bg-terminal-panelSoft/70 rounded p-2.5 text-center">
+        <div class="text-lg font-mono ${color}">${esc(value)}</div>
+        <div class="text-[9.5px] text-slate-500 uppercase tracking-wide mt-0.5">${esc(label)}</div>
+      </div>`;
+    }
+
+    // Canvas-only placeholder — zero Chart.js awareness. A section wires a real
+    // chart into it later via mountChart(id, ...); swap the charting library
+    // without touching any card/section code by changing only mountChart().
+    function ChartPlaceholder({ id, height = 160 }){
+      return `<div style="height:${height}px" class="relative"><canvas id="${id}"></canvas></div>`;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════
+       CARD — the one progressive-disclosure primitive. Every section is a
+       Card (or several). Collapse/expand is a direct class toggle on this
+       card's own DOM node, not a re-render — stays instant regardless of how
+       much markup is in `dive`.
+       ════════════════════════════════════════════════════════════════════ */
+    const chartMounters = {}; // cardId -> fn, invoked (once) the first time that card opens
+
+    function cardShell({ id, eyebrow, title, glanceMetric = '', subline = '', dive, defaultOpen = false }){
+      if (defaultOpen) Store.state.openCards.add(id);
+      const isOpen = Store.state.openCards.has(id);
+      return `
+      <section class="bg-terminal-panel/80 border border-terminal-border/80 rounded-lg overflow-hidden" data-card="${id}">
+        <button class="w-full flex items-center justify-between gap-3 px-4 py-3 text-left" data-card-toggle="${id}">
+          <div class="flex flex-col leading-tight min-w-0">
+            <span class="text-[10px] uppercase tracking-[0.2em] text-slate-500">${esc(eyebrow)}</span>
+            <span class="text-sm font-semibold text-slate-100 truncate">${esc(title)}</span>
+            ${subline ? `<span class="text-[10.5px] text-slate-500 mt-0.5 truncate">${subline}</span>` : ''}
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            ${glanceMetric}
+            <svg class="card-chevron w-3.5 h-3.5 text-slate-500 ${isOpen ? 'rotate-180' : ''}" data-chevron="${id}" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+          </div>
+        </button>
+        <div class="card-body px-4 pb-4 text-[11px] text-slate-300 ${isOpen ? '' : 'hidden'}" data-card-body="${id}">${dive}</div>
+      </section>`;
+    }
+
+    function toggleCard(id){
+      const body = document.querySelector(`[data-card-body="${id}"]`);
+      const chevron = document.querySelector(`[data-chevron="${id}"]`);
+      if (!body) return;
+      const wasHidden = body.classList.contains('hidden');
+      body.classList.toggle('hidden');
+      if (chevron) chevron.classList.toggle('rotate-180', wasHidden);
+      if (wasHidden) Store.state.openCards.add(id); else Store.state.openCards.delete(id);
+      if (wasHidden && chartMounters[id]) { chartMounters[id](); delete chartMounters[id]; }
+    }
+
+    // Single delegated listener handles every card, ticker row, and nav link —
+    // new sections never need their own click wiring.
+    document.addEventListener('click', (e) => {
+      const cardBtn = e.target.closest('[data-card-toggle]');
+      if (cardBtn) { toggleCard(cardBtn.getAttribute('data-card-toggle')); return; }
+      const tickerBtn = e.target.closest('[data-goto-ticker]');
+      if (tickerBtn) { location.hash = `#/ticker/${tickerBtn.getAttribute('data-goto-ticker')}`; return; }
+      const navBtn = e.target.closest('[data-goto-view]');
+      if (navBtn) { location.hash = `#/${navBtn.getAttribute('data-goto-view') === 'home' ? '' : navBtn.getAttribute('data-goto-view')}`; return; }
+    });
+
+    /* ════════════════════════════════════════════════════════════════════
+       SECTIONS — one function per card. ADD NEW CARDS HERE: write a function
+       that returns cardShell({...}), then drop it into the relevant render*()
+       function below. Nothing else needs to change.
+       ════════════════════════════════════════════════════════════════════ */
+
+    // "Overall market sentiment" — real aggregate over each watchlist ticker's
+    // latest Truth Check sentiment_score (already fetched into tickerCache at
+    // load) — not a separate backend field.
+    function GlobalSentimentCard(){
+      const entries = Object.values(Store.state.tickerCache);
+      const counts = { bullish: 0, neutral: 0, bearish: 0, unknown: 0 };
+      for (const v of entries) counts[scoreToStatus(v?.latest?.sentiment_score)]++;
+      const total = entries.length;
+      const glanceMetric = `<div class="flex items-center gap-1.5 text-[10.5px] font-mono">
+        <span class="text-terminal-positive">${counts.bullish}▲</span>
+        <span class="text-slate-500">${counts.neutral}●</span>
+        <span class="text-terminal-negative">${counts.bearish}▼</span>
+      </div>`;
+      const dive = total === 0
+        ? `<p class="text-slate-500">No watchlist data loaded yet.</p>`
+        : `<div class="grid grid-cols-3 gap-2">
+            ${StatBlock({ label: 'Bullish', value: counts.bullish, color: 'text-terminal-positive' })}
+            ${StatBlock({ label: 'Neutral', value: counts.neutral, color: 'text-slate-300' })}
+            ${StatBlock({ label: 'Bearish', value: counts.bearish, color: 'text-terminal-negative' })}
+          </div>
+          <p class="text-[10px] text-slate-500 mt-3 leading-relaxed">Aggregated here from each tracked ticker's latest Truth Check consensus score — real Proactive Scout data, computed client-side, not a separate backend metric.</p>`;
+      return cardShell({ id: 'global-sentiment', eyebrow: 'Market Pulse', title: 'Global Sentiment', subline: `${total} ticker${total === 1 ? '' : 's'} tracked`, glanceMetric, dive });
+    }
+
+    // "Small set of top alerts or notable moves" — material/bearish filings
+    // first, from the same recent-filings feed as before (was "Fresh Intel").
+    function TopAlertsCard(){
+      const filings = Store.state.recentFilings;
+      const notable = filings.filter(f => f.llama_material_event || f.llama_bearish_signal);
+      const shown = (notable.length ? notable : filings).slice(0, 5);
+      const glanceMetric = `<span class="text-[10.5px] font-mono text-slate-400">${notable.length || filings.length}</span>`;
+      const dive = shown.length
+        ? shown.map(f => `
+            <button class="w-full text-left px-2.5 py-2 hover:bg-terminal-panelSoft/60 rounded-md flex flex-col gap-0.5" data-goto-ticker="${esc(f.ticker)}">
+              <div class="flex items-center justify-between">
+                <span class="font-mono font-semibold text-slate-200">${esc(f.ticker)}</span>
+                <span class="text-[10px] text-slate-500 font-mono">${fmtDate(f.filed_at)}</span>
+              </div>
+              <div class="flex items-center gap-2 text-[10px]">
+                ${f.llama_bearish_signal ? '<span class="text-terminal-negative">⚠ bearish</span>' : ''}
+                ${f.llama_material_event ? '<span class="text-amber-400">material</span>' : ''}
+                <span class="text-slate-500 truncate">${esc(f.description || f.form_type)}</span>
+              </div>
+            </button>`).join('')
+        : `<p class="text-slate-500">No filings in the last 30 days.</p>`;
+      return cardShell({ id: 'top-alerts', eyebrow: 'Notable Moves', title: 'Top Alerts', subline: '8-K filings, last 30 days', glanceMetric, dive });
+    }
+
+    // Full watchlist — every tracked ticker as a TickerRow, tap drills into
+    // Ticker Detail. Home's glance uses the same TickerRow, just fewer of them.
+    function WatchlistCard({ limit = null } = {}){
+      const list = limit ? Store.state.watchlist.slice(0, limit) : Store.state.watchlist;
+      const glanceMetric = `<span class="text-[10.5px] font-mono text-slate-400">${Store.state.watchlist.length}</span>`;
+      const dive = list.length
+        ? list.map(t => TickerRow({ ticker: t })).join('')
+        : `<p class="text-slate-500">Watchlist is empty.</p>`;
+      return cardShell({
+        id: limit ? 'watchlist-glance' : 'watchlist-full',
+        eyebrow: 'Key Tickers', title: limit ? 'Watchlist' : 'Full Watchlist',
+        subline: `${Store.state.watchlist.length} tracked`, glanceMetric, dive,
+        defaultOpen: true,
+      });
+    }
+
+    // Explicitly stubbed — no aggregate sector/theme sentiment exists anywhere
+    // in this app's data model (only per-trade sector classification for the
+    // user's own portfolio, a different thing). A defined slot, not invented
+    // numbers — see the Public Consensus card's own "Coming Soon" boxes below
+    // for the same honest-placeholder pattern.
+    function SectorThemeCard(){
+      return cardShell({
+        id: 'sector-theme', eyebrow: 'Extension Point', title: 'Sector / Theme Sentiment',
+        subline: 'Not yet available',
+        glanceMetric: `<span class="text-[10px] text-slate-600">soon</span>`,
+        dive: `<p class="text-slate-500">No aggregate sector/theme sentiment signal exists in this app's data yet — this card is a defined extension point (see SectorThemeCard() in the source) rather than a fabricated number.</p>`,
+      });
+    }
+
+    // ── Ticker Detail — five cards, same real data mapping as the previous
+    // build, now each independently collapsible instead of a fixed grid.
+    function SecSentimentCard(latest){
+      const lm = latest?.filing_tone_lm;
+      if (!lm) return cardShell({ id: 'td-sec', eyebrow: 'SEC Sentiment', title: 'Loughran-McDonald Tone', glanceMetric: '<span class="text-slate-600">—</span>', dive: `<p class="text-slate-500">No Truth Check run for this ticker yet.</p>` });
+      const totalWords = (lm.per_section || []).reduce((a, s) => a + (s.totalWords || 0), 0);
+      const pos = (lm.per_section || []).reduce((a, s) => a + (s.pos || 0), 0);
+      const neg = (lm.per_section || []).reduce((a, s) => a + (s.neg || 0), 0);
+      const dil = latest?.dilution_features?.dilution_mention || 0;
+      const maxV = Math.max(pos, neg, dil, 1);
+      const bar = (v, cls) => `<div class="flex-1 bg-terminal-border/30 rounded relative overflow-hidden h-14"><div class="absolute bottom-0 left-0 right-0 ${cls}" style="height:${Math.round((v / maxV) * 100)}%"></div></div>`;
+      const flags = latest.contradictions || [];
+      const dive = `
+        <div class="flex gap-1 mb-1">${bar(pos, 'bg-terminal-positive/80')}${bar(neg, 'bg-terminal-negative/80')}${bar(dil, 'bg-amber-400/80')}</div>
+        <div class="flex justify-between text-[9px] text-slate-600 font-mono mb-3"><span>POS</span><span>NEG</span><span>DILUTION</span></div>
+        <p class="text-[10.5px] text-slate-500 mb-3">N = ${totalWords.toLocaleString()} words, deterministic word-count score — no LLM involved.</p>
+        <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1.5">Key risk flags</div>
+        ${flags.length ? flags.slice(0, 6).map(c => `<div class="flex items-center justify-between gap-2 py-1"><span class="truncate text-slate-300">${esc(c.issue)}</span><span class="text-slate-600 text-[9px] uppercase shrink-0">${esc(c.category || '')}</span></div>`).join('') : '<p class="text-slate-600">No contradictions flagged.</p>'}
+      `;
+      return cardShell({ id: 'td-sec', eyebrow: 'SEC Sentiment', title: 'Loughran-McDonald Tone', glanceMetric: `<span class="font-mono text-slate-200">${lm.combined_pss_0_100}/100</span>`, dive });
+    }
+
+    function ConsensusCard(latest, sentimentRows){
+      const score = latest?.sentiment_score;
+      const lmScore = latest?.filing_tone_lm?.combined_pss_0_100;
+      const spread = (score != null && lmScore != null) ? score - lmScore : null;
+      const narrative = (sentimentRows?.[0]?.content) || latest?.verdict_reason || latest?.summary || '';
+      const comingSoon = (label) => `<div class="bg-terminal-panelSoft/70 rounded p-2 text-center opacity-50"><div class="text-[10px] text-slate-500">${label}</div><div class="text-[10px] font-mono text-slate-500 mt-1">Soon</div></div>`;
+      const dive = `
+        <div class="grid grid-cols-3 gap-2 mb-3">${comingSoon('News')}${comingSoon('Social')}${comingSoon('Alt-data')}</div>
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-[10px] uppercase tracking-wide text-slate-500">Consensus narrative</span>
+          <span class="text-[10px] text-slate-500">Confidence: ${latest?.confidence != null ? Math.round(latest.confidence * 100) + '%' : '—'}</span>
+        </div>
+        <p class="line-clamp-4 text-slate-300">${esc(narrative ? narrative.slice(0, 500) : 'No narrative available.')}</p>
+      `;
+      return cardShell({
+        id: 'td-consensus', eyebrow: 'Public Consensus Δ', title: 'Crawled Sentiment vs SEC',
+        glanceMetric: `<span class="font-mono text-slate-200">${score != null ? score + '/100' : '—'}</span>`,
+        subline: spread != null ? `Spread vs SEC: ${spread >= 0 ? '+' : ''}${spread}` : '',
+        dive,
+      });
+    }
+
+    function EightKCard(eightKs){
+      const latest = eightKs[0] || null;
+      const flagRows = [];
+      for (const f of eightKs) {
+        if (f.llama_bearish_signal) flagRows.push(`<div class="py-1 truncate text-terminal-negative">Bearish — ${fmtDate(f.filed_at)}</div>`);
+        if (f.llama_catalyst) flagRows.push(`<div class="py-1 truncate text-terminal-accentSoft" title="${esc(f.llama_catalyst)}">Catalyst — ${fmtDate(f.filed_at)}</div>`);
+      }
+      const dive = `
+        <div class="bg-terminal-panelSoft/70 rounded p-3 mb-3">
+          ${latest ? `
+            <div class="flex items-center justify-between mb-1"><span class="text-slate-400">${esc(latest.description || '8-K')}</span><span class="text-[10px] text-slate-500 font-mono">${fmtDate(latest.filed_at)}</span></div>
+            <p class="line-clamp-4 text-slate-200">${esc(latest.llama_summary || 'Not yet analyzed.')}</p>
+            ${latest.filing_url ? `<a href="${esc(latest.filing_url)}" target="_blank" rel="noopener" class="text-[10px] text-terminal-accent inline-block mt-1.5">Open SEC filing →</a>` : ''}
+          ` : `<span class="text-slate-500">No 8-K on file.</span>`}
+        </div>
+        <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Risk / opportunity flags</div>
+        ${flagRows.length ? flagRows.slice(0, 6).join('') : '<p class="text-slate-600">No active flags.</p>'}
+      `;
+      return cardShell({ id: 'td-8k', eyebrow: '8-K Intel', title: 'Event-Driven Highlights', glanceMetric: `<span class="font-mono text-slate-400">${eightKs.length}</span>`, dive });
+    }
+
+    function SentimentTapeCard(history){
+      const chartId = 'td-tape-canvas';
+      const dive = history.length
+        ? ChartPlaceholder({ id: chartId, height: 180 })
+        : `<p class="text-slate-500">No Truth Check history for this ticker yet.</p>`;
+      if (history.length) chartMounters['td-tape'] = () => mountTapeChart(chartId, history);
+      return cardShell({ id: 'td-tape', eyebrow: 'Sentiment Tape', title: 'SEC Tone vs Consensus Over Time', glanceMetric: `<span class="font-mono text-slate-400">${history.length} run${history.length === 1 ? '' : 's'}</span>`, dive });
+    }
+
+    let tapeChartInstance = null;
+    function mountTapeChart(canvasId, history){
+      const el = $(canvasId);
+      if (!el) return;
+      const ordered = [...history].reverse();
+      if (tapeChartInstance) { tapeChartInstance.destroy(); tapeChartInstance = null; }
+      tapeChartInstance = new Chart(el.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: ordered.map(h => fmtDate(h.analyzed_at)),
+          datasets: [
+            { label: 'Consensus', data: ordered.map(h => h.sentiment_score), borderColor: '#3b82f6', backgroundColor: 'transparent', tension: 0.25, spanGaps: true },
+            { label: 'SEC Tone', data: ordered.map(h => h.filing_tone_lm?.combined_pss_0_100 ?? null), borderColor: '#22c55e', backgroundColor: 'transparent', tension: 0.25, spanGaps: true },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          scales: {
+            x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: '#1e2d40' } },
+            y: { min: 0, max: 100, ticks: { color: '#64748b', font: { size: 9 } }, grid: { color: '#1e2d40' } },
+          },
+          plugins: { legend: { labels: { color: '#94a3b8', font: { size: 10 } } } },
+        },
+      });
+    }
+
+    function RecentHitsCard(filings, ticker){
+      const dive = `
+        <div class="max-h-56 overflow-y-auto custom-scrollbar -mx-1">
+          <table class="w-full text-left border-collapse">
+            <thead class="text-[9.5px] text-slate-500 border-b border-terminal-border/80 sticky top-0 bg-terminal-panel">
+              <tr><th class="py-1 px-1 font-normal">Date</th><th class="py-1 px-1 font-normal">Type</th><th class="py-1 px-1 font-normal">Sentiment</th><th class="py-1 px-1 font-normal text-right">Material</th></tr>
+            </thead>
+            <tbody class="divide-y divide-terminal-border/80">
+              ${filings.length ? filings.slice(0, 30).map(f => `
+                <tr>
+                  <td class="py-1.5 px-1 text-slate-400 font-mono">${fmtDate(f.filed_at)}</td>
+                  <td class="py-1.5 px-1 text-slate-400">${esc(f.form_type)}</td>
+                  <td class="py-1.5 px-1 ${sentimentColorClass(f.llama_sentiment)}">${f.llama_sentiment ? esc(f.llama_sentiment) : '—'}</td>
+                  <td class="py-1.5 px-1 text-right ${f.llama_material_event ? 'text-amber-400' : 'text-slate-600'}">${f.llama_material_event ? '✓' : '—'}</td>
+                </tr>`).join('') : `<tr><td colspan="4" class="py-3 text-slate-600">No filings on file.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+        <button class="mt-2 text-[10px] px-2 py-1 rounded border border-terminal-border hover:border-terminal-accent/60 hover:text-terminal-accent transition" data-export-csv="${esc(ticker)}">EXPORT CSV</button>
+      `;
+      return cardShell({ id: 'td-hits', eyebrow: 'Recent Hits', title: 'Filing History', glanceMetric: `<span class="font-mono text-slate-400">${filings.length}</span>`, dive });
+    }
+
+    // CSV export — delegated like everything else, reads straight from tickerCache.
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-export-csv]');
+      if (!btn) return;
+      const ticker = btn.getAttribute('data-export-csv');
+      const filings = Store.state.tickerCache[ticker]?.filings || [];
+      if (!filings.length) return;
+      const header = 'ticker,form_type,filed_at,sentiment,material_event,catalyst,bearish_signal,filing_url\n';
+      const rows = filings.map(f => [f.ticker, f.form_type, f.filed_at, f.llama_sentiment || '', f.llama_material_event ? 1 : 0, `"${(f.llama_catalyst || '').replace(/"/g, '""')}"`, f.llama_bearish_signal ? 1 : 0, f.filing_url || ''].join(',')).join('\n');
+      const blob = new Blob([header + rows], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${ticker}_filings.csv`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    /* ════════════════════════════════════════════════════════════════════
+       VIEWS + ROUTER — hash-based (#/, #/watchlist, #/ticker/NU, #/search,
+       #/settings). Each render* function composes Sections into a screen.
+       ════════════════════════════════════════════════════════════════════ */
+
+    function renderHome(){
+      $('panel-home').innerHTML = GlobalSentimentCard() + WatchlistCard({ limit: 5 }) + TopAlertsCard();
+    }
+    function renderWatchlist(){
+      $('panel-watchlist').innerHTML = WatchlistCard() + SectorThemeCard();
+    }
+    // Real, step-by-step onboarding for a ticker that isn't tracked yet — each
+    // step below is an awaited network call; the UI updates only once that step
+    // has genuinely finished, never a simulated/timed progress bar. Deliberately
+    // scoped to exactly this one ticker end-to-end (watchlist add → SEC fetch →
+    // 8-K analysis → Truth Check) — none of these steps touch or re-analyze any
+    // other watchlist ticker, and none of them dispatch alert emails.
+    async function onboardNewTicker(ticker, panel){
+      const steps = [
+        { key: 'watchlist', label: 'Adding to watchlist' },
+        { key: 'filings', label: 'Fetching SEC filings' },
+        { key: 'analysis', label: 'Analyzing 8-K filings' },
+        { key: 'truth', label: 'Running Truth Check (SEC tone + consensus)' },
+      ];
+      const results = {};
+      const paint = (activeIdx, note) => {
+        panel.innerHTML = `
+          <section class="bg-terminal-panel/80 border border-terminal-border/80 rounded-lg p-5">
+            <div class="text-sm font-semibold font-mono text-slate-100 mb-1">${esc(ticker)}</div>
+            <div class="text-[10.5px] text-slate-500 mb-4">Not tracked yet — onboarding now, live.</div>
+            <div class="flex flex-col gap-2.5">
+              ${steps.map((s, i) => `
+                <div class="flex items-center gap-2.5 text-[11px]">
+                  <span class="w-4 text-center shrink-0 ${i < activeIdx ? 'text-terminal-positive' : i === activeIdx ? 'text-terminal-accent' : 'text-slate-700'}">${i < activeIdx ? '✓' : i === activeIdx ? '…' : '·'}</span>
+                  <span class="${i <= activeIdx ? 'text-slate-200' : 'text-slate-600'}">${esc(s.label)}</span>
+                  ${results[s.key] ? `<span class="text-slate-500 ml-auto shrink-0">${esc(results[s.key])}</span>` : ''}
+                </div>`).join('')}
+            </div>
+            ${note ? `<p class="text-[10.5px] text-terminal-negative mt-4">${esc(note)}</p>` : ''}
+          </section>`;
+      };
+
+      paint(0);
+      try {
+        await api.addToWatchlist(ticker);
+        if (!Store.state.watchlist.includes(ticker)) Store.state.watchlist.push(ticker);
+        results.watchlist = 'done';
+        paint(1);
+
+        const filingsResult = await api.refreshFilings(ticker);
+        if (filingsResult.ok === false) {
+          paint(1, `SEC lookup failed: ${filingsResult.reason || 'ticker not recognized'}. It's on the watchlist, but there's no filing data to show.`);
+          return false;
+        }
+        results.filings = `${filingsResult.inserted ?? 0} new`;
+        paint(2);
+
+        const analysisResult = await api.run8kAnalysis(ticker);
+        results.analysis = `${analysisResult.analyzed ?? 0} analyzed`;
+        paint(3);
+
+        // Can take up to a few minutes — a real local-LLM call, not a quick lookup.
+        results.truth = 'running… (can take a minute or two)';
+        paint(3);
+        await api.runTruthCheck(ticker);
+        results.truth = 'done';
+        paint(4);
+        return true;
+      } catch (e) {
+        paint(Object.keys(results).length, `Onboarding failed: ${e.message}`);
+        return false;
+      }
+    }
+
+    async function renderTicker(ticker){
+      const panel = $('panel-ticker');
+      if (!ticker) {
+        panel.innerHTML = `<section class="bg-terminal-panel/80 border border-terminal-border/80 rounded-lg p-6 text-center text-[11px] text-slate-500">Select a ticker from Watchlist or Search to see detail here.</section>`;
+        return;
+      }
+      const wasTracked = Store.state.watchlist.includes(ticker);
+      if (!wasTracked) {
+        const onboarded = await onboardNewTicker(ticker, panel);
+        if (!onboarded) return; // progress panel already shows the failure state
+        renderHome(); renderWatchlist(); // new ticker now affects both
+      } else {
+        panel.innerHTML = `<section class="bg-terminal-panel/80 border border-terminal-border/80 rounded-lg p-6 text-center text-[11px] text-slate-500">Loading ${esc(ticker)}…</section>`;
+      }
+      await loadTickerData(ticker, { force: !wasTracked });
+      const cache = Store.state.tickerCache[ticker] || {};
+      panel.innerHTML = `
+        <div class="text-sm font-semibold font-mono text-slate-100 px-1">${esc(ticker)}</div>
+        ${SecSentimentCard(cache.latest)}
+        ${ConsensusCard(cache.latest, cache.sentimentRows)}
+        ${EightKCard((cache.filings || []).filter(f => f.form_type === '8-K'))}
+        ${SentimentTapeCard(cache.history || [])}
+        ${RecentHitsCard(cache.filings || [], ticker)}
+      `;
+    }
+    function renderSearch(){
+      $('panel-search').innerHTML = `
+        <div class="max-w-md mx-auto pt-4">
+          <div class="text-xs uppercase tracking-wide text-slate-500 mb-3">Watchlist tickers</div>
+          <div class="flex flex-col gap-1">${Store.state.watchlist.map(t => TickerRow({ ticker: t })).join('') || '<p class="text-slate-500 text-[11px]">Watchlist is empty.</p>'}</div>
+          <p class="text-[10.5px] text-slate-600 mt-4">Type a ticker in the header search box and press Enter. If it's not on the watchlist yet, it's added and onboarded live — real SEC filing fetch, 8-K analysis, and a Truth Check run, shown step by step.</p>
+        </div>`;
+    }
+    function renderSettings(){
+      $('panel-settings').innerHTML = `
+        <div class="max-w-md mx-auto pt-4 flex flex-col gap-4">
+          <section class="bg-terminal-panel/80 border border-terminal-border/80 rounded-lg p-4 text-[11px] text-slate-400 leading-relaxed">
+            <div class="text-xs uppercase tracking-wide text-slate-500 mb-2">About</div>
+            <p>OS Sentiment Terminal — a public view into Proactive Scout, TG Capital's SEC-filing sentiment engine. Every figure on this page comes from a real, already-computed Proactive Scout signal — deterministic Loughran-McDonald filing tone, crawled public sentiment, and 8-K catalyst/bearish-signal analysis. Nothing here is fabricated to fill a layout.</p>
+          </section>
+          <section class="bg-terminal-panel/80 border border-terminal-border/80 rounded-lg p-4 text-[11px] text-slate-400 leading-relaxed">
+            <div class="text-xs uppercase tracking-wide text-slate-500 mb-2">Access</div>
+            <p>This page is protected by server-side authentication when accessed from outside the local network. There is no account system or personal settings — this screen is informational only.</p>
+          </section>
+          <div class="flex justify-center pt-2"><div id="settings-badge"></div></div>
+        </div>`;
+      $('settings-badge').innerHTML = authorBadge({ size: 30, fontSize: 12 });
+    }
+
+    function parseHash(){
+      const parts = (location.hash.slice(1) || '/').split('/').filter(Boolean);
+      if (parts[0] === 'ticker' && parts[1]) return { view: 'ticker', ticker: parts[1].toUpperCase() };
+      if (['watchlist', 'search', 'settings'].includes(parts[0])) return { view: parts[0] };
+      return { view: 'home' };
+    }
+
+    async function applyRoute(){
+      const r = parseHash();
+      Store.set({ activeView: r.view, selectedTicker: r.ticker || Store.state.selectedTicker });
+
+      document.querySelectorAll('.view-panel-group').forEach(el => {
+        el.classList.toggle('active', el.getAttribute('data-view') === r.view);
+      });
+      document.querySelectorAll('.nav-item').forEach(el => {
+        const isActive = el.getAttribute('data-goto-view') === r.view;
+        el.classList.toggle('text-terminal-accent', isActive);
+        el.classList.toggle('text-slate-500', !isActive);
+      });
+
+      if (r.view === 'home') renderHome();
+      if (r.view === 'watchlist') renderWatchlist();
+      if (r.view === 'search') renderSearch();
+      if (r.view === 'settings') renderSettings();
+      if (r.view === 'ticker') await renderTicker(r.ticker);
+      // Desktop shows the dashboard groups together — Ticker panel needs a
+      // render even when the active *mobile* view is Home/Watchlist/etc.
+      if (r.view !== 'ticker') await renderTicker(Store.state.selectedTicker);
+      updateHeaderSentimentPill();
+    }
+    window.addEventListener('hashchange', applyRoute);
+
+    function updateHeaderSentimentPill(){
+      const entries = Object.values(Store.state.tickerCache);
+      if (!entries.length) return;
+      const counts = { bullish: 0, neutral: 0, bearish: 0 };
+      for (const v of entries) { const s = scoreToStatus(v?.latest?.sentiment_score); if (counts[s] != null) counts[s]++; }
+      const lean = counts.bullish > counts.bearish ? 'bullish' : counts.bearish > counts.bullish ? 'bearish' : 'neutral';
+      const color = { bullish: 'text-terminal-positive', bearish: 'text-terminal-negative', neutral: 'text-slate-400' }[lean];
+      $('header-sentiment-value').innerHTML = `<span class="${color}">${lean[0].toUpperCase() + lean.slice(1)}</span>`;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════
+       BYLINE — embedded as a data URI so this standalone file needs no other
+       asset. Same avatar/name used on the downloadable Truth Check report.
+       ════════════════════════════════════════════════════════════════════ */
+    const AUTHOR_NAME = 'OS · TG CAPITAL';
+    const AUTHOR_AVATAR_URI = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIbGNtcwIQAABtbnRyUkdCIFhZWiAH4gADABQACQAOAB1hY3NwTVNGVAAAAABzYXdzY3RybAAAAAAAAAAAAAAAAAAA9tYAAQAAAADTLWhhbmSdkQA9QICwPUB0LIGepSKOAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAABxjcHJ0AAABDAAAAAx3dHB0AAABGAAAABRyWFlaAAABLAAAABRnWFlaAAABQAAAABRiWFlaAAABVAAAABRyVFJDAAABaAAAAGBnVFJDAAABaAAAAGBiVFJDAAABaAAAAGBkZXNjAAAAAAAAAAV1UkdCAAAAAAAAAAAAAAAAdGV4dAAAAABDQzAAWFlaIAAAAAAAAPNUAAEAAAABFslYWVogAAAAAAAAb6AAADjyAAADj1hZWiAAAAAAAABilgAAt4kAABjaWFlaIAAAAAAAACSgAAAPhQAAtsRjdXJ2AAAAAAAAACoAAAB8APgBnAJ1A4MEyQZOCBIKGAxiDvQRzxT2GGocLiBDJKwpai5+M+s5sz/WRldNNlR2XBdkHWyGdVZ+jYgskjacq6eMstu+mcrH12Xkd/H5////2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCACgAKADASIAAhEBAxEB/8QAHAAAAgIDAQEAAAAAAAAAAAAABgcEBQIDCAAB/8QAQBAAAQMDAwIFAQYEAwYHAQAAAQIDBAAFEQYSITFBBxMiUWFxCBQjMoGRFVKhsUJy0SQzQ2KC8BYlNFNjc5LB/8QAGgEAAwEBAQEAAAAAAAAAAAAAAwQFAgEABv/EADERAAICAgIBAwIEBQQDAAAAAAECAAMEERIhMQUTQSJRFDJhkUJSocHwFSNxgbHh8f/aAAwDAQACEQMRAD8AUFsmokLCeOelWa2wlQGaJ9L+Ct8kaaRd2ZSfN8rzA2Rx0zjNFPhj4MXvVEAXaXLZhMFRS2laStS8HBPHQZoAyrcMhbe9xekJkk8PiLhnIHIqS0r1dKMfETQk7R1yRFllDrbidzTqOih+vQ0LBjHamhalg5LGlV06MnwVNKSAan/c2H04KRVM0hSTxVjEeWjFLWVnypjddo1phIlwtAaO9sHFQhGUDRMXkuowRUcsBSsgUWnIcDTQN2OhO1lII6vasvIPtV392xglNYuMpQgrXtSkdSTgCjjIi5olQGTjpX3yjVo2wl1O5spUn3Scj96yMM46Ub34L2pV+XxWlTRJq3VGI7VgY+O1dFwnDWZU+URWK2s1aljjpWpcf4rotmTXKsNGvhZNWgYz1FfCxWxbMGuQGmea1XWUISG3EpypKgRRdpPTsy/3di3Qmt7zpwM8ADuT8CmPqfwGlNWF6UxcGJL7aN5aDZGcckA0jl+oLWCv7/pGMfE5MCTqLLR/jlJtGlxa1wPPeS3sQoHrxTX8DPF/Tg0qxbb1KbgTmMhQcGErBJOQf16Vx5YpAaALw4xUyRc0okgsdKjZFltpG/I+Z3GVKN6HRnTfjdrG26snxWbWsOsRQr8UD8xOOnxxS4EehfR9xU47+Ms4PTNHLCEuAKTyKPj2KE0I6p5nchJimtyYxFWSGPiswz8Vs3QwqkBtgg1W6q1Da9N24ypy1FfRDSEHcs/HGP1zU/Vk1m0aclXCRKagtpSQ3IWtBUV/yttHl1fsBgDqogdeXNRT5d2uj8tybMkhaiUqlObl47ZxwPoOK1UfcJ/SCtPtiFWrvEq6XhwCGwq0bTw7GccQ4sdgv1bT+2fmqpOtdXswlsu3uc9FeBQoqXnIPUZPINDSXHWVgOpKknqk9CKL7Ym1R4UhuQQ5CnR9zYJ9TTg5H9iP0ptaxrUUZzvcgWSfeLI63dLTOktsk4c2K6fBHQg/Ipq6M1pd2bxPt+pnRJisNh5uSGQFgKGUghIwc5A6daUlqubbNrmwENrdMhKEAAZxhQJP9AKM0yry3pOTKTZ5brsp5CnH0N7ktIBTtTkcj8v9a6w66nFbR7jvtzjVxhpksIdShQBwtBSocZ6fqKzXFPtSm01qqHKfKQzKVcRhS5L10XFbB/ygHPPdefpTA0trSLcLsmwXVLTF0Iy0th5D7D4xxhaOAr4IHP7Uq7MpjSBXloqMR2rS4wR2oiXHGOlQn4/PArgvmzRKZLPXivBnJxirP7t8V4R8HOKIt3cE1PULfBu5wbFqxmTPWG2XG1NFZ6JJxgn9qeeqdX2O12CRMenMKR5R24WDu47VydfLi3AjqK3ADj3oEl3eVKbcBcVsKsgE9BS+TU1jEI2t+f8A1NVBQNuPEVaLplAQOKsrdMjhP4hG75qvvVqDVwQ1FIwuok6LIt7iUuc7uhFc0jjqKAQ2tlySlwBC9ozTe0VMiy4CR5qSvoRnvSC01aL1d5TTMCG++44rCEtpKlKPwBTd0VoDVlpvDRu0WXBaICglxBTu/ek7AK2+k9xrHV97AjITF9qi35N0YtTqrNATNnqIQw2tW1AUo43rPZKRknvxjvRKzE2tpHXAoe8RoyhpqQt+9OWa2ISVXCSynL5ax+Ro9EqUcDPt061lLdsBKjoQpM5T8TP4+nUTqNQXFqZMR6SpmSl1AHsNvCf8uBQqkkq5UR8+1WWqJdul3h9dmhuQralW2Mw455i0pHdSu6j1J+fYVDhRZEpzawgkjqfarK9KN9SMw23XctIchh22SLTPQkrUPMiPgcpWO2f5VDj9qpy4stpaJO1Pb9/9au2NOzXhjzAPYAdK2o0feXpCW47HnFR69MfWuG9PvNDHs86g95ikjCTtHxW+LcZ0VQUxLfaI/kWRTS0/4I3i5BHnzEMlfYJziiTUH2Y9RQbcJcO5x38gEIUMGhfi6vvCnCu/li6074hSGcRr5Bj3Vr/huSG0LW0ex5TyPcHrVkrxGu4ltzE2ODCfj/7uZAhhn0/86QNqkn5/rQPqCxXTT92XbrlGLMhB6dQoe4NGGm9QTYVicZf3L8lsOKYcCeWjx5jSgOozyORg9xkUf6bBvzF/qrbXgzorw81Czq7TTNzQgIdxtdSBgZ9x8ZB47EfSrxyJ3xSW+zTqvyr5N0uplP3OYsyGFIGA070xjslXH0UMd66BMcnnFSrt1vqVaT7iAyj+6K9qxMJR7VfFkAdKhSpkeIvDuBn3ri2n4mmrHzFr4k2xDTaJBzuCgKB24xSytxR+QKLfFi/MOLTHYUFkepWD0oGt01yXHdJ4AyAKfqPgmIWjQIEXDVydVIQ6slRBo1tVuZvwS8+cJQKD7I00t4B1IwKZujZNtYZWwQNyuAKUyHFfYEBWBy0Y3vstP2CxaldFxcYaW4z5cd1zgJOeRntkU/PEu5WqVaWYrLrTz5cCklBB2jueK5LgWx9t9hRTtQ46nH70+WoiWbPGKRg+kUjdxA5KfzSrQgY7P8M2NQyU9KV/2jdOX2+aWbt9udajQWQqZNddcCEr2qSlDeTwPzKUSTgbPpT4jwQWUkDtSl+1nHlRvCCetLi2Ye9sSCgDc4StIbb56AqJUfhGO9BxLC16gRnJK+0dziSayhiS4w24l1KFqSFp6KAOAR9etFehGG1WqWvaCoOAZ/ShWYGGzhkO+rn8TGQP0ou0fPt9o0867OK1uPr3NtoSScDufavo37XUiVEB9wpscNbz21Kc0d6fgFh4b2wk575pVWjXrTM9P/l622s8KByRTKZ1cxcGQpnG4s9h3FSMipwe5exLqmHR7jZ0xF819tLajux/hVnFGlw89tgNrWSAPfmuaZPjE5ptQTCYU+9jkDgfrRZoz7RkK6rTEv1jWyVcFxHIoa4lrIdTtmZStgG4C+PyYb2srcXW0EhDhV8j/sUor1ciuX+EAlCCSnHsoYUPoeuPrTT+0iyxLkwtR2l1xbHKFAjlOTkZ/wBaUIaUpHnhnzmVckhWNp7g+1VMDrHVfkSL6gN5BYeDCjwYk3W2eIdtutthPTERNz0ptsZP3UDDqvolJJ/Su6EQCRwNwPQ+49647+y1cGoPjTZ2yUMsSw7HdDuCkoWnaoDPfHeu9o1taaYS2EgBCQkD2wMUn6qeHBvvuH9Ps/Mp/SLi5Ox40hLDiwkqOOaCvEqCtVtU9HeOQM8VbeI6kRdWoSVnanBx7VX6pnxXLCtIUM7T/aqGBiV20iz5iWdm2VXe2B1ENcG1GOtxZJUeua02IARXf1qxuyR/DyarbQCIjp5HWh1HzGrgABK602iG/DKwsJXj3qxZtLsBCJqHNyUnJoOtj8xQ2s7sfFG9rXMNtCZRy0ev0pO5WX5iCw50pdjcJsFoqzh1PFdX6PslvuMdsTmw4hCElLZJAJ9+K4zsUqNbLnGltDKG1gqA9q6OTrRpekm5tsnFmQlKdi0HnqKVuq4cNDYlbGJaphvRjcuMCNFkIbjp2oKc7c5xSO+2A/FV4bs2FcthDsyW08thSFKW42hWPSRwn1Hqf5Tim1py6NS7ay/Jl+a8tIKlKPJpD/a1LTuqbS045gCChSB2P4q817ArVszZGvMFkllp15nHyCmRNXbm46Erdlktug+sAZSEZPUf/wBopt1sfe0nbS0wkF0qelSCgKKEFe1ISCeTgE4oQnOO26/uvMkB2PKKkEjgFK8j+wpz3dm3N2i2w1OtxY6WAvySsBaVKJURk9UjIAI4I+cgXbjpeorjrybUU7tsuDEx9W3eyhR2LUlIKxnjjqDirvRkO4SrtIRGuEmIhpvzFKai+f5YxklQ9hVtcF2WMkhl5txXwveqmH9lu3LVq9Unanc+pWU9ckpOE/PGBSVtp9snUo0Yw94LuLa4aQkHTNrvfnofROTuekBQOFZOQM+w+lEHhRpLVS/vxjXVqMEt5iJddaWy8vcMBxC+idu7OOcke1PK2wbHpi33PTl4YabtUp5cuAt1olob+XGVHB2kKyRngpI5yDQraT4eWy9F9E6IwArhJWlwD6Ag/wBqUOSzKeI2D463/mo2mGoYcjoj9df5uAnjBpy7W2VZ74iyx7fOSw65MYjOAxnS0UEOJKTyk7+nXsaVGm21XjVMZSg3GjyZiEvJQvYkA5UrHtwDXYOpLYzfrdJlvW9yJE/h62ISHWS0XQo7lu7DykHagDIBO0nGCK4xhyHLfM2tcKZU6enfBSKa9NuLgofK/wB4h6nQEIcfxTtDwv8ACWx3bSFou62mkLiwDcNxTuUnzFlYIP8AMEZANOvTVyRdNOQ7iE+X57IUUE5KTyCM9+lITwp8WVWCG3ZXLeH0PRI0RtzeAhvblPqBPTkVYXDWVxsen7aiKppxDja1bhkJOXFHjvjniuepVG4LqAw9KTuQfGN5DGp3MrBJKe/xQHfrgk21Q8w8j3rRqO6TL1cXJ0xzKlHoOgoM1DcC3lsKyPrTeJb7GPxMBnIGu5T7crnHVC8rOVAVRu3fYwppCcE1WvulxZOetYLbGzJpcLAPc7nua7M7KaT6GFYPuKJI1zkmN93UnANW1ytIiWZMtsJI2g8e1UEZaFvDJwM0R0QjlNeJcQXjkAmia3uPtOMtNvuJZWsFSAriq622RMqOHWF5I54rflyK6ltwcigJkIx0PiO1aKERqxbzcGXYLceWsIK0pKc9q+faptstVh0vqUJUWkFUOQof4ckLQT+y6ENPXMJnsLeX6ELB5pxO6u0/qC2jSt1jszYMxHlutKHB9iD2IPII5BrOSdOtiD/mbpU8SjGcM6lhOPapdjsjcp9YUn9Rz/XNHmtHnZEgoV6mo/4SQRn8oAP96cfil4AafYtib3p646lkXJBSmFEjxEyVOK7JUobdozglaiABnrSgvYKpT7byUoWpZKglQUErzhQyOuCCP0rRyFsUFTNU1mtjuUERf3VSZCmUKLat3lqAwfrRLoTxBl2O8NSmAph1tWUpbHQ56jFDao85nIaUy42o59aOU/t1q50iy+iQpSDaFKX6VCQ2rgftXnAKxujmX+mdBaU1FqPxAskyHeLNBgWxbeW5IcHnuKByMADj65pZ3rT190pqIXKK+mWxHXuJWcloZ/Mfge/aj7S7+pEWZtmFqi2IVjCY7Fu3BP1UrA/bNYai05ckuCfdNQOznXmVMusobS0ygKGDhI5JxnqTU8sqHRlArYdGX9iuUy5RsXErK1NhWF9RnIIPzmuSvFGxiy60uCG/9wuQrYc9D1IrpNm7NQ0E7ghtI25J6Ad652Zts3XOvJl1aQwuNKuCyyiQ6WmpCgQQx5g/ItaOmcZxwc0T0wEOzeBFfVnU1qD2YZwLbeH1tNx4snzXlJSwAggrVnA2++Dj6U3rbZpmr58DT0RxtlMVgJW6oZCUpABPySf70WxpWmbDbUPRtPN22eYgZw44Xnm04/J5hJyPkHmlvbtSzdNX5u5W9aC4AQpCvyqSeoNEueywHgNa8bidSqv5vma/GfQ87Q0Zlwy0S48jIQ4E7SFDsRSGuUpbjqitWTTZ8ZPEK76xDTU5LLDEfJQ01nGT1JJ6mkxKJUs813E93iPd8xLNCmzqeD4Br47KGKgySUng1GU4T1NUAu4mVhq7qp+RZhblA8J28jmq2PJwrrRIi3CW/Fmu2xUZh9J2qOMKNQLvYUMOqcQ5tCjwK9wUL1CtWR0YRaKu/lSW2lOYSsgHJoj1pEjxg1Kae3FRwRmlw3bZ0JpuUtKktk/mq2ktXdbTLzqXVsrHoJORSDY3+5zBm12BrUJrKxLn7vuqNwR1NWdkuH3K7MuOZCmXPUKq9D35NlalNSk7VLwRn6VDdckuuuzQ0vylrKgce5ozrpBqaDNOodP6vg3K2fdGn1Arb2KKVYIyMcGkFrnwmu1lVKuECQbjbUJdmSX3ChlMcFaQltKc+xPA5OOKn+Hkh5mYHFlQ3EBKfcmgH7SeuZtz1ELLGkrFutq9iW0q9LjqT6nD7nIwPYAfNYx8UlujofMO+T9IJHfxKyfEcYA4yFDIr5abHIuMlIQtSMnuqpN+nOLuEiNjgrK2yOoB5x/WqSHfZEB87HR16ZrxBI6jasFP1ToXQWm5lugIWlaVcfmKskVeagS2zDUp90KVjrnpSQ074lvxSG1la849KVdf0olauV21VIQiSFxYROSjPrc+PgVNuoIbZlWrIVhpRB7xKfkSLbDZbmfcYd0mmF942FRCAnK1JGRkdB85NHvh/oGD4ZR3bi9d3Ja58dpxCUEhlQxycH8w3cjIBT096HfGy2syIOkYMf0vpuB8ttPTZtTnj4Ap1XXRkzVnh/a7fAkR2Z8IKWhL6ikOoUBlG7scgEZ469Kr4NYsw+a/f95A9SsNeaEY/ETGp9US5ktxbSjsyQKpLPMVLuOJK8pCT1q6vVvcsKnrfdoD0SYjIU282Uq+o9x8jigaM4+3cFHapKVZ211V7BgDvc0a2cbRdHG2j6MA8UJSEggqzR7qrSN1hw/4tKLamlY3JScqRnpmglcZxx0pQDsz1riOlv1IdictpdDpx3KN3csnAJrCOz5shLZ4yaNLbb4bMdRex7k1WzWY6pbD8dlSUb8buxplTozHtnW4c3Vy7M6EhuxmvOjxU7lLxzxQWm4S7sy26XUhSFDA96bOm9SW25+GzljSyW1Nt+tZHfFJSdAk2sFxKssqV6TXMVCnJH6lD1I0kpZTvRHYh7fZ0pNsh2eQ2jMkhIc7DpRprK0StM6OhPKktvtp2hXHPI4pN3B26T7axPcWpQYGU+9Pa3aEuU3TkRWvb8UsNtocVb4WA4jIBCXXnMIQcEZCQsj2r2qwg5/mipZuZ4eIBSoZVbY91J8wrWn8JIyVZPQDuaZMuOxG02y5qNcbTTCkApTLH+0vD/42B6z9TtHzVLdtbwNNRTbNGRotsSgbfvMbLsg/JkODd/8AgIFKu7XJ6ZJcfdcccecOXHXFla1fVR5NEpwLLBuzof1/z94C7MRTqsbP9I2dN61s6Lyy3Z7QRHadSgTZ+FvuLPdKB6GgOv8AiV05pEa5bUb8txzJy+rJP1NFNifLP3cJzkHd+pOf9Kha1gfeJby9uN53g/XmnfwqoCEHmKfiWZgW+JqlzjJdRLCvVgEn5qvukYTJCFN7Qpz3qHCW60RHeBBxxnuPepyUFSgheQBUZwUOpcVg42Ib6A03AhD75L2OuJ5A7A0w7S+y3ukuKShCeSTwAKWlluCG2UR0L4A9RopttvuWpno9vZBZgOjcpZICnk5I9I7pyCM98GkVxLsu3iv/AMjrZlOHTzfr+5hBpFl3WWtk3qQjFugAtwgR1GfUv9cYHxTwjXAMI9BwEpwKEbPbGbHbmobCNm1ODgVJTMw+lKvyp9avoOf9B+tfZ4+IlFIqXwJ8FlZr5N7XN5MuL1do11kP2vUNkiX23h1QbSeHmuxKCcHP+VQPwaX2qPByLenFSfD+9tuPtjcbRc1eTIT8JWQN3/UB9akXeapLxcC/Vkk/WrKx39qUEMzm23wj8pX1T9D1H6Vm/wBPrs7HRnsf1K2ro9iJ++r1U9czo/U9ues7yRlwPNlKnAOmM8EH3GRS+1gj/wAP3ERErS4lX+Ku1POautu+4SzFu0LtDuqfOSn/ACO/nQfnmlD4jeAdgvbzt0sN4l2Wa1ybbcl+fHdJ6JafT6gT2CgT74qOPT/ww4qvW99S4vqYyDyY9+IhrepE3IUfSBUe5uuNR2mvR5aF8YHJ5rbfQxaISxGQtL6DtWCCCCOCCO1DcGTIukxqO4s7c5OKMq1lNnyJwtaLOj9JhBolcxVslNA43ZQav3dNT7vARGQlxWO4TU/wq+4RrMtx6AX5CnVHJRnv80dwLjcJU5mKyw1FQtWCo8lKepPtwATUe62/3Dw6j/H3FUO3gaAmrRNhtuhNNjUmpWGZcpGf4TBdG5KnE/8AGWO4SfyjuRntQLqTVd0vUl9+dNdeLzqnVAq43K5JxUvxS1M5eburasiOyPLYR2SgcCgdDuQQT0q7g0GpQ1nbGScu4O3FfA/rN77pWTzUZYzzWeQa9iqHmJ71PC9R4CEfhOPPJTwhI4z8mqN+XdJ9x/iEtZcUhYWGSSEYB/Lj27VcKQD1Fai3g5AoTISezCq4HiE1oc0jq0phOyxZJ5OGTIGGwrsN/THwcVeaj0e7a7IhU1pLE9k7HEg5Ch2UD3BHINLGTA81ZWhOCfzDsaJrPcb9NsTNtlyVvQ47ikw95ytKe6c/yA9B2OcYyaUy8ZsnWumHz9xGsPJXF3vtT8fY/pIaJEaC2r7wpxbqujTeMgfJ7VD1pe5d/ftjrEEwE22IIrRQ4StQCircTxg5UelEUPTqlbVKTuUvnOO2aJLdpmMhP4qEqJ9xTVOIETisUvzeb8271KzQnjVfrMw3A1HGXeYqBtS8V7ZCB7ZPCv15+acNo1Vb79YUXOA3KabkHgPtbDtHt7jPcccUvkaSsPnJdfiJdIOdp/KfqO9ED8wJZS2jCUJSEpSkYAA6AU5UrL+Y7k69kftRoyVdZwOcqqpbvBjO5Cv61AuEgkFWaGp8xZeDSTkk0Rm1MJUDHVpjUC32wUqByQBk9TRvZ76lp5DiFjKTwe/yf1pE2meILCUeZ6gNo/zEZUf2wKIrZelkj1musocaMF3WdiE/2iNEWzU+l5WtbTFQm7REb7k02n/1LQ4LuB/jSOp7p56iuRrS04zNedbRjarjNdr6Kv2x5KXNq0EYUlQyFJPBBHsRkVzX4qaSd0trq62yCjMIO+bEB/8AYWNyP2Bx/wBNfO5WMaHITwZ9Fh5H4ivZ8iZQ3lxW/LYVsT8UQ2B56LAl3aQtWxxJhx1KP5nF/mx9E9f8wofs0NdyuLMNtxDW8krdWcJbQBlS1fAGTWOtr8w8tuPbVKTAgqS3ESeCUgklZ/5lHKj9cdqHVQHeMWutY2PMEZ8hTqySfUc/vUGO+C4Bn82f3r1xc/2hxaDgLVvR8E9qrXHg3IQ6k4SVAkexqmW1EVXcIG1DNbRURS8OcdOKntOQFN8KkFf/ANJx1+vtRlYQfAmYBBPat7MTccq6VIjqtiXU+YZS288hLBB/vWC3CEK2nA7UQagmBEj3FaENpYYHqUQM/NMIMGDZl2VmFG2I2qQ6oL3lJQglQI9OQpJ68+pXvmlmDuuEfJ6up/vR9KvDS1qT5yB1HWvKAx7mXJUdS181UZSWxgpSkD+lb0SsjNUsuUDJc9QxuNaFXBDb6GCVFawSAkZ/760R7FrXkx0IOjGtyLBVUpZj4A8wjMr5rQ++CknNQHkzW/K3w5QLyN7YLCsrT7jjkVHkOPRwPvLbjIUcJ81tSM/uKD+Nx/5x+8d/0P1Ho+w3/QJ/8TKe9+GSDVfbkNC3Tbo7z5SkpTn5NemubmCQpJHwoGoF1kpj6EdSCMqlo3e5GFURbVYclOxFbMa2h/atUq32IIP7Gaf4yrzsqVwnk89zyaIbZdVhtrn1OHgfFLGFI810FasIB3K+T7UW6eW7If347cewFeqsJmbqgBHBpq5rTLQkK6YzXvHuA5OsNp1OwkqVHV9xkqHOUKypsn6Hen9RVBZJkeKjCVedIVwAOaOdHIflQJts1CkOWy4tlt5ruAeik+ykkAg+4r2XT7tfXkQWHeKLtk9Gf//Z';
+    function authorBadge({ size = 22, fontSize = 10 } = {}){
+      return `
+      <div style="display:inline-flex;align-items:center;gap:8px;padding:3px 12px 3px 3px;
+           border-radius:999px;background:linear-gradient(90deg,#0f172a,#1d4ed8);width:fit-content;
+           box-shadow:0 2px 8px rgba(29,78,216,.35);font-family:Inter,-apple-system,sans-serif">
+        <img src="${AUTHOR_AVATAR_URI}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;
+             border:2px solid #60a5fa;display:block" />
+        <span style="font-size:${fontSize}px;font-weight:800;letter-spacing:.03em;color:#fff">${AUTHOR_NAME}</span>
+      </div>`;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════
+       INIT — boot sequence: load real data into the Store, then route.
+       ════════════════════════════════════════════════════════════════════ */
+    async function loadTickerData(ticker, { force = false } = {}){
+      const cached = Store.state.tickerCache[ticker];
+      if (!force && cached && (Date.now() - (cached.loadedAt || 0)) < 60000) return; // 60s cache
+      const [history, sentimentRows, filings] = await Promise.all([
+        api.getContradictionHistory(ticker),
+        api.getSentiment(ticker),
+        api.getRecentFilings({ ticker, days: 180 }),
+      ]);
+      Store.state.tickerCache[ticker] = { latest: history[0] || null, history, sentimentRows, filings, loadedAt: Date.now() };
+    }
+
+    async function boot(){
+      $('brand-mark-header').innerHTML = authorBadge();
+      $('footer-badge').innerHTML = authorBadge();
+
+      $('ticker-input').addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        const v = e.target.value.trim().toUpperCase();
+        if (v) location.hash = `#/ticker/${v}`;
+      });
+
+      Store.state.watchlist = await api.getWatchlist();
+      Store.state.recentFilings = await api.getRecentFilings({ days: 30 });
+      // Prefetch every watchlist ticker's latest sentiment so Global Sentiment
+      // and Watchlist status pills have real data on first paint.
+      await Promise.all(Store.state.watchlist.map(async (t) => {
+        const history = await api.getContradictionHistory(t);
+        Store.state.tickerCache[t] = { latest: history[0] || null, history, sentimentRows: [], filings: [], loadedAt: Date.now() };
+      }));
+
+      await applyRoute();
+    }
+    boot();
+  </script>
+</body>
+</html>
