@@ -2327,19 +2327,140 @@ app.get('/api/analytics/benchmark', async (req, res) => {
   }
 });
 
+// Shared by /api/trade-ideas/generate and generateStockVerdict() — everything
+// tradeIdeas.js's digest builder needs from server.js, by reference. Factored
+// out once both call sites needed the identical object.
+function buildTradeIdeaHelpers() {
+  return {
+    db, schwabMarket, fetchLiveAccountSnapshot, buildTradingStyleProfile,
+    computeDashboard, ragSearch: (q, topN) => rag.search(db, q, OLLAMA_HOST, EMBED_MODEL, topN),
+    trendDirection: _trendDirection, supportResistance: _supportResistance,
+    ivRankProxy: _ivRankProxy, normalizeIvPct: _normalizeIvPct,
+    nearestByDelta: _nearestByDelta, chainLiquidityScore: _chainLiquidityScore,
+    pickExpiry: _pickExpiry, flattenChain: _flattenChain,
+    ollamaHost: OLLAMA_HOST, chatModel: CHAT_MODEL, ollamaTimeoutMs: OLLAMA_CHAT_TIMEOUT_MS,
+  };
+}
+
+// ── Stock Verdict — "trade, invest, or pass" ──────────────────────────────────
+// One synthesis call combining tradeIdeas.js's financial/technical digest
+// (price, trend, support/resistance, IV rank, RSI/MACD/ATR, option-chain
+// quality, the trader's own history on this ticker) with everything Proactive
+// Scout already has on file (SEC filings, insider Form 4s, Finnhub news,
+// crawled sentiment, Truth Check verdict — via the same toolGetTruthCheck used
+// by Plutus's get_truth_check tool, so this reads the identical trust-tiered
+// data rather than a second copy of the logic). Deterministic-trigger, not
+// model-tool-choice — same reasoning as every other short-circuit in this file.
+const VERDICT_SYSTEM_PROMPT = [
+  'You are Plutus, evaluating whether a stock is worth trading, investing in, or passing on right now.',
+  'Use ONLY the real data provided below — every figure is already computed; do not invent, recompute, or round-trip a number that is not present.',
+  'If a whole section is missing (financials unavailable, no Scout data on file), say so and weight the verdict on what IS available rather than guessing the rest.',
+  '',
+  'Respond with ONLY a JSON object matching this exact shape:',
+  '{',
+  '  "verdict": "trade" | "invest" | "pass",',
+  '  "score": a number from 0 to 100 (higher = more favorable),',
+  '  "summary": "2-3 plain-English sentences naming the strongest evidence for this verdict",',
+  '  "reasons": ["3-6 short bullets, each citing a specific figure or fact from the data given"],',
+  '  "caution": "one sentence naming the single biggest risk or reason to hesitate, or null if genuinely none"',
+  '}',
+  '',
+  '"trade" = a favorable near-term tactical setup (technicals/momentum support it now).',
+  '"invest" = better fit as a longer-horizon position (fundamentals/filings are solid but there is no near-term technical edge).',
+  '"pass" = neither — real red flags (from Truth Check, dilution risk, insider selling, weak technicals) or just not enough edge either way.',
+  'This is decision support for the trader\'s own manual review, not financial advice — do not phrase the summary as a directive.',
+].join('\n');
+
+async function generateStockVerdict(ticker) {
+  ticker = String(ticker || '').trim().toUpperCase();
+  if (!ticker) throw new Error('ticker is required');
+
+  const [tradeDigest, scoutResult] = await Promise.all([
+    tradeIdeas._buildTickerDigest(ticker, buildTradeIdeaHelpers()).catch(() => null),
+    Promise.resolve(toolGetTruthCheck(ticker)),
+  ]);
+  let quote = null;
+  try { quote = await fetchQuoteAndProfile(ticker); } catch {}
+
+  if (!tradeDigest && !scoutResult.ok && !quote) {
+    throw new Error(`No financial or Proactive Scout data available for ${ticker} — nothing to evaluate.`);
+  }
+
+  const digest = {
+    ticker,
+    financials_and_technicals: tradeDigest || 'unavailable (needs 6mo of price history and a live quote)',
+    quote: quote || 'unavailable',
+    proactive_scout: scoutResult.ok ? scoutResult.data : `unavailable — ${scoutResult.reason}`,
+  };
+
+  // validate runs inside ollamaChatWithFallback's retry boundary — a malformed-JSON
+  // 200 response (confirmed happening in practice on the Truth Check call this
+  // function reuses data from — see runContradictionAnalysis's comment) counts as
+  // a failure worth retrying on the fallback model, not just a non-OK HTTP status.
+  const { parsed, modelUsed } = await ollamaChatWithFallback(CHAT_MODEL, CHAT_MODEL_FALLBACK, {
+    messages: [
+      { role: 'system', content: VERDICT_SYSTEM_PROMPT },
+      { role: 'user', content: 'Data for ' + ticker + ':\n\n' + JSON.stringify(digest, null, 2) },
+    ],
+    format: 'json',
+    stream: false,
+    think: false,
+    options: { temperature: 0.2, num_predict: 1024 },
+  }, OLLAMA_CHAT_TIMEOUT_MS, (data) => {
+    try {
+      return JSON.parse(data.message?.content || data.message?.thinking || '{}');
+    } catch (e) {
+      throw new Error(`Model did not return valid JSON: ${e.message}`);
+    }
+  });
+  const VERDICTS = ['trade', 'invest', 'pass'];
+  const verdict = VERDICTS.includes(parsed.verdict) ? parsed.verdict : 'pass';
+  const score = Number.isFinite(parsed.score) ? Math.max(0, Math.min(100, Math.round(parsed.score))) : null;
+  const reasons = Array.isArray(parsed.reasons) ? parsed.reasons.map(String).slice(0, 6) : [];
+
+  const info = db.prepare(`
+    INSERT INTO scout_verdicts (ticker, verdict, score, summary, reasons_json, caution, digest_json, model_used)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(ticker, verdict, score, parsed.summary || '', JSON.stringify(reasons), parsed.caution || null, JSON.stringify(digest), modelUsed);
+
+  return {
+    id: info.lastInsertRowid, ticker, verdict, score, summary: parsed.summary || '',
+    reasons, caution: parsed.caution || null, model_used: modelUsed, generated_at: new Date().toISOString(),
+    quote, financials_and_technicals: tradeDigest,
+  };
+}
+
+const VERDICT_FRESH_HOURS = 12;
+app.post('/api/scout/verdict', async (req, res) => {
+  try {
+    const ticker = String(req.body?.ticker || '').trim().toUpperCase();
+    if (!ticker) return res.status(400).json({ ok: false, error: 'ticker is required' });
+    if (!req.body?.force) {
+      const recent = db.prepare(`SELECT * FROM scout_verdicts WHERE ticker = ? AND generated_at >= datetime('now', ?) ORDER BY generated_at DESC LIMIT 1`)
+        .get(ticker, `-${VERDICT_FRESH_HOURS} hours`);
+      if (recent) return res.json({ ok: true, cached: true, verdict: { ...recent, reasons: JSON.parse(recent.reasons_json || '[]') } });
+    }
+    const result = await generateStockVerdict(ticker);
+    res.json({ ok: true, cached: false, verdict: result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+app.get('/api/scout/verdict', (req, res) => {
+  try {
+    const ticker = req.query.ticker ? String(req.query.ticker).trim().toUpperCase() : null;
+    if (!ticker) return res.status(400).json({ ok: false, error: 'ticker is required' });
+    const row = db.prepare(`SELECT * FROM scout_verdicts WHERE ticker = ? ORDER BY generated_at DESC LIMIT 1`).get(ticker);
+    if (!row) return res.json({ ok: true, verdict: null });
+    res.json({ ok: true, verdict: { ...row, reasons: JSON.parse(row.reasons_json || '[]') } });
+  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
+});
+
 // ── API: Proactive Scout — trade-idea report generation (manual trigger) ─────
 app.post('/api/trade-ideas/generate', async (req, res) => {
   try {
     const tickers = Array.isArray(req.body?.tickers) && req.body.tickers.length ? req.body.tickers : null;
-    const result = await tradeIdeas.generateTradeIdeaReport({ tickers, trigger: 'manual' }, {
-      db, schwabMarket, fetchLiveAccountSnapshot, buildTradingStyleProfile,
-      computeDashboard, ragSearch: (q, topN) => rag.search(db, q, OLLAMA_HOST, EMBED_MODEL, topN),
-      trendDirection: _trendDirection, supportResistance: _supportResistance,
-      ivRankProxy: _ivRankProxy, normalizeIvPct: _normalizeIvPct,
-      nearestByDelta: _nearestByDelta, chainLiquidityScore: _chainLiquidityScore,
-      pickExpiry: _pickExpiry, flattenChain: _flattenChain,
-      ollamaHost: OLLAMA_HOST, chatModel: CHAT_MODEL, ollamaTimeoutMs: OLLAMA_CHAT_TIMEOUT_MS,
-    });
+    const result = await tradeIdeas.generateTradeIdeaReport({ tickers, trigger: 'manual' }, buildTradeIdeaHelpers());
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

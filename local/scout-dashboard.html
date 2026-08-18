@@ -1,0 +1,1439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TG Capital — Proactive Scout</title>
+<script src="https://cdn.jsdelivr.net/npm/marked@13/marked.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!--
+  PROACTIVE SCOUT — standalone page, served at /scout.
+  ===================================
+  Same origin, same relative /api/* paths as the rest of the app.
+
+  Real endpoints wired:
+    GET    /api/scout/watchlist
+    POST   /api/scout/watchlist            { ticker }
+    DELETE /api/scout/watchlist/:ticker
+    POST   /api/scout/scan
+    GET    /api/scout/alerts
+    POST   /api/scout/alerts/:id/ack
+    POST   /api/scout/sentiment/crawl
+    POST   /api/scout/contradiction        { ticker }
+    GET    /api/scout/contradiction
+    GET    /api/trade-ideas
+    POST   /api/trade-ideas/generate       { tickers?: string[] }
+    GET    /api/trade-ideas/:id
+    GET    /api/account
+    GET    /api/quote/:ticker              — added for this page; returns
+                                              404 { error: 'no_live_quote' }
+                                              rather than a fabricated price
+                                              when Schwab has no live quote.
+
+  mapDigestForTicker(digest, ticker) reads the REAL digest shape built by
+  tradeIdeas.js's _buildTickerDigest — digest.tickers is an ARRAY (not an
+  object keyed by ticker), and there is no 3-tier conservative/medium/
+  aggressive ladder — only two real candidates (shortPut/shortCall), each
+  with {strike, delta, mid, expiry}. No annualizedYield or breakeven field
+  exists anywhere in this codebase, so the term sheet below only ever shows
+  fields that are actually computed — never a placeholder for something
+  that was never calculated.
+-->
+<style>
+  :root{
+    --bg:       #0b0e17;
+    --surface:  #111827;
+    --surface2: #1a2235;
+    --border:   #1e2d40;
+    --green:    #22c55e;
+    --red:      #ef4444;
+    --blue:     #3b82f6;
+    --yellow:   #f59e0b;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --label:    #94a3b8;
+    --green-dim:  rgba(34,197,94,.12);   --green-line:  rgba(34,197,94,.5);
+    --red-dim:    rgba(239,68,68,.12);   --red-line:    rgba(239,68,68,.5);
+    --blue-dim:   rgba(59,130,246,.12);  --blue-line:   rgba(59,130,246,.5);
+    --yellow-dim: rgba(245,158,11,.12);  --yellow-line: rgba(245,158,11,.5);
+    --radius: 10px;
+    --sans: 'Inter', -apple-system, 'Segoe UI', sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+  *,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; }
+  body{
+    background: var(--bg); color: var(--text); font-family: var(--sans); font-size:13px;
+    -webkit-font-smoothing:antialiased; display:flex; flex-direction:column; height:100vh; overflow:hidden;
+  }
+  @media (prefers-reduced-motion: reduce){ *{ animation-duration:.001ms !important; transition-duration:.001ms !important; } }
+  ::-webkit-scrollbar{ width:6px; height:6px; }
+  ::-webkit-scrollbar-thumb{ background: var(--border); border-radius:4px; }
+  button{ cursor:pointer; background:none; border:none; color:inherit; font-family:inherit; }
+  a{ color:inherit; }
+  :focus-visible{ outline:1.5px solid var(--blue); outline-offset:2px; border-radius:4px; }
+  .pos{ color:var(--green); } .neg{ color:var(--red); }
+
+  /* ── Header ── */
+  header{
+    flex-shrink:0; height:54px; display:flex; align-items:center; gap:28px; padding:0 20px;
+    background: var(--surface); border-bottom:1px solid var(--border); z-index:20;
+  }
+  .brand{ display:flex; align-items:center; gap:8px; text-decoration:none; }
+  .brand-mark{ width:7px; height:7px; border-radius:50%; background:var(--green); }
+  .brand-name{ font-weight:700; font-size:13px; letter-spacing:.12em; color:var(--text); }
+  .brand-name b{ color:var(--green); }
+  nav{ display:flex; gap:2px; }
+  nav a{ font-size:12.5px; color:var(--label); text-decoration:none; padding:7px 13px; border-radius:6px; font-weight:500; transition:all .15s; }
+  nav a:hover{ color:var(--text); background:var(--surface2); }
+  nav a.active{ color:var(--text); background:var(--surface2); }
+  .header-right{ margin-left:auto; display:flex; align-items:center; gap:20px; }
+  .acct-metric{ display:flex; flex-direction:column; align-items:flex-end; gap:1px; }
+  .acct-label{ font-size:9px; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; }
+  .acct-value{ font-family:var(--mono); font-size:13px; font-weight:500; }
+  .reauth-link{ font-size:11.5px; color:var(--blue); text-decoration:none; }
+  #auth-banner{ display:none; position:fixed; top:0; left:0; right:0; z-index:999; background:#7c2d12; color:#fff; text-align:center; padding:9px 16px; font-size:12.5px; align-items:center; justify-content:center; gap:12px; }
+  #auth-banner a{ background:#fff; color:#7c2d12; padding:4px 12px; border-radius:4px; font-weight:700; text-decoration:none; font-size:11.5px; }
+
+  /* ── Body grid ── */
+  .body{ flex:1; display:grid; grid-template-columns: 272px 1fr 380px; min-height:0; }
+  .panel{ min-height:0; display:flex; flex-direction:column; overflow:hidden; }
+  .panel + .panel{ border-left:1px solid var(--border); }
+  .panel-scroll{ flex:1; overflow-y:auto; }
+  .panel-head{ padding:16px 18px 10px; flex-shrink:0; }
+  .eyebrow{ font-size:10px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
+  .panel-title{ font-size:14px; font-weight:600; margin-top:4px; }
+  .panel-sub{ font-size:11.5px; color:var(--label); margin-top:5px; line-height:1.55; }
+  .empty-state{ padding:24px 20px; color:var(--muted); font-size:12px; line-height:1.6; text-align:center; }
+  .empty-state b{ color:var(--label); }
+
+  /* ── Left: Scouts ── */
+  .add-row{ display:flex; gap:6px; padding:0 18px 12px; }
+  .add-input{ flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); padding:7px 9px; font-size:12px; outline:none; }
+  .add-input:focus{ border-color:var(--blue); }
+  .add-btn{ width:32px; border:1px solid var(--border); border-radius:7px; color:var(--label); font-size:15px; }
+  .add-btn:hover{ border-color:var(--blue); color:var(--blue); }
+  .scout-row{ display:flex; align-items:center; gap:9px; padding:11px 18px; cursor:pointer; border-left:2px solid transparent; transition:background .15s; }
+  .scout-row:hover{ background:var(--surface2); }
+  .scout-row.active{ background:var(--surface2); border-left-color:var(--blue); }
+  .scout-check{ flex-shrink:0; accent-color:var(--blue); cursor:pointer; }
+  .scout-dot{ width:6px; height:6px; border-radius:50%; flex-shrink:0; background:var(--muted); }
+  .selection-row{ display:flex; align-items:center; justify-content:space-between; padding:6px 18px; font-size:11px; color:var(--label); border-bottom:1px solid var(--border); min-height:14px; }
+  .scout-body{ flex:1; min-width:0; }
+  .scout-top{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+  .scout-sym{ font-family:var(--mono); font-weight:600; font-size:13px; }
+  .scout-remove{ font-size:11px; color:var(--muted); opacity:0; transition:opacity .1s; }
+  .scout-row:hover .scout-remove{ opacity:1; }
+  .scout-remove:hover{ color:var(--red); }
+  .scout-tags{ font-size:10.5px; color:var(--label); margin-top:2px; }
+  .scout-note{ font-size:10px; color:var(--muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .panel-foot{ padding:12px 18px 16px; border-top:1px solid var(--border); margin-top:auto; display:flex; flex-direction:column; gap:6px; }
+  .foot-btn{ font-size:11px; font-weight:600; color:var(--label); border:1px solid var(--border); padding:7px 10px; border-radius:6px; text-align:left; }
+  .foot-btn:hover{ border-color:var(--blue); color:var(--text); }
+  .foot-btn.primary{ background:var(--green); color:#06170c; border-color:var(--green); font-weight:700; text-align:center; }
+  .foot-btn.primary:hover{ filter:brightness(1.08); }
+  .foot-status{ font-size:10.5px; color:var(--muted); min-height:14px; }
+
+  /* ── Center: Trade Idea Canvas ── */
+  .canvas-scroll{ flex:1; overflow-y:auto; padding:20px 28px 40px; }
+  .ci-header{ display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:18px; }
+  .ci-sym{ font-family:var(--mono); font-size:24px; font-weight:600; }
+  .ci-price-row{ display:flex; align-items:baseline; gap:9px; margin-top:5px; }
+  .ci-price{ font-family:var(--mono); font-size:16px; }
+  .ci-change{ font-family:var(--mono); font-size:12px; }
+  .regime-badge{ font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; padding:6px 12px; border-radius:20px; white-space:nowrap; }
+  .regime-badge.bullish{ color:var(--green); background:var(--green-dim); border:1px solid var(--green-line); }
+  .regime-badge.bearish{ color:var(--red); background:var(--red-dim); border:1px solid var(--red-line); }
+  .regime-badge.neutral{ color:var(--muted); background:var(--surface2); border:1px solid var(--border); }
+
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:14px; overflow:hidden; }
+  .card-head{ display:flex; align-items:center; justify-content:space-between; padding:12px 18px; border-bottom:1px solid var(--border); }
+  .card-title{ font-size:10.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+  .card-body{ padding:14px 18px 18px; }
+
+  .signal-row{ display:flex; align-items:center; gap:10px; }
+  .signal-tags{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .tag{ font-size:10.5px; padding:3px 9px; border-radius:5px; background:var(--surface2); color:var(--label); border:1px solid var(--border); }
+  /* Trust-tier source badge — SEC (filed docs) > API (structured third-party,
+     e.g. Finnhub) > WEB (crawled sentiment, no source guarantee). */
+  .src-badge{ font-size:9px; font-family:var(--mono); text-transform:uppercase; letter-spacing:.06em; padding:2px 6px; border-radius:4px; border:1px solid; flex-shrink:0; }
+  .src-badge.sec{ color:var(--yellow); border-color:var(--yellow-line); background:var(--yellow-dim); }
+  .src-badge.api{ color:var(--blue); border-color:var(--blue-line); background:var(--blue-dim); }
+  .src-badge.web{ color:var(--muted); border-color:var(--border); background:transparent; }
+  .signal-meta{ font-size:11px; color:var(--muted); margin-top:8px; }
+  .quiet-actions{ display:flex; gap:14px; margin-top:12px; }
+  .quiet-link{ font-size:11px; color:var(--muted); text-decoration:none; }
+  .quiet-link:hover{ color:var(--label); }
+
+  table.ladder{ width:100%; border-collapse:collapse; }
+  table.ladder th{ text-align:right; font-size:9.5px; font-weight:700; color:var(--muted); letter-spacing:.05em; text-transform:uppercase; padding:7px 6px; border-bottom:1px solid var(--border); }
+  table.ladder th:first-child{ text-align:left; }
+  table.ladder td{ text-align:right; padding:10px 6px; font-family:var(--mono); font-size:12px; border-bottom:1px solid rgba(255,255,255,.04); }
+  table.ladder tr:last-child td{ border-bottom:none; }
+  table.ladder td:first-child{ text-align:left; font-family:var(--sans); }
+  .side-pill{ font-size:10px; font-weight:600; padding:3px 8px; border-radius:20px; border:1px solid var(--border); color:var(--label); }
+  .side-pill.put{ color:var(--red); border-color:var(--red-line); }
+  .side-pill.call{ color:var(--green); border-color:var(--green-line); }
+
+  .kv-grid{ display:grid; grid-template-columns:1fr 1fr; gap:18px 26px; }
+  .kv-block-title{ font-size:9.5px; font-weight:700; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; margin-bottom:8px; }
+  .kv-row{ display:flex; justify-content:space-between; padding:5px 0; border-bottom:1px solid rgba(255,255,255,.04); }
+  .kv-row:last-child{ border-bottom:none; }
+  .kv-label{ font-size:11.5px; color:var(--label); }
+  .kv-val{ font-family:var(--mono); font-size:12px; }
+
+  .primary-btn{ background:var(--green); color:#06170c; font-weight:700; font-size:12.5px; padding:11px 20px; border-radius:8px; }
+  .primary-btn:hover{ filter:brightness(1.08); }
+  .primary-btn:disabled{ opacity:.5; cursor:default; }
+  .action-row{ display:flex; align-items:center; gap:16px; margin-bottom:14px; flex-wrap:wrap; }
+  .action-status{ font-size:11px; color:var(--muted); }
+
+  .report-list{ display:flex; flex-direction:column; gap:2px; }
+  .report-item{ padding:8px 10px; border-radius:6px; cursor:pointer; font-size:11px; }
+  .report-item:hover{ background:var(--surface2); }
+  .report-item.active{ background:var(--surface2); }
+  .report-item .rep-date{ font-weight:600; color:var(--text); }
+  .report-item .rep-meta{ color:var(--muted); font-size:10px; margin-top:1px; }
+
+  .md-body{ font-size:12.5px; line-height:1.65; }
+  .md-body h1,.md-body h2,.md-body h3,.md-body h4{ font-size:12.5px; font-weight:700; margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--border); text-transform:uppercase; letter-spacing:.04em; }
+  .md-body h1:first-child,.md-body h2:first-child{ margin-top:0; }
+  .md-body p{ margin:0 0 10px; }
+  .md-body ul,.md-body ol{ margin:0 0 10px; padding-left:20px; }
+  .md-body strong{ color:var(--text); }
+  .md-body code{ background:var(--bg); border:1px solid var(--border); border-radius:3px; padding:1px 5px; font-family:var(--mono); font-size:11.5px; }
+  .digest-toggle{ font-size:10.5px; color:var(--muted); border:1px solid var(--border); padding:3px 9px; border-radius:5px; }
+  .digest-toggle:hover{ color:var(--text); border-color:var(--blue); }
+  pre.digest{ display:none; overflow:auto; max-height:280px; background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px; font-size:10px; color:var(--label); margin-top:10px; }
+
+  /* ── Right: Truth Check ── */
+  .verdict-block{ padding:16px 18px 14px; border-bottom:1px solid var(--border); }
+  .verdict-top{ display:flex; align-items:center; gap:8px; }
+  .verdict-conf{ font-family:var(--mono); font-size:10px; color:var(--muted); margin-left:auto; }
+  .verdict-line{ font-size:14.5px; font-weight:600; line-height:1.4; margin-top:9px; padding-left:11px; border-left:3px solid var(--muted); }
+  .verdict-line.high{ border-left-color:var(--red); }
+  .verdict-line.medium{ border-left-color:var(--yellow); }
+  .verdict-line.low{ border-left-color:var(--blue); }
+  .verdict-line.none{ border-left-color:var(--green); }
+  .verdict-actions{ display:flex; align-items:center; gap:14px; margin-top:12px; }
+  .ghost-btn{ font-size:11px; font-weight:600; color:var(--text); border:1px solid var(--border); padding:7px 13px; border-radius:7px; }
+  .ghost-btn:hover{ border-color:var(--blue); background:var(--blue-dim); }
+  .ghost-btn:disabled{ opacity:.5; cursor:default; }
+
+  .severity-badge{ display:inline-flex; align-items:center; gap:5px; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; border-radius:10px; padding:2px 9px; white-space:nowrap; border:1px solid currentColor; }
+  .severity-badge::before{ content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .severity-badge-sm{ font-size:9px; padding:1px 7px; border:none; }
+
+  .tc-compare{ display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--border); margin:16px 18px 0; border-radius:8px; overflow:hidden; }
+  .tc-side{ background:var(--surface); padding:12px 13px; }
+  .tc-side-label{ display:flex; align-items:center; gap:6px; font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:7px; }
+  .tc-side.sec .tc-side-label{ color:var(--blue); }
+  .tc-side-meta{ font-size:10.5px; color:var(--muted); margin-bottom:7px; }
+  .tc-side-body{ font-size:11.5px; line-height:1.55; }
+
+  .verdict-tile{ margin:12px 18px 0; padding:14px 16px; border-radius:10px; border:1px solid var(--border); background:var(--surface); }
+  .verdict-tile-head{ display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:700; margin-bottom:6px; }
+  .verdict-tile-head .dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .verdict-tile-reason{ font-size:12px; line-height:1.55; color:var(--label); }
+  .verdict-tile.high{ border-color:var(--red-line); background:var(--red-dim); }       .verdict-tile.high .dot{ background:var(--red); }       .verdict-tile.high .verdict-tile-head{ color:#fca5a5; }
+  .verdict-tile.medium{ border-color:var(--yellow-line); background:var(--yellow-dim); } .verdict-tile.medium .dot{ background:var(--yellow); } .verdict-tile.medium .verdict-tile-head{ color:#fcd34d; }
+  .verdict-tile.low{ border-color:var(--blue-line); background:var(--blue-dim); }       .verdict-tile.low .dot{ background:var(--blue); }       .verdict-tile.low .verdict-tile-head{ color:#93c5fd; }
+  .verdict-tile.none{ border-color:var(--green-line); background:var(--green-dim); }   .verdict-tile.none .dot{ background:var(--green); }     .verdict-tile.none .verdict-tile-head{ color:#86efac; }
+  .verdict-tile-lean{ font-size:11.5px; font-weight:600; color:var(--text); margin-bottom:8px; opacity:.9 }
+  .takeaways{ margin:12px 18px 0; }
+  .takeaways-item{ display:flex; align-items:flex-start; gap:8px; font-size:12px; line-height:1.5; color:var(--label); padding:5px 0; }
+  .takeaways-item .dot{ width:5px; height:5px; border-radius:50%; background:var(--muted); margin-top:7px; flex-shrink:0; }
+  .details-toggle{ margin:16px 18px 0; padding-top:14px; border-top:1px solid var(--border); font-size:11px; color:var(--blue); cursor:pointer; display:flex; align-items:center; gap:5px; }
+  .details-toggle:hover{ opacity:.8; }
+
+  .chip-row{ display:flex; flex-wrap:wrap; gap:7px; padding:16px 18px 4px; }
+  .chip{ font-size:11px; padding:5px 10px; border-radius:20px; border:1px solid var(--border); color:var(--label); display:flex; align-items:center; gap:6px; }
+  .chip .dot{ width:5px; height:5px; border-radius:50%; }
+  .chip.high{ border-color:var(--red-line); color:#fca5a5; background:var(--red-dim); }   .chip.high .dot{ background:var(--red); }
+  .chip.medium{ border-color:var(--yellow-line); color:#fcd34d; background:var(--yellow-dim); } .chip.medium .dot{ background:var(--yellow); }
+  .chip.low{ border-color:var(--blue-line); color:#93c5fd; background:var(--blue-dim); } .chip.low .dot{ background:var(--blue); }
+  .chip.none{ border-color:var(--green-line); color:#86efac; background:var(--green-dim); } .chip.none .dot{ background:var(--green); }
+
+  .recent-checks{ padding:18px; margin-top:4px; border-top:1px solid var(--border); }
+  .rc-row{ display:flex; align-items:center; gap:9px; padding:8px 0; cursor:pointer; border-bottom:1px solid rgba(255,255,255,.04); }
+  .rc-row:last-child{ border-bottom:none; }
+  .rc-row:hover{ opacity:.8; }
+  .rc-sym{ font-family:var(--mono); font-size:11.5px; font-weight:600; width:50px; flex-shrink:0; }
+  .rc-summary{ font-size:10.5px; color:var(--label); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rc-date{ font-family:var(--mono); font-size:9.5px; color:var(--muted); flex-shrink:0; }
+
+  footer{ flex-shrink:0; padding:7px 20px; border-top:1px solid var(--border); font-size:10px; color:var(--muted); background:var(--surface); }
+
+  @media (max-width:1180px){ .body{ grid-template-columns: 240px 1fr 320px; } }
+  @media (max-width:920px){
+    .body{ display:flex; flex-direction:column; overflow-y:auto; }
+    .panel{ overflow:visible; } .panel-scroll{ overflow:visible; }
+    .panel + .panel{ border-left:none; border-top:1px solid var(--border); }
+    header{ flex-wrap:wrap; height:auto; padding:10px 14px; gap:10px; }
+    .header-right{ width:100%; justify-content:space-between; }
+  }
+</style>
+</head>
+<body>
+
+<div id="auth-banner">
+  <span>⚠️ Schwab session expired — reconnect to restore live account data.</span>
+  <a href="/auth">Re-authenticate</a>
+</div>
+
+<header>
+  <a href="/" class="brand"><span class="brand-mark"></span><span class="brand-name">TG <b>CAPITAL</b></span></a>
+  <nav>
+    <a href="/">Analytics</a>
+    <a href="/#insights">Deep Insights</a>
+    <a href="/#journal">Trade Journal</a>
+    <a href="/#perfcoach">Performance Coach</a>
+    <a href="/scout" class="active">Proactive Scout</a>
+  </nav>
+  <div class="header-right">
+    <a href="/auth" class="reauth-link">Re-Auth Schwab</a>
+    <div class="acct-metric"><span class="acct-label">Net Liq</span><span class="acct-value" id="acct-nav">—</span></div>
+    <div class="acct-metric"><span class="acct-label">Day P&amp;L</span><span class="acct-value" id="acct-day">—</span></div>
+    <div class="acct-metric"><span class="acct-label">Open P&amp;L</span><span class="acct-value" id="acct-open">—</span></div>
+  </div>
+</header>
+
+<div class="body">
+
+  <!-- LEFT: Scouts / Watchlist -->
+  <div class="panel" id="panel-left">
+    <div class="panel-head">
+      <div class="eyebrow">Scouts</div>
+      <div class="panel-title">Watchlist</div>
+    </div>
+    <div class="add-row">
+      <input class="add-input" id="add-ticker-input" placeholder="Add ticker(s), comma-separated…" maxlength="120"
+        oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')addWatchlistTicker()">
+      <button class="add-btn" onclick="addWatchlistTicker()" title="Add to watchlist">+</button>
+    </div>
+    <div class="selection-row" id="selection-header"></div>
+    <div class="panel-scroll"><div id="scout-list"></div></div>
+    <div class="panel-foot">
+      <button class="foot-btn primary" id="run-all-btn" onclick="runAll()">▶ Run All (Scan + Sentiment + Truth Check)</button>
+      <button class="foot-btn" id="scan-btn" onclick="runScan()">Scan Confluence Only</button>
+      <button class="foot-btn" id="crawl-btn" onclick="runSentimentCrawl()">Crawl Sentiment Only</button>
+      <button class="foot-btn" id="sec-refresh-btn" onclick="runSecRefresh()">Refresh SEC Filings</button>
+      <div class="foot-status" id="foot-status"></div>
+    </div>
+  </div>
+
+  <!-- CENTER: Trade Idea Canvas -->
+  <div class="panel" id="panel-center">
+    <div class="panel-scroll"><div class="canvas-scroll"><div id="canvas-content"></div></div></div>
+  </div>
+
+  <!-- RIGHT: Truth Check -->
+  <div class="panel" id="panel-right">
+    <div class="panel-scroll"><div id="truth-content"></div></div>
+  </div>
+
+</div>
+
+<footer>Decision support for your own review — not a recommendation, not an auto-trade. Nothing here is tax, legal, or investment advice.</footer>
+
+<script>
+// ── Small helpers ────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmt = (v, d=2) => (v==null || isNaN(v)) ? '—' : (v<0?'-':'') + '$' + Math.abs(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const cc = v => v==null ? '' : (v>=0 ? 'pos' : 'neg');
+function esc(s){ const d=document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
+function srcBadge(tier){ return `<span class="src-badge ${tier}">${tier}</span>`; }
+
+// ── Byline — embedded as a data URI (not a static asset path) so it survives
+// inside the standalone downloaded HTML reports, not just the live dashboard.
+const AUTHOR_NAME = 'OS · TG CAPITAL';
+const AUTHOR_AVATAR_URI = 'data:image/jpeg;base64,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';
+
+function authorBadge({ compact = false } = {}){
+  const size = compact ? 22 : 34;
+  const nameFs = compact ? 10.5 : 13;
+  const gap = compact ? 6 : 10;
+  return `
+  <div style="display:inline-flex;align-items:center;gap:${gap}px;padding:${compact?'3px 10px 3px 3px':'8px 16px 8px 8px'};
+       border-radius:999px;background:linear-gradient(90deg,#0f172a,#1d4ed8);width:fit-content;
+       box-shadow:0 2px 8px rgba(29,78,216,.35);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+    <img src="${AUTHOR_AVATAR_URI}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;
+         border:2px solid #60a5fa;display:block" />
+    ${compact
+      ? `<span style="font-size:${nameFs}px;font-weight:800;letter-spacing:.03em;color:#fff">${AUTHOR_NAME}</span>`
+      : `<div style="line-height:1.15"><div style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#93c5fd">Prepared by</div>
+         <div style="font-size:${nameFs}px;font-weight:800;letter-spacing:.03em;color:#fff">${AUTHOR_NAME}</div></div>`}
+  </div>`;
+}
+
+const SEVERITY_COLOR_CLASS = { none:'none', low:'low', medium:'medium', high:'high' };
+const SEVERITY_HEX = { none:'var(--green)', low:'var(--blue)', medium:'var(--yellow)', high:'var(--red)' };
+
+const VERDICT_META = {
+  favorable: { cls:'none',   label:'Favorable', lean:'Bullish lean holds up',    sub:'No major red flags in the filing — current sentiment looks fair.' },
+  neutral:   { cls:'low',    label:'Neutral',   lean:'No strong lean either way', sub:'Mixed evidence — nothing decisive in either direction.' },
+  caution:   { cls:'medium', label:'Caution',   lean:'Bullish case may be overextended', sub:'The filing shows real risks the current sentiment may be underweighting.' },
+  high_risk: { cls:'high',   label:'High Risk', lean:'Sentiment sharply at odds with the filing', sub:'Real risk of being blindsided if these disclosures play out.' },
+};
+
+// ── Live quote (real endpoint: GET /api/quote/:ticker) ───────────────────────
+async function fetchQuote(ticker){
+  try {
+    const r = await fetch(`/api/quote/${encodeURIComponent(ticker)}`);
+    if (!r.ok) return null; // 404 no_live_quote, or any other failure — just hide the row
+    const q = await r.json();
+    if (q.price == null) return null;
+    return q; // full shape: price/change/changePct/week52High/week52Low/peRatio/divYield/profile
+  } catch { return null; }
+}
+
+// ── Digest mapping (real shape from tradeIdeas.js's _buildTickerDigest) ──────
+// digest.tickers is an ARRAY of per-ticker objects, not an object keyed by
+// ticker. Returns null (hides the term sheet) if this ticker isn't in the
+// digest or its build failed — never fabricates a placeholder.
+function mapDigestForTicker(digest, ticker){
+  if (!digest || !Array.isArray(digest.tickers)) return null;
+  const d = digest.tickers.find(t => t.symbol === ticker);
+  if (!d || d.error) return null;
+  return d;
+}
+
+// ── State ──────────────────────────────────────────────────────────────────
+let watchlist = [];        // [{ticker}]
+let alerts = [];           // from /api/scout/alerts
+let contradictions = [];   // from /api/scout/contradiction (history)
+let scoreOverrideOpen = false; // Truth Check: manual sentiment-score box hidden by default
+let truthDetailsOpen = false;  // Truth Check: technical detail (citations, LM score, impact paragraphs) collapsed by default
+let reports = [];          // from /api/trade-ideas
+let activeTicker = null;
+// Tickers checked in the watchlist sidebar — when non-empty, the four footer
+// actions (Run All / Scan / Crawl / SEC refresh) scope to exactly this set
+// instead of the whole watchlist. Empty selection = "all", one checked = "one
+// ticker", several checked = "a group" — the three modes are just selection size.
+let selectedTickers = new Set();
+let activeReport = null;   // full detail of currently-shown report
+let activeReportId = null;
+
+function latestAlertFor(ticker){
+  return alerts.filter(a => a.ticker === ticker).sort((a,b) => new Date(b.fired_at) - new Date(a.fired_at))[0] || null;
+}
+function latestContradictionFor(ticker){
+  return contradictions.filter(c => c.ticker === ticker).sort((a,b) => new Date(b.analyzed_at) - new Date(a.analyzed_at))[0] || null;
+}
+function reportsForTicker(ticker){
+  return reports.filter(r => (r.tickers || []).includes(ticker));
+}
+
+// ── Account header ────────────────────────────────────────────────────────
+async function loadAccount(){
+  try {
+    const r = await fetch('/api/account');
+    if (r.status === 401) { $('auth-banner').style.display = 'flex'; return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    $('auth-banner').style.display = 'none';
+    const d = await r.json();
+    const b = d.balances || {}, s = d.summary || {};
+    $('acct-nav').textContent = fmt(b.liquidationValue);
+    const dayEl = $('acct-day'); dayEl.textContent = fmt(s.totalDayPnl); dayEl.className = 'acct-value ' + cc(s.totalDayPnl);
+    const openEl = $('acct-open'); openEl.textContent = fmt(s.totalOpenPnl); openEl.className = 'acct-value ' + cc(s.totalOpenPnl);
+  } catch (e) { /* leave header at — rather than blocking the page */ }
+}
+
+// ── Watchlist (Scouts) ────────────────────────────────────────────────────
+async function loadWatchlist(){
+  try {
+    const r = await fetch('/api/scout/watchlist');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const { watchlist: wl } = await r.json();
+    watchlist = wl || [];
+    if (!activeTicker && watchlist.length) activeTicker = watchlist[0].ticker;
+    if (activeTicker && !watchlist.some(w => w.ticker === activeTicker)) activeTicker = watchlist[0]?.ticker || null;
+    renderScoutList();
+    renderCanvas();
+    renderTruth();
+  } catch (e) {
+    $('scout-list').innerHTML = `<div class="empty-state">Failed to load watchlist: ${esc(e.message)}</div>`;
+  }
+}
+
+async function addWatchlistTicker(){
+  const input = $('add-ticker-input');
+  // Accept comma/whitespace-separated multiple tickers (e.g. "NU,CRWV,OU") — the
+  // backend only ever takes one ticker per call, so split and add each separately.
+  const tickers = [...new Set(input.value.split(/[,\s]+/).map(t => t.trim().toUpperCase()).filter(Boolean))];
+  if (!tickers.length) return;
+  input.value = '';
+  const failed = [];
+  for (const ticker of tickers) {
+    try {
+      await fetch('/api/scout/watchlist', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ ticker }) });
+    } catch (e) { failed.push(ticker); }
+  }
+  await loadWatchlist();
+  activeTicker = tickers[tickers.length - 1];
+  renderScoutList(); renderCanvas(); renderTruth();
+  if (failed.length) alert('Failed to add: ' + failed.join(', '));
+}
+
+async function removeWatchlistTicker(ticker, evt){
+  if (evt) evt.stopPropagation();
+  try {
+    await fetch(`/api/scout/watchlist/${encodeURIComponent(ticker)}`, { method:'DELETE' });
+    await loadWatchlist();
+  } catch (e) { alert('Failed to remove: ' + e.message); }
+}
+
+function scoutDotClass(ticker){
+  const c = latestContradictionFor(ticker);
+  if (c?.severity === 'high') return 'high';
+  if (c?.severity === 'medium') return 'medium';
+  const a = latestAlertFor(ticker);
+  if (a && !a.acknowledged) return 'active';
+  return '';
+}
+const DOT_COLOR = { high:'var(--red)', medium:'var(--yellow)', active:'var(--green)' };
+
+function toggleTickerSelection(ticker, checked){
+  if (checked) selectedTickers.add(ticker); else selectedTickers.delete(ticker);
+  updateSelectionUI();
+}
+function clearSelection(){ selectedTickers.clear(); renderScoutList(); }
+function selectAllTickers(){
+  selectedTickers = new Set(watchlist.map(w => w.ticker));
+  renderScoutList();
+}
+// Updates just the selection-dependent bits (header count + footer button
+// labels) without a full re-render, so checking a box doesn't fight focus.
+function updateSelectionUI(){
+  const n = selectedTickers.size;
+  const header = $('selection-header');
+  if (header) {
+    header.innerHTML = n
+      ? `<span>${n} selected</span><a href="#" class="quiet-link" onclick="event.preventDefault();clearSelection()">Clear</a>`
+      : `<a href="#" class="quiet-link" onclick="event.preventDefault();selectAllTickers()">Select all</a>`;
+  }
+  const scope = n === 0 ? 'All' : n === 1 ? [...selectedTickers][0] : `Selected (${n})`;
+  const runAllBtn = $('run-all-btn');
+  if (runAllBtn) runAllBtn.textContent = `▶ Run ${scope} (Scan + Sentiment + Truth Check)`;
+  const scanBtn = $('scan-btn');
+  if (scanBtn) scanBtn.textContent = `Scan ${scope} — Confluence Only`;
+  const crawlBtn = $('crawl-btn');
+  if (crawlBtn) crawlBtn.textContent = `Crawl ${scope} — Sentiment Only`;
+  const secBtn = $('sec-refresh-btn');
+  if (secBtn) secBtn.textContent = `Refresh SEC Filings — ${scope}`;
+}
+function renderScoutList(){
+  const box = $('scout-list');
+  // Selection can only reference tickers still on the watchlist — drop any
+  // that were removed since the last render.
+  selectedTickers = new Set([...selectedTickers].filter(t => watchlist.some(w => w.ticker === t)));
+  if (!watchlist.length) {
+    box.innerHTML = `<div class="empty-state">No tickers yet.<br>Add one above to start scouting.</div>`;
+    $('selection-header').innerHTML = '';
+    return;
+  }
+  box.innerHTML = watchlist.map(w => {
+    const t = w.ticker;
+    const a = latestAlertFor(t);
+    const dotCls = scoutDotClass(t);
+    const dotColor = DOT_COLOR[dotCls] || 'var(--muted)';
+    // confluence_alerts only gets a row when something fires — last_scanned_at
+    // is the only record that a scan ran at all, so "no alert" must be split
+    // into "never scanned" vs "scanned, nothing fired" rather than collapsed
+    // into one misleading "Not yet scanned" for both.
+    const tagLine = a ? `${a.direction === 'bullish' ? '▲' : '▼'} ${a.direction}` : (w.last_scanned_at ? 'No active signal' : 'Not yet scanned');
+    const noteLine = a ? (a.signals || []).join(', ') : (w.last_scanned_at ? `Scanned ${w.last_scanned_at.replace('T',' ').slice(0,16)} — no signal` : 'Not yet scanned');
+    const checked = selectedTickers.has(t);
+    return `
+      <div class="scout-row ${t===activeTicker?'active':''}" data-t="${esc(t)}" tabindex="0" role="button">
+        <input type="checkbox" class="scout-check" data-t="${esc(t)}" ${checked ? 'checked' : ''} onclick="event.stopPropagation()" title="Select ${esc(t)} for a group action">
+        <span class="scout-dot" style="background:${dotColor}"></span>
+        <div class="scout-body">
+          <div class="scout-top">
+            <span class="scout-sym">${esc(t)}</span>
+            <span class="scout-remove" onclick="removeWatchlistTicker('${esc(t)}', event)" title="Remove">✕</span>
+          </div>
+          <div class="scout-tags">${tagLine}</div>
+          <div class="scout-note">${esc(noteLine)}</div>
+        </div>
+      </div>`;
+  }).join('');
+  box.querySelectorAll('.scout-row').forEach(row => {
+    row.addEventListener('click', () => selectTicker(row.dataset.t));
+    row.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' '){ e.preventDefault(); selectTicker(row.dataset.t); } });
+  });
+  box.querySelectorAll('.scout-check').forEach(cb => {
+    cb.addEventListener('change', () => toggleTickerSelection(cb.dataset.t, cb.checked));
+  });
+  updateSelectionUI();
+}
+
+// ── Alerts / scan / sentiment / run-all ───────────────────────────────────
+async function loadAlerts(){
+  try {
+    const r = await fetch('/api/scout/alerts');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const { alerts: a } = await r.json();
+    alerts = a || [];
+  } catch (e) { /* non-fatal — scout rows just show "No active signal" */ }
+}
+
+// Every action below scopes to the checked tickers when any are selected,
+// otherwise falls back to the whole watchlist — the single selection state
+// drives all four actions instead of each needing its own scoping UI.
+function selectionBody(){ return selectedTickers.size ? { tickers: [...selectedTickers] } : {}; }
+function selectionLabel(){ const n = selectedTickers.size; return n === 0 ? 'watchlist' : n === 1 ? [...selectedTickers][0] : `${n} selected tickers`; }
+
+async function runScan(){
+  const btn = $('scan-btn'), status = $('foot-status');
+  btn.disabled = true; status.textContent = `Scanning ${selectionLabel()} for confluence…`;
+  try {
+    const r = await fetch('/api/scout/scan', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(selectionBody()) });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'HTTP ' + r.status);
+    await loadAlerts();
+    renderScoutList();
+    status.textContent = `Scanned ${data.scanned} ticker(s) — ${(data.fired||[]).filter(f=>f.id).length} new alert(s).`;
+  } catch (e) { status.textContent = 'Scan failed: ' + e.message; }
+  btn.disabled = false;
+}
+
+async function runSentimentCrawl(){
+  const btn = $('crawl-btn'), status = $('foot-status');
+  btn.disabled = true; status.textContent = `Crawling sentiment for ${selectionLabel()}…`;
+  try {
+    const r = await fetch('/api/scout/sentiment/crawl', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(selectionBody()) });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'HTTP ' + r.status);
+    const ok = data.results.filter(x => !x.error).length;
+    status.textContent = `Crawled ${ok}/${data.crawled} ticker(s).`;
+  } catch (e) { status.textContent = 'Crawl failed: ' + e.message; }
+  btn.disabled = false;
+}
+
+async function runSecRefresh(){
+  const btn = $('sec-refresh-btn'), status = $('foot-status');
+  btn.disabled = true; status.textContent = `Refreshing SEC filings for ${selectionLabel()}…`;
+  try {
+    const r = await fetch('/api/scout/sec-filings/refresh', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(selectionBody()) });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'HTTP ' + r.status);
+    const totalNew = data.results.reduce((s, x) => s + (x.inserted || 0), 0);
+    const failed = data.results.filter(x => !x.ok).length;
+    status.textContent = `SEC refresh: ${totalNew} new filing(s) across ${data.results.length} ticker(s)${failed ? `, ${failed} failed` : ''}.`;
+  } catch (e) { status.textContent = 'SEC refresh failed: ' + e.message; }
+  btn.disabled = false;
+}
+
+async function runContradictionFor(ticker, sentimentScore){
+  const body = { ticker };
+  if (sentimentScore !== undefined && sentimentScore !== null && sentimentScore !== '') body.sentimentScore = Number(sentimentScore);
+  const r = await fetch('/api/scout/contradiction', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const data = await r.json();
+  if (!r.ok || !data.ok) throw new Error(data.message || data.error || 'HTTP ' + r.status);
+  return data;
+}
+
+// Batch "Scan + Sentiment + Truth Check" — orchestrated entirely server-side
+// (POST /api/scout/analyze kicks off a background job and returns immediately;
+// GET /api/scout/analyze-status reports real progress). Replaces the old
+// client-side sequential loop, which awaited runContradictionFor() once per
+// watchlist ticker directly in the browser — for ~23 tickers at 1-6 min of
+// Truth Check each, that could run over an hour with the tab needing to stay
+// open and connected the whole time. Same disconnect-survival architecture as
+// osterm.html's ticker onboarding (POST /api/scout/onboard-ticker): closing
+// this tab mid-run no longer loses progress, it just stops watching.
+let analyzePollTimer = null;
+function formatAnalyzeProgress(status){
+  const tickers = status.tickers || [];
+  if (!tickers.length) return 'Analysis complete.';
+  if (tickers.length === 1) {
+    const p = status.progress[tickers[0]] || {};
+    return `${tickers[0]} — scan: ${p.scan || '-'} · sentiment: ${p.sentiment || '-'} · truth check: ${p.truthCheck || '-'}`;
+  }
+  let doneCount = 0, current = null;
+  for (const t of tickers) {
+    const p = status.progress?.[t] || {};
+    const steps = [p.scan, p.sentiment, p.truthCheck];
+    if (steps.every(s => s === 'done' || s === 'skipped_fresh' || s === 'error')) doneCount++;
+    else if (!current) {
+      const runningStep = ['scan', 'sentiment', 'truthCheck'].find(k => p[k] === 'running');
+      current = `${t}: ${runningStep || 'queued'}…`;
+    }
+  }
+  return `${doneCount}/${tickers.length} ticker(s) complete${current ? ' — ' + current : ''}`;
+}
+function pollAnalyzeStatus(onDone){
+  clearTimeout(analyzePollTimer);
+  const tick = async () => {
+    try {
+      const r = await fetch('/api/scout/analyze-status');
+      const data = await r.json();
+      $('foot-status').textContent = formatAnalyzeProgress(data);
+      if (data.done) { onDone(); return; }
+    } catch (e) { /* transient network hiccup — keep polling */ }
+    analyzePollTimer = setTimeout(tick, 3000);
+  };
+  tick();
+}
+async function startAnalysis(ticker, force, tickers){
+  const status = $('foot-status');
+  const label = tickers ? `${tickers.length} selected ticker(s)` : (ticker || 'the whole watchlist');
+  status.textContent = `Starting analysis for ${label}…`;
+  try {
+    const body = { force: !!force };
+    if (tickers && tickers.length) body.tickers = tickers;
+    else if (ticker) body.ticker = ticker;
+    const r = await fetch('/api/scout/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'HTTP ' + r.status);
+    return true;
+  } catch (e) { status.textContent = 'Failed to start: ' + e.message; return false; }
+}
+async function runAll(){
+  const btn = $('run-all-btn');
+  if (!watchlist.length) { $('foot-status').textContent = 'Add tickers to the watchlist first.'; return; }
+  btn.disabled = true;
+  const started = selectedTickers.size
+    ? await startAnalysis(null, false, [...selectedTickers])
+    : await startAnalysis(null, false);
+  if (!started) { btn.disabled = false; return; }
+  pollAnalyzeStatus(async () => {
+    await loadContradictionHistory(); await loadAlerts();
+    renderScoutList(); renderTruth();
+    btn.disabled = false;
+  });
+}
+async function analyzeActiveTicker(){
+  if (!activeTicker) return;
+  // force:true — an explicit single-ticker click should always run fresh, not
+  // silently skip a step because the freshness guard thinks it's recent enough.
+  const started = await startAnalysis(activeTicker, true);
+  if (!started) return;
+  pollAnalyzeStatus(async () => {
+    await loadContradictionHistory(); await loadAlerts();
+    renderScoutList(); renderCanvas(); renderTruth();
+  });
+}
+
+// ── Trade idea reports ─────────────────────────────────────────────────────
+async function loadReports(){
+  try {
+    const r = await fetch('/api/trade-ideas');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const { reports: rep } = await r.json();
+    reports = rep || [];
+  } catch (e) { /* canvas will show its own empty state */ }
+}
+
+async function generateIdeaForActive(){
+  if (!activeTicker) return;
+  const status = $('idea-status'); const btn = $('idea-gen-btn');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Generating — computing technicals + one model call…';
+  try {
+    const r = await fetch('/api/trade-ideas/generate', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ tickers:[activeTicker] })
+    });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'HTTP ' + r.status);
+    await loadReports();
+    await selectReport(data.id);
+    if (status) status.textContent = 'Report generated.';
+  } catch (e) { if (status) status.textContent = 'Failed: ' + e.message; }
+  if (btn) btn.disabled = false;
+}
+
+async function selectReport(id){
+  try {
+    const r = await fetch(`/api/trade-ideas/${id}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const { report } = await r.json();
+    activeReport = report; activeReportId = id;
+    renderCanvas();
+  } catch (e) {
+    activeReport = null;
+    renderCanvas();
+  }
+}
+
+function toggleDigest(){
+  const pre = $('digest-pre');
+  if (!pre) return;
+  const showing = pre.style.display !== 'none';
+  pre.style.display = showing ? 'none' : 'block';
+  pre.textContent = showing ? '' : JSON.stringify(activeReport?.digest ?? {}, null, 2);
+}
+
+// ── Contradiction history (Truth Check) ───────────────────────────────────
+async function loadContradictionHistory(){
+  try {
+    const r = await fetch('/api/scout/contradiction');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const { contradictions: c } = await r.json();
+    contradictions = c || [];
+  } catch (e) { /* right panel falls back to its own empty state */ }
+}
+
+async function runTruthCheckForActive(){
+  if (!activeTicker) return;
+  const btn = $('truth-run-btn');
+  const scoreInput = $('truth-score-input');
+  const score = scoreInput && scoreInput.value !== '' ? Number(scoreInput.value) : null;
+  if (btn) btn.disabled = true;
+  try {
+    const data = await runContradictionFor(activeTicker, score);
+    await loadContradictionHistory();
+    renderScoutList();
+    renderTruth(data);
+  } catch (e) {
+    renderTruth(null, e.message);
+  }
+  if (btn) btn.disabled = false;
+}
+
+function toggleScoreOverride(){
+  scoreOverrideOpen = !scoreOverrideOpen;
+  renderTruth();
+}
+
+function toggleTruthDetails(){
+  truthDetailsOpen = !truthDetailsOpen;
+  renderTruth();
+}
+
+const CATEGORY_LABELS = {
+  dilution: 'Dilution', liquidity: 'Liquidity / Capital Structure', off_balance_sheet: 'Off-Balance-Sheet',
+  concentration: 'Concentration Risk', regulatory: 'Regulatory / Legal', other: 'Other',
+};
+
+function extractSourceLinks(text){
+  return [...new Set((String(text||'').match(/https?:\/\/[^\s|)\]"']+/g) || []))].slice(0, 12);
+}
+
+// "Trade, invest, or pass" — one synthesis LLM call server-side combining
+// financials/technicals (tradeIdeas.js's digest) with everything Proactive
+// Scout has on file (SEC filings, insider activity, news, sentiment, Truth
+// Check). Reuses the same .verdict-tile visual language as the Truth Check
+// panel above (VERDICT_META/sevColor) for one consistent verdict language on
+// this page rather than inventing a second one.
+const STOCK_VERDICT_CLS = { trade: 'none', invest: 'low', pass: 'high' };
+const STOCK_VERDICT_LABEL = { trade: 'TRADE', invest: 'INVEST', pass: 'PASS' };
+function renderVerdictBody(v){
+  if (!v) return `<span style="font-size:11px;color:var(--muted)">No verdict generated yet for this ticker — click Generate above. Combines financials, technicals, SEC filings, insider activity, news, and Truth Check into one read.</span>`;
+  const cls = STOCK_VERDICT_CLS[v.verdict] || 'low';
+  const reasons = Array.isArray(v.reasons) ? v.reasons : [];
+  return `
+    <div class="verdict-tile ${cls}">
+      <div class="verdict-tile-head"><span class="dot"></span>${esc(STOCK_VERDICT_LABEL[v.verdict] || v.verdict || 'UNKNOWN')}${v.score != null ? ` — ${v.score}/100` : ''}</div>
+      ${v.summary ? `<div class="verdict-tile-reason">${esc(v.summary)}</div>` : ''}
+      ${reasons.length ? `<ul style="margin:10px 0 0;padding-left:18px;font-size:12px;color:var(--label);line-height:1.6">${reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
+      ${v.caution ? `<div class="verdict-tile-reason" style="opacity:.8;margin-top:8px">⚠ ${esc(v.caution)}</div>` : ''}
+    </div>
+    <div style="font-size:10.5px;color:var(--muted);margin-top:8px">Generated ${(v.generated_at || '').replace('T', ' ').slice(0, 16)} · model: ${esc(v.model_used || 'unknown')}</div>
+  `;
+}
+async function loadVerdict(t){
+  const box = $('ci-verdict');
+  if (!box) return;
+  try {
+    const r = await fetch(`/api/scout/verdict?ticker=${encodeURIComponent(t)}`);
+    const data = await r.json();
+    box.innerHTML = renderVerdictBody(data.ok ? data.verdict : null);
+    const btn = $('verdict-action-btn');
+    if (btn) btn.textContent = (data.ok && data.verdict) ? 'Regenerate' : 'Generate';
+  } catch { box.innerHTML = `<span style="font-size:11px;color:var(--muted)">Failed to load verdict.</span>`; }
+}
+async function generateVerdict(){
+  const t = activeTicker;
+  if (!t) return;
+  const box = $('ci-verdict');
+  const btn = $('verdict-action-btn');
+  if (btn) btn.disabled = true;
+  if (box) box.innerHTML = `<span style="font-size:11px;color:var(--muted)">Evaluating ${esc(t)} — financials, technicals, filings, insider activity, news, and Truth Check… this can take a couple minutes.</span>`;
+  try {
+    const r = await fetch('/api/scout/verdict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticker: t, force: true }) });
+    const data = await r.json();
+    if (!r.ok || !data.ok) throw new Error(data.error || 'HTTP ' + r.status);
+    if (box) box.innerHTML = renderVerdictBody(data.verdict);
+  } catch (e) {
+    if (box) box.innerHTML = `<span style="font-size:11px;color:var(--muted)">Failed: ${esc(e.message)}</span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Regenerate'; }
+  }
+}
+
+async function downloadTruthReport(btn){
+  const t = activeTicker;
+  const c = latestContradictionFor(t);
+  if (!c) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Building report…'; }
+
+  // Pull the real crawled sentiment (with its source citations) and a live quote —
+  // neither lives on the contradiction record itself, both make the report far more
+  // useful as a standalone document than the analysis fields alone.
+  let sentimentRow = null, quote = null;
+  try {
+    const r = await fetch(`/api/scout/sentiment?ticker=${encodeURIComponent(t)}`);
+    const data = await r.json();
+    sentimentRow = (data.sentiment || [])[0] || null;
+  } catch {}
+  try { quote = await fetchQuote(t); } catch {}
+
+  const vMeta = c.verdict ? VERDICT_META[c.verdict] : null;
+  const now = new Date();
+  const genStr = now.toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' });
+  const sevColor = { none: '#16a34a', low: '#2563eb', medium: '#d97706', high: '#dc2626' };
+  const vColor = vMeta ? sevColor[vMeta.cls] : '#6b7280';
+
+  const sourceLinks = sentimentRow ? extractSourceLinks(sentimentRow.content) : [];
+  // The crawled content is genuinely markdown (##  headers, **bold**, | tables, ---
+  // separators between the Perplexity/Ollama results) — render it properly with marked
+  // instead of flattening it into an unreadable run-on paragraph. Bare URLs get wrapped
+  // as markdown links first since marked doesn't auto-linkify plain http:// text.
+  let sentimentHtml = '';
+  if (sentimentRow) {
+    const linked = sentimentRow.content.replace(/(https?:\/\/[^\s|)\]"']+)/g, (u) => `[${u}](${u})`);
+    sentimentHtml = (typeof marked !== 'undefined') ? marked.parse(linked) : `<pre style="white-space:pre-wrap">${esc(linked)}</pre>`;
+  }
+
+  const html = `
+<title>Truth Check Report — ${esc(t)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Georgia, 'Times New Roman', serif; max-width: 820px; margin: 0 auto; padding: 48px 40px 80px;
+         color: #1a1a1a; background: #ffffff; line-height: 1.6; }
+  .report-header { border-bottom: 3px solid #111; padding-bottom: 18px; margin-bottom: 28px;
+         display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+  .report-header .eyebrow { font-family: -apple-system, sans-serif; font-size: 11px; letter-spacing: .08em;
+         text-transform: uppercase; color: #666; margin-bottom: 6px; }
+  .report-header h1 { font-size: 32px; margin: 0 0 8px; }
+  .report-header .meta { font-family: -apple-system, sans-serif; font-size: 12.5px; color: #555; }
+  .quote-row { font-family: -apple-system, sans-serif; font-size: 14px; margin-top: 10px; color: #333; }
+  .quote-row b { font-size: 17px; }
+  .verdict-box { border: 1px solid ${vColor}44; background: ${vColor}0d; border-left: 5px solid ${vColor};
+         border-radius: 6px; padding: 18px 22px; margin: 24px 0; }
+  .verdict-box .label { font-family: -apple-system, sans-serif; font-weight: 700; font-size: 16px; color: ${vColor}; }
+  .verdict-box .sub { font-family: -apple-system, sans-serif; font-size: 13px; color: #444; margin-top: 4px; }
+  .verdict-box p { margin: 10px 0 0; }
+  h2 { font-family: -apple-system, sans-serif; font-size: 13px; letter-spacing: .06em; text-transform: uppercase;
+       color: #333; border-bottom: 1px solid #ddd; padding-bottom: 6px; margin: 34px 0 14px; }
+  p { margin: 0 0 14px; text-align: justify; }
+  .contradiction { margin: 0 0 16px; padding-left: 16px; border-left: 3px solid #e5e5e5; }
+  .contradiction .issue { font-weight: 700; }
+  .contradiction .cite { font-family: -apple-system, sans-serif; font-size: 11.5px; color: #777; margin-top: 4px; }
+  .diagnostics { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-family: -apple-system, sans-serif; font-size: 12.5px; }
+  .diagnostics .box { border: 1px solid #ddd; border-radius: 6px; padding: 12px 14px; }
+  .diagnostics .box .n { font-size: 22px; font-weight: 700; font-family: Georgia, serif; }
+  .diagnostics .box .d { color: #666; margin-top: 2px; }
+  .sources { font-family: -apple-system, sans-serif; font-size: 12.5px; }
+  .sources li { margin-bottom: 6px; word-break: break-all; }
+  .sources a { color: #1d4ed8; }
+  table.sections { width: 100%; border-collapse: collapse; font-family: -apple-system, sans-serif; font-size: 12.5px; }
+  table.sections td, table.sections th { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
+  /* Crawled sentiment content — genuinely markdown from the source search results, but
+     visually a scoped sub-document: its own headers/tables must read as secondary to
+     the report's own section headers (h2 above), not compete with them. */
+  .sentiment-body { font-family: -apple-system, sans-serif; font-size: 12.5px; color: #333; background: #fafafa;
+         border: 1px solid #e5e5e5; border-radius: 6px; padding: 16px 20px; }
+  .sentiment-body h1, .sentiment-body h2, .sentiment-body h3, .sentiment-body h4 {
+         font-size: 13px; font-weight: 700; text-transform: none; letter-spacing: 0;
+         border: none; padding: 0; margin: 18px 0 8px; color: #111; }
+  .sentiment-body h1:first-child, .sentiment-body h2:first-child, .sentiment-body h3:first-child { margin-top: 0; }
+  .sentiment-body p { margin: 0 0 10px; text-align: left; }
+  .sentiment-body ul, .sentiment-body ol { margin: 0 0 12px; padding-left: 20px; }
+  .sentiment-body li { margin-bottom: 3px; }
+  .sentiment-body strong { color: #000; }
+  .sentiment-body a { color: #1d4ed8; word-break: break-word; }
+  .sentiment-body table { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 11.5px; }
+  .sentiment-body th, .sentiment-body td { border: 1px solid #ddd; padding: 5px 8px; text-align: left; }
+  .sentiment-body th { background: #eee; font-weight: 700; }
+  .sentiment-body hr { border: none; border-top: 1px dashed #ccc; margin: 20px 0; }
+  .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid #ddd; font-family: -apple-system, sans-serif;
+         font-size: 11px; color: #888; }
+  @media print { body { padding: 0 20px; } .sentiment-body { background: none; } }
+</style>
+
+<div class="report-header">
+  <div>
+    <div class="eyebrow">Proactive Scout — Truth Check Report</div>
+    <h1>${esc(t)}</h1>
+    <div class="meta">Generated ${esc(genStr)} &nbsp;·&nbsp; Model: ${esc(c.model_used || '—')} &nbsp;·&nbsp; Confidence: ${c.confidence != null ? Math.round(c.confidence * 100) + '%' : '—'}</div>
+    ${quote ? `<div class="quote-row"><b>${fmt(quote.price)}</b> ${quote.change >= 0 ? '▲' : '▼'} ${quote.changePct.toFixed(2)}%
+      ${quote.profile?.name ? ` &nbsp;·&nbsp; ${esc(quote.profile.name)}` : ''}${quote.profile?.industry ? ` (${esc(quote.profile.industry)})` : ''}
+      ${(quote.week52Low != null && quote.week52High != null) ? ` &nbsp;·&nbsp; 52W ${fmt(quote.week52Low)}–${fmt(quote.week52High)}` : ''}</div>` : ''}
+  </div>
+  <div style="flex-shrink:0">${authorBadge()}</div>
+</div>
+
+${vMeta ? `
+  <div class="verdict-box">
+    <div class="label">${esc(vMeta.label)} — ${esc(vMeta.lean)}</div>
+    <div class="sub">${esc(vMeta.sub)}</div>
+    ${c.verdict_reason ? `<p>${esc(c.verdict_reason)}</p>` : ''}
+  </div>` : ''}
+
+${c.summary ? `<h2>Executive Summary</h2><p>${esc(c.summary)}</p>` : ''}
+
+${(c.contradictions || []).length ? `
+  <h2>Contradictions Identified</h2>
+  ${c.contradictions.map(ct => `
+    <div class="contradiction">
+      <div class="issue">${esc(ct.issue || '')}</div>
+      <div class="cite">${esc(ct.citation || '—')}${ct.category ? ' &nbsp;·&nbsp; ' + esc(CATEGORY_LABELS[ct.category] || ct.category) : ''}</div>
+    </div>`).join('')}` : ''}
+
+${c.dilution_risk ? `<h2>Dilution Risk</h2><p>${esc(c.dilution_risk)}</p>` : ''}
+${c.priority_of_claims ? `<h2>Priority of Claims</h2><p>${esc(c.priority_of_claims)}</p>` : ''}
+${c.cashflow_sensitivity ? `<h2>Cash Flow Sensitivity</h2><p>${esc(c.cashflow_sensitivity)}</p>` : ''}
+
+${sentimentRow ? `
+  <h2>Public Market Sentiment</h2>
+  <p style="font-family:-apple-system,sans-serif;font-size:11.5px;color:#777;margin-bottom:12px">
+    Crawled ${esc((sentimentRow.fetched_at || '').replace('T', ' ').slice(0, 16))} from reputable financial outlets
+    (Reuters, Bloomberg, WSJ, CNBC, MarketWatch, Barron's, Seeking Alpha, Motley Fool, Benzinga, StockTwits) — not social media.
+  </p>
+  <div class="sentiment-body">${sentimentHtml}</div>
+  ${sourceLinks.length ? `
+    <div style="font-family:-apple-system,sans-serif;font-weight:700;font-size:12px;margin:16px 0 8px">All Sources</div>
+    <ul class="sources">${sourceLinks.map(u => `<li><a href="${esc(u)}">${esc(u)}</a></li>`).join('')}</ul>` : ''}
+  ` : `<h2>Public Market Sentiment</h2><p style="font-family:-apple-system,sans-serif;color:#888">No crawled sentiment on file for ${esc(t)} yet.</p>`}
+
+${c.filing_tone_lm || c.dilution_features ? `
+  <h2>Deterministic Diagnostics <span style="font-weight:400;text-transform:none;color:#999">(word-count based — no LLM involved)</span></h2>
+  <div class="diagnostics">
+    ${c.filing_tone_lm ? `<div class="box"><div class="n">${c.filing_tone_lm.combined_pss_0_100}/100</div><div class="d">Filing Tone (Loughran-McDonald) — the filing's own Risk Factors + MD&A word-count polarity, independent of market sentiment.</div></div>` : ''}
+    ${c.dilution_features ? `<div class="box"><div class="n">${c.dilution_features.dilution_mention}</div><div class="d">Dilution-related term mentions (${c.dilution_features.actual_dilution} declared, ${c.dilution_features.potential_dilution} hedged, ${c.dilution_features.anti_dilution} anti-dilution).</div></div>` : ''}
+  </div>` : ''}
+
+${(c.sections_used || []).length ? `
+  <h2>Filings Analyzed</h2>
+  <table class="sections">
+    <tr><th>Form</th><th>Filed</th><th>Risk Factors</th><th>MD&amp;A</th></tr>
+    ${c.sections_used.map(s => `<tr><td>${esc(s.form_type)}</td><td>${esc((s.filed_at || '').slice(0, 10))}</td><td>${s.has_risk ? '✓' : '✗'}</td><td>${s.has_mda ? '✓' : '✗'}</td></tr>`).join('')}
+  </table>` : ''}
+
+<div class="footer">Decision support for your own review — not a recommendation, not an auto-trade. Nothing in this report is tax, legal, or investment advice. Generated locally by Plutus / Proactive Scout.</div>
+`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `truth-check-${t}-${now.toISOString().slice(0,10)}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  if (btn) { btn.disabled = false; btn.textContent = 'Download Report'; }
+}
+
+// ── Ticker selection ───────────────────────────────────────────────────────
+async function selectTicker(ticker){
+  activeTicker = ticker;
+  activeReport = null; activeReportId = null;
+  const forThis = reportsForTicker(ticker);
+  renderScoutList();
+  renderCanvas();
+  renderTruth();
+  if (forThis.length) await selectReport(forThis[0].id);
+}
+
+// ── Render: Trade Idea Canvas ──────────────────────────────────────────────
+function renderCanvas(){
+  const el = $('canvas-content');
+  if (!activeTicker) {
+    el.innerHTML = `<div class="empty-state" style="padding-top:60px"><b>Select a ticker</b> from Scouts on the left, or add one, to build a trade idea.</div>`;
+    return;
+  }
+  const t = activeTicker;
+  const a = latestAlertFor(t);
+  const wEntry = watchlist.find(w => w.ticker === t);
+  const regime = !a ? { cls:'neutral', label:'No Active Signal' }
+    : a.direction === 'bullish' ? { cls:'bullish', label:'Bullish Signal' }
+    : { cls:'bearish', label:'Bearish Signal' };
+
+  const myReports = reportsForTicker(t);
+  const mapped = activeReport ? mapDigestForTicker(activeReport.digest, t) : null;
+
+  el.innerHTML = `
+    <div class="ci-header">
+      <div>
+        <div class="ci-sym">${esc(t)}</div>
+        <div class="ci-price-row" id="ci-quote">
+          <span style="font-size:11px;color:var(--muted)">Loading quote…</span>
+        </div>
+        <div id="ci-profile" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+      </div>
+      <span class="regime-badge ${regime.cls}">${regime.label}</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span class="card-title">Signal Snapshot</span></div>
+      <div class="card-body">
+        ${a ? `
+          <div class="signal-row">
+            <span class="${a.direction==='bullish'?'pos':'neg'}" style="font-weight:600">${a.direction==='bullish'?'▲ Bullish':'▼ Bearish'}</span>
+            <span style="color:var(--muted);font-size:11px">fired ${(a.fired_at||'').replace('T',' ').slice(0,16)}</span>
+            ${a.acknowledged ? '<span style="color:var(--muted);font-size:10.5px">· acknowledged</span>' : `<button class="quiet-link" style="margin-left:auto" onclick="ackAlert(${a.id})">Acknowledge</button>`}
+          </div>
+          <div class="signal-tags">${(a.signals||[]).map(s => `<span class="tag">${esc(s)}</span>`).join('')}</div>
+        ` : `<div class="signal-meta">${wEntry?.last_scanned_at ? `Scanned ${wEntry.last_scanned_at.replace('T',' ').slice(0,16)} — no confluence signal fired for ${esc(t)}.` : `${esc(t)} hasn't been scanned yet.`}</div>`}
+        <div class="quiet-actions">
+          <a href="#" class="quiet-link" onclick="event.preventDefault();runScan()">Scan watchlist now</a>
+          <a href="#" class="quiet-link" onclick="event.preventDefault();runSentimentCrawl()">Crawl sentiment now</a>
+          <a href="#" class="quiet-link" onclick="event.preventDefault();analyzeActiveTicker()">Analyze this ticker (Scan + Sentiment + Truth Check)</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span class="card-title">Insider Activity</span></div>
+      <div class="card-body" id="ci-insider">
+        <span style="font-size:11px;color:var(--muted)">Loading…</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span class="card-title">News</span></div>
+      <div class="card-body" id="ci-news">
+        <span style="font-size:11px;color:var(--muted)">Loading…</span>
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button class="primary-btn" id="idea-gen-btn" onclick="generateIdeaForActive()">Generate Trade Idea — ${esc(t)}</button>
+      <span class="action-status" id="idea-status"></span>
+    </div>
+
+    ${mapped ? renderTermSheet(mapped) : ''}
+
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">Trade Idea Report</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${activeReport ? authorBadge({ compact: true }) : ''}
+          ${activeReport ? `<button class="digest-toggle" onclick="toggleDigest()">{ } raw digest</button>` : ''}
+        </div>
+      </div>
+      <div class="card-body">
+        ${activeReport
+          ? `<div class="md-body">${typeof marked !== 'undefined' ? marked.parse(activeReport.report_md || '') : `<pre>${esc(activeReport.report_md||'')}</pre>`}</div>
+             <pre class="digest" id="digest-pre"></pre>`
+          : `<div class="empty-state" style="padding:10px 0 4px">${myReports.length ? 'Loading report…' : `No trade idea report yet for <b>${esc(t)}</b> — click Generate above.`}</div>`
+        }
+        ${myReports.length > 1 ? `
+          <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+            <div class="kv-block-title">Past Reports for ${esc(t)}</div>
+            <div class="report-list">
+              ${myReports.map(r => `
+                <div class="report-item ${r.id===activeReportId?'active':''}" onclick="selectReport(${r.id})">
+                  <div class="rep-date">${(r.generated_at||'').replace('T',' ').slice(0,16)}</div>
+                  <div class="rep-meta">${esc(r.trigger||'')} · ${(r.tickers||[]).join(', ')}</div>
+                </div>`).join('')}
+            </div>
+          </div>` : ''}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="card-title">Investment Verdict</span>
+        <button class="quiet-link" id="verdict-action-btn" style="background:none;border:none;cursor:pointer;padding:0" onclick="generateVerdict()">Generate</button>
+      </div>
+      <div class="card-body" id="ci-verdict">
+        <span style="font-size:11px;color:var(--muted)">Loading…</span>
+      </div>
+    </div>
+  `;
+  loadVerdict(t);
+  fetchQuote(t).then(q => {
+    const box = $('ci-quote');
+    const profileBox = $('ci-profile');
+    if (!box) return;
+    if (!q) { box.innerHTML = `<span style="font-size:11px;color:var(--muted)">No live quote available for ${esc(t)}</span>`; return; }
+    box.innerHTML = `
+      <span class="ci-price">${fmt(q.price)}</span>
+      <span class="ci-change ${cc(q.change)}">${q.change>=0?'+':''}${q.change.toFixed(2)} (${q.changePct>=0?'+':''}${q.changePct.toFixed(2)}%)</span>
+      ${(q.week52Low!=null && q.week52High!=null) ? `<span style="color:var(--muted);margin-left:8px">52W ${fmt(q.week52Low)}–${fmt(q.week52High)}</span>` : ''}`;
+    if (profileBox) {
+      const p = q.profile;
+      const bits = [];
+      if (p?.name) bits.push(esc(p.name));
+      if (p?.industry) bits.push(esc(p.industry));
+      if (p?.exchange) bits.push(esc(p.exchange));
+      if (p?.marketCapM != null) bits.push(`Mkt Cap $${(p.marketCapM/1000).toFixed(2)}B`);
+      if (q.peRatio != null) bits.push(`P/E ${q.peRatio.toFixed(1)}`);
+      profileBox.textContent = bits.length ? bits.join(' · ') : '';
+    }
+  }).catch(() => {});
+
+  fetch(`/api/scout/insider?ticker=${encodeURIComponent(t)}&days=90`).then(r => r.json()).then(data => {
+    const box = $('ci-insider');
+    if (!box) return;
+    const rows = (data.ok && data.transactions) ? data.transactions : [];
+    if (!rows.length) { box.innerHTML = `<span style="font-size:11px;color:var(--muted)">No insider transactions on file for ${esc(t)} in the last 90 days.</span>`; return; }
+    box.innerHTML = rows.slice(0, 15).map(tx => {
+      const dir = tx.acquired_disposed_code === 'A' ? 'pos' : (tx.acquired_disposed_code === 'D' ? 'neg' : '');
+      const role = [tx.owner_is_officer ? (tx.owner_title || 'Officer') : null, tx.owner_is_director ? 'Director' : null, tx.owner_is_ten_pct_owner ? '10% Owner' : null].filter(Boolean).join(', ');
+      return `
+        <div class="signal-row" style="align-items:flex-start">
+          <div style="min-width:0">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">${srcBadge('sec')}<span style="font-weight:600">${esc(tx.owner_name || 'Unknown')}</span></div>
+            <span style="color:var(--muted);font-size:11px">${esc(role || '—')}</span>
+            <div style="font-size:11px;color:var(--muted)">${esc(tx.transaction_date || '')} · ${esc(tx.transaction_code_label || tx.transaction_code || '')}${tx.is_derivative ? ' (derivative)' : ''}</div>
+          </div>
+          <div style="margin-left:auto;text-align:right;white-space:nowrap">
+            <span class="${dir}" style="font-weight:600">${tx.acquired_disposed_code === 'A' ? '+' : (tx.acquired_disposed_code === 'D' ? '−' : '')}${tx.shares != null ? Number(tx.shares).toLocaleString() : '—'}</span>
+            ${tx.price_per_share ? `<div style="font-size:11px;color:var(--muted)">@ $${Number(tx.price_per_share).toFixed(2)}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  }).catch(() => {});
+
+  fetch(`/api/scout/news?ticker=${encodeURIComponent(t)}`).then(r => r.json()).then(data => {
+    const box = $('ci-news');
+    if (!box) return;
+    if (!data.finnhubConfigured) { box.innerHTML = `<span style="font-size:11px;color:var(--muted)">FINNHUB_API_KEY not set — news source disabled.</span>`; return; }
+    const rows = (data.ok && data.items) ? data.items : [];
+    if (!rows.length) { box.innerHTML = `<span style="font-size:11px;color:var(--muted)">No recent news on file for ${esc(t)}.</span>`; return; }
+    box.innerHTML = rows.slice(0, 10).map(n => `
+      <div class="signal-row" style="align-items:flex-start">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">${srcBadge('api')}<span style="color:var(--muted);font-size:11px">${esc(n.source || 'Finnhub')}</span></div>
+          ${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${esc(n.headline || '')}</a>` : `<span>${esc(n.headline || '')}</span>`}
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${(n.published_at||'').replace('T',' ').slice(0,16)}</div>
+        </div>
+      </div>`).join('');
+  }).catch(() => {
+    const box = $('ci-news');
+    if (box) box.innerHTML = `<span style="font-size:11px;color:var(--muted)">Failed to load news.</span>`;
+  });
+}
+
+// Real digest shape only: two candidate strikes (short put / short call),
+// each with {strike, delta, mid, expiry} — no fabricated yield/breakeven
+// columns, since those are never computed anywhere in this app.
+function renderTermSheet(m){
+  const n = (v, suffix='', digits=2) => (v==null || v==='') ? '—' : (typeof v === 'number' ? v.toFixed(digits) : v) + suffix;
+  const rows = [];
+  if (m.candidateStrikes?.shortPut) rows.push({ side:'put', label:'Short Put', ...m.candidateStrikes.shortPut });
+  if (m.candidateStrikes?.shortCall) rows.push({ side:'call', label:'Short Call', ...m.candidateStrikes.shortCall });
+
+  return `
+    <div class="card">
+      <div class="card-head"><span class="card-title">Candidate Strikes</span></div>
+      <div class="card-body">
+        ${rows.length ? `
+          <table class="ladder">
+            <thead><tr><th>Side</th><th>Strike</th><th>Δ</th><th>Mid</th><th>Expiry</th></tr></thead>
+            <tbody>
+              ${rows.map(r => `
+                <tr>
+                  <td><span class="side-pill ${r.side}">${esc(r.label)}</span></td>
+                  <td>${n(r.strike)}</td><td>${n(r.delta, '', 3)}</td>
+                  <td>${n(r.mid)}</td><td>${esc(r.expiry || '—')}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>` : `<div class="empty-state" style="padding:6px 0">No candidate strikes found in this report's digest.</div>`}
+        <div class="kv-grid" style="margin-top:16px">
+          <div>
+            <div class="kv-block-title">Technicals</div>
+            <div class="kv-row"><span class="kv-label">Trend</span><span class="kv-val">${esc(m.trend || '—')}</span></div>
+            <div class="kv-row"><span class="kv-label">RSI14</span><span class="kv-val">${n(m.technicals?.rsi14)}</span></div>
+            <div class="kv-row"><span class="kv-label">MACD Histogram</span><span class="kv-val">${n(m.technicals?.macd?.histogram, '', 3)}</span></div>
+            <div class="kv-row"><span class="kv-label">ATR14</span><span class="kv-val">${n(m.technicals?.atr14)}</span></div>
+          </div>
+          <div>
+            <div class="kv-block-title">Volatility &amp; Levels</div>
+            <div class="kv-row"><span class="kv-label">IV%</span><span class="kv-val">${n(m.ivPct, '%', 1)}</span></div>
+            <div class="kv-row"><span class="kv-label">IV Rank</span><span class="kv-val">${m.ivRank ? n(m.ivRank.rank, '', 0) + ' (range ' + n(m.ivRank.rvMin,'',1) + '–' + n(m.ivRank.rvMax,'',1) + ')' : '—'}</span></div>
+            <div class="kv-row"><span class="kv-label">Support</span><span class="kv-val">${n(m.support)}</span></div>
+            <div class="kv-row"><span class="kv-label">Resistance</span><span class="kv-val">${n(m.resistance)}</span></div>
+          </div>
+        </div>
+        ${m.chainQuality ? `
+          <div class="kv-block-title" style="margin-top:16px">Chain Quality</div>
+          <div class="kv-row"><span class="kv-label">Liquidity score</span><span class="kv-val">${n(m.chainQuality.liquidityScore, '', 0)}</span></div>
+          <div class="kv-row"><span class="kv-label">Best expiry</span><span class="kv-val">${esc(m.chainQuality.bestExpiry || '—')} ${m.chainQuality.dte!=null?`(${m.chainQuality.dte}d)`:''}</span></div>
+        ` : ''}
+        ${m.ownHistory ? `
+          <div class="kv-block-title" style="margin-top:16px">Your History on ${esc(m.symbol)}</div>
+          <div class="kv-row"><span class="kv-label">Closed trades</span><span class="kv-val">${n(m.ownHistory.closedCount, '', 0)}</span></div>
+          <div class="kv-row"><span class="kv-label">Net P&amp;L</span><span class="kv-val ${cc(m.ownHistory.netPnL)}">${fmt(m.ownHistory.netPnL)}</span></div>
+          <div class="kv-row"><span class="kv-label">Win rate</span><span class="kv-val">${n(m.ownHistory.winRate, '%', 1)}</span></div>
+          <div class="kv-row"><span class="kv-label">Profit factor</span><span class="kv-val">${n(m.ownHistory.profitFactor)}</span></div>
+        ` : ''}
+        ${(m.ragNotes||[]).length ? `
+          <div class="kv-block-title" style="margin-top:16px">Relevant Journal Notes</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${m.ragNotes.map(note => `<div style="font-size:11px;color:var(--label);line-height:1.5;padding:8px 10px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">${esc(note)}</div>`).join('')}
+          </div>
+        ` : ''}
+      </div>
+    </div>`;
+}
+
+async function ackAlert(id){
+  try { await fetch(`/api/scout/alerts/${id}/ack`, { method:'POST' }); await loadAlerts(); renderScoutList(); renderCanvas(); }
+  catch (e) { alert('Failed to acknowledge: ' + e.message); }
+}
+
+// ── Render: Truth Check ─────────────────────────────────────────────────────
+function verdictFor(c){
+  if (!c) return null;
+  const text = c.severity === 'high'   ? `Truth check: Filing and sentiment sharply diverge on ${c.ticker}`
+             : c.severity === 'medium' ? `Truth check: Filing is more cautious than the market on ${c.ticker}`
+             : c.severity === 'low'    ? `Truth check: Minor gaps between filing and narrative on ${c.ticker}`
+             :                           `Truth check: Narrative broadly aligns with the filing on ${c.ticker}`;
+  return text;
+}
+
+function renderTruth(freshResult, errorMsg){
+  const el = $('truth-content');
+  if (!activeTicker) {
+    el.innerHTML = `<div class="empty-state" style="padding-top:60px">Select a ticker to run a truth check.</div>`;
+    return;
+  }
+  const t = activeTicker;
+  const c = freshResult || latestContradictionFor(t);
+
+  // No SEC filings on file for this ticker (e.g. a foreign private issuer filing
+  // 20-F/6-K instead of 10-K/10-Q) — show general market sentiment alone rather than
+  // the full Truth Check UI, which has nothing to compare it against.
+  if (c && c.mode === 'sentiment_only') {
+    el.innerHTML = `
+      <div class="verdict-block">
+        <div class="verdict-top"><span class="eyebrow">General Market Sentiment · ${esc(t)}</span></div>
+        <div class="empty-state" style="padding:10px 0 14px;text-align:left">${esc(c.message || '')}</div>
+        <div class="verdict-actions">
+          <button class="ghost-btn" id="truth-run-btn" onclick="runTruthCheckForActive()">Refresh</button>
+        </div>
+      </div>
+      ${c.sentiment_content ? `
+        <div style="padding:14px 18px">
+          <div class="eyebrow" style="margin-bottom:8px">Crawled Sentiment${c.sentiment_fetched_at ? ' · ' + esc(c.sentiment_fetched_at.replace('T',' ').slice(0,16)) : ''}</div>
+          <div class="tc-side-body" style="white-space:pre-wrap">${esc(c.sentiment_content.slice(0, 3000))}</div>
+        </div>` : `<div class="empty-state" style="padding:0 18px 14px;text-align:left">No sentiment data available either.</div>`}
+    `;
+    return;
+  }
+
+  const cxList = c ? (c.contradictions || []) : [];
+  const scoreVal = c && c.sentiment_score != null ? c.sentiment_score : '';
+  const vMeta = c && c.verdict ? VERDICT_META[c.verdict] : null;
+  const sevCls = c ? SEVERITY_COLOR_CLASS[c.severity] || '' : ''; // fallback styling for pre-verdict-field rows
+
+  // Plain-English bullets for the always-visible tier: top 3 contradiction issues,
+  // stripped of citations/categories — those live in the technical detail below.
+  const topTakeaways = cxList.slice(0, 3).map(ct => ct.issue).filter(Boolean);
+
+  el.innerHTML = `
+    <div class="verdict-block">
+      <div class="verdict-top">
+        <span class="eyebrow">Truth Check · ${esc(t)}</span>
+        ${c ? `<span class="verdict-conf">${c.confidence!=null?Math.round(c.confidence*100)+'% confidence · '+esc(c.model_used||'—'):''}</span>` : ''}
+      </div>
+      ${c
+        ? (vMeta
+            ? `<div class="verdict-tile ${vMeta.cls}">
+                 <div class="verdict-tile-head"><span class="dot"></span>${esc(vMeta.label)} — ${esc(vMeta.lean)}</div>
+                 <div class="verdict-tile-lean">${esc(vMeta.sub)}</div>
+                 ${c.verdict_reason ? `<div class="verdict-tile-reason">${esc(c.verdict_reason)}</div>` : ''}
+                 ${c.sentiment_context === 'none' ? `<div class="verdict-tile-reason" style="opacity:.75;margin-top:6px">Filing-only analysis — no market sentiment data was available to compare against.</div>` : ''}
+               </div>`
+            : `<div class="verdict-line ${sevCls}">${esc(verdictFor(c))}</div>`)
+        : `<div class="empty-state" style="padding:14px 0 0;text-align:left">${errorMsg ? 'Truth check failed: ' + esc(errorMsg) : `No truth check on file for <b>${esc(t)}</b> yet.`}</div>`}
+      <div class="verdict-actions" style="flex-wrap:wrap">
+        <button class="ghost-btn" id="truth-run-btn" onclick="runTruthCheckForActive()">${c ? 'Re-run truth check' : 'Run truth check'}</button>
+        ${c ? `<button class="ghost-btn" onclick="downloadTruthReport(this)">Download Report</button>` : ''}
+        <span onclick="toggleScoreOverride()" style="font-size:10.5px;color:var(--muted);cursor:pointer;text-decoration:underline;text-underline-offset:2px">${scoreOverrideOpen ? 'hide' : 'override'} sentiment score</span>
+        ${(!scoreOverrideOpen && c && c.sentiment_score_was_estimated) ? `<span style="font-size:10px;color:var(--muted)">(estimated: ${scoreVal}/100 from crawled sentiment)</span>` : ''}
+      </div>
+      <div style="display:${scoreOverrideOpen ? 'flex' : 'none'};align-items:center;gap:8px;margin-top:9px">
+        <input type="number" id="truth-score-input" min="0" max="100" placeholder="Sentiment 0-100" value="${scoreVal}"
+          style="width:170px;font-size:11px;padding:6px 9px;border-radius:7px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+        <span style="font-size:10px;color:var(--muted)">leave blank to auto-estimate from crawled sentiment</span>
+      </div>
+    </div>
+
+    ${c && topTakeaways.length ? `
+      <div class="takeaways">
+        <div class="eyebrow" style="margin-bottom:2px">Key Takeaways</div>
+        ${topTakeaways.map(issue => {
+          const short = issue.length > 140 ? issue.slice(0, 137).trim() + '…' : issue;
+          return `<div class="takeaways-item"><span class="dot"></span><span>${esc(short)}</span></div>`;
+        }).join('')}
+      </div>` : ''}
+
+    ${c ? `
+      <div class="details-toggle" onclick="toggleTruthDetails()">${truthDetailsOpen ? '▲ Hide' : '▼ Show'} technical details (citations, filing-tone score, full impact analysis)</div>
+
+      <div style="display:${truthDetailsOpen ? 'block' : 'none'}">
+        <div style="padding:14px 18px 0"><div class="tc-side-body" style="color:var(--label)">${esc(c.summary)}</div></div>
+
+        ${c.filing_tone_lm ? `
+          <div style="margin:12px 18px 0;font-size:10.5px;color:var(--muted);display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+            <span style="font-family:var(--mono);color:var(--text)">Filing Tone (Loughran-McDonald, deterministic): ${c.filing_tone_lm.combined_pss_0_100}/100</span>
+            <span title="Pure word-count score from the filing's own Risk Factors + MD&A text — no LLM involved. Different signal from the sentiment score above, which reflects outside market sentiment.">ⓘ</span>
+          </div>` : ''}
+        ${c.dilution_features ? `
+          <div style="margin:4px 18px 0;font-size:10.5px;color:var(--muted);display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+            <span style="font-family:var(--mono);color:var(--text)">Dilution mentions: ${c.dilution_features.dilution_mention} (declared: ${c.dilution_features.actual_dilution}, hedged: ${c.dilution_features.potential_dilution}, anti-dilution: ${c.dilution_features.anti_dilution})</span>
+            <span title="Separate deterministic term-match count, not part of LM tone — dilute/dilution/dilutive carry no LM sentiment classification in any release. Unvalidated regex heuristics for declared vs hedged language — treat as a starting point, not a proven classifier.">ⓘ</span>
+          </div>` : ''}
+
+        ${cxList.length ? `
+          <div style="padding:14px 18px 0">
+            <div class="eyebrow" style="margin-bottom:8px">Contradictions (${cxList.length})</div>
+            ${cxList.map(ct => `
+              <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+                <div style="font-size:11.5px;line-height:1.5;color:var(--text)">${esc(ct.issue || '')}</div>
+                <div style="font-size:10px;color:var(--muted);margin-top:5px;font-family:var(--mono)">${esc(ct.citation || '')}${ct.category ? ' · ' + esc(ct.category) : ''}</div>
+              </div>`).join('')}
+          </div>` : ''}
+
+        <div style="padding:6px 18px 0;display:grid;gap:10px">
+          ${c.dilution_risk ? `<div class="tc-side" style="border-radius:8px"><div class="tc-side-label">Dilution Risk</div><div class="tc-side-body">${esc(c.dilution_risk)}</div></div>` : ''}
+          ${c.priority_of_claims ? `<div class="tc-side" style="border-radius:8px"><div class="tc-side-label">Priority of Claims</div><div class="tc-side-body">${esc(c.priority_of_claims)}</div></div>` : ''}
+          ${c.cashflow_sensitivity ? `<div class="tc-side" style="border-radius:8px"><div class="tc-side-label">Cash Flow Sensitivity</div><div class="tc-side-body">${esc(c.cashflow_sensitivity)}</div></div>` : ''}
+        </div>
+
+        ${(c.sections_used||[]).length ? `
+          <div class="chip-row">
+            ${c.sections_used.map(s => {
+              const riskLabel = /^20-F/i.test(s.form_type) ? 'Item 3.D' : 'Item 1A';
+              return `<span class="chip ${s.has_risk && s.has_mda ? 'none' : 'medium'}"><span class="dot"></span>${esc(s.form_type)} ${esc((s.filed_at||'').slice(0,10))}: ${riskLabel} ${s.has_risk?'✓':'✗'} / MD&A ${s.has_mda?'✓':'✗'}</span>`;
+            }).join('')}
+          </div>` : ''}
+      </div>
+    ` : ''}
+
+    <div class="recent-checks">
+      <div class="eyebrow" style="margin-bottom:10px">Recent Checks — All Tickers</div>
+      ${contradictions.length ? contradictions.slice(0, 25).map(row => {
+        const cls = SEVERITY_COLOR_CLASS[row.severity] || '';
+        const hex = SEVERITY_HEX[row.severity] || 'var(--muted)';
+        return `
+          <div class="rc-row" onclick="selectTicker('${esc(row.ticker)}')">
+            <span class="rc-sym">${esc(row.ticker)}</span>
+            <span class="severity-badge severity-badge-sm ${cls}" style="color:${hex}">${esc(row.severity)}</span>
+            <span class="rc-summary">${esc((row.summary||'').slice(0,70))}</span>
+            <span class="rc-date">${(row.analyzed_at||'').replace('T',' ').slice(0,16)}</span>
+          </div>`;
+      }).join('') : `<div class="empty-state" style="padding:6px 0">No checks yet.</div>`}
+    </div>
+  `;
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+(async function init(){
+  await Promise.all([loadAccount(), loadWatchlist(), loadAlerts(), loadContradictionHistory(), loadReports()]);
+  renderScoutList(); renderCanvas(); renderTruth();
+  setInterval(loadAccount, 60000);
+  setInterval(async () => { await loadAlerts(); renderScoutList(); if ($('canvas-content')) renderCanvas(); }, 30000);
+})();
+</script>
+</body>
+</html>
