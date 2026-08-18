@@ -41,3 +41,4 @@ local/ebooks/
 # irrelevant to anyone else cloning this repo
 .claude/
 local/.claude/
+local/
