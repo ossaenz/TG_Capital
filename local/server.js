@@ -1773,9 +1773,33 @@ function parseEightKIndexRows(indexText) {
     // format mismatch here would silently break those, not just display.
     const raw = m[4]; // YYYYMMDD
     const filedAt = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}T00:00:00Z`;
-    rows.push({ form_type: formType, entity_name: m[2].trim(), cik: Number(m[3]), filed_at: filedAt, filing_url: `https://www.sec.gov/Archives/${m[5]}` });
+    const cik = Number(m[3]);
+    // filing_url stays the combined full-submission .txt (m[5]) — fetchFilingText
+    // fetches this exact URL to get the actual document body for 8-K analysis, so
+    // it can't be swapped for a nicer-looking page that has no filing prose on it
+    // (e.g. EDGAR's filing-index page, which is just a document list). The .txt
+    // link IS what's ugly in an email though — see filingDisplayUrl(), used only
+    // at display time (email/dashboard), which derives a prettier link from this
+    // one without changing what actually gets fetched for analysis.
+    const accessionMatch = m[5].match(/([\d-]+)\.txt$/);
+    const accession = accessionMatch ? accessionMatch[1] : null;
+    rows.push({ form_type: formType, entity_name: m[2].trim(), cik, filed_at: filedAt, accession_number: accession, filing_url: `https://www.sec.gov/Archives/${m[5]}` });
   }
   return rows;
+}
+
+// Confirmed live (why did I get a .txt link in the 8-K email): the universe
+// firehose's filing_url is the combined full-submission .txt dump, needed
+// as-is by fetchFilingText for analysis, but a poor link for a human to click
+// — one giant raw text blob, not the filing's own formatted page. This turns
+// it into EDGAR's standard filing-index page instead, purely for display
+// (email bodies, the recent-filings dashboard endpoint) — never used for the
+// actual analysis fetch, which must keep hitting the real .txt. Per-ticker
+// (watchlist) filing_urls already point at a real per-document page and pass
+// through unchanged.
+function filingDisplayUrl(url) {
+  const m = String(url || '').match(/^(https:\/\/www\.sec\.gov\/Archives\/edgar\/data\/\d+)\/([\d-]+)\.txt$/);
+  return m ? `${m[1]}/${m[2]}-index.htm` : url;
 }
 
 // Firehose ingest: every 8-K filed market-wide today, walking back up to a
@@ -1806,10 +1830,8 @@ async function ingestUniverseFilingsFromDailyIndex() {
   let inserted = 0;
   for (const row of rows) {
     const ticker = universe.get(row.cik);
-    if (!ticker) continue;
-    const accessionMatch = row.filing_url.match(/\/([\d-]+)\.txt$/);
-    if (!accessionMatch) continue;
-    const info = stmtInsertSecFiling.run(ticker, accessionMatch[1], row.entity_name, row.form_type, row.filed_at, null, row.filing_url, null);
+    if (!ticker || !row.accession_number) continue;
+    const info = stmtInsertSecFiling.run(ticker, row.accession_number, row.entity_name, row.form_type, row.filed_at, null, row.filing_url, null);
     if (info.changes) inserted++;
   }
   scoutLogLine({ event: 'universe_firehose_ingest', daysBack, fetched: rows.length, inserted });
@@ -2577,7 +2599,7 @@ app.get('/api/scout/edgar/recent-filings', (req, res) => {
       ORDER BY filed_at DESC
       LIMIT 200
     `).all(...(ticker ? [`-${days} days`, UNIVERSE_MIN_AVG_VOLUME, ticker] : [`-${days} days`, UNIVERSE_MIN_AVG_VOLUME]));
-    res.json({ ok: true, days, ticker, count: rows.length, filings: rows });
+    res.json({ ok: true, days, ticker, count: rows.length, filings: rows.map(f => ({ ...f, filing_url: filingDisplayUrl(f.filing_url) })) });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 
@@ -3301,7 +3323,7 @@ async function sendConsolidatedMaterialAlert() {
         `  ${f.llama_summary || '(no summary)'}`,
         `  Sentiment: ${f.llama_sentiment || '—'}  |  Confidence: ${f.llama_confidence != null ? Math.round(f.llama_confidence * 100) + '%' : '—'}`,
         f.llama_catalyst ? `  Potential catalyst: ${f.llama_catalyst}` : null,
-        `  ${f.filing_url}`,
+        `  ${filingDisplayUrl(f.filing_url)}`,
       ].filter(x => x !== null).join('\n');
     }).join('\n\n');
     return `${ticker} (${filings.length} filing${filings.length > 1 ? 's' : ''})\n${'-'.repeat(40)}\n${filingBlocks}`;
@@ -3376,7 +3398,7 @@ async function maybeSendDailyDigest() {
       `  ${f.llama_summary || ''}`,
       f.llama_sentiment ? `  Sentiment: ${f.llama_sentiment}` : null,
       f.llama_catalyst ? `  Potential catalyst: ${f.llama_catalyst}` : null,
-      `  ${f.filing_url}`,
+      `  ${filingDisplayUrl(f.filing_url)}`,
     ].filter(x => x !== null).join('\n');
   }).join('\n\n');
 
