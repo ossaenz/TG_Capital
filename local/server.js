@@ -777,18 +777,54 @@ async function sendGmailAlert(subject, bodyText) {
 // explicit marker rather than silently cutting off mid-sentence or erroring,
 // since the full text is always still in the paired Gmail alert.
 const DISCORD_MESSAGE_LIMIT = 2000;
-async function sendDiscordAlert(content) {
-  if (!DISCORD_WEBHOOK_URL) return { skipped: 'no_webhook_configured' };
-  const truncated = content.length > DISCORD_MESSAGE_LIMIT
-    ? content.slice(0, DISCORD_MESSAGE_LIMIT - 60) + '\n\n… truncated, see the full alert email for everything.'
-    : content;
+async function postDiscordMessage(content) {
   const r = await fetch(DISCORD_WEBHOOK_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: truncated }),
+    body: JSON.stringify({ content }),
   });
   if (!r.ok) throw new Error(`Discord webhook failed: ${r.status} ${await r.text()}`);
-  return { sent: true };
+}
+
+// Splits into multiple messages instead of truncating, per explicit user
+// report — a truncated alert silently lost whatever ticker(s) got cut off,
+// which defeats the point of an alert. Splits on \n\n\n, the same separator
+// sendConsolidatedMaterialAlert already joins per-ticker blocks with, so a
+// chunk boundary never lands mid-filing (a summary/link cut in half). Only a
+// single ticker block bigger than the whole 2000-char limit — not expected in
+// practice — falls back to a hard character split.
+function splitForDiscord(content) {
+  if (content.length <= DISCORD_MESSAGE_LIMIT) return [content];
+  const blocks = content.split('\n\n\n');
+  const chunks = [];
+  let current = '';
+  for (const block of blocks) {
+    const candidate = current ? `${current}\n\n\n${block}` : block;
+    if (candidate.length > DISCORD_MESSAGE_LIMIT && current) {
+      chunks.push(current);
+      current = block;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks.flatMap(c => {
+    if (c.length <= DISCORD_MESSAGE_LIMIT) return [c];
+    const hardSplit = [];
+    for (let i = 0; i < c.length; i += DISCORD_MESSAGE_LIMIT) hardSplit.push(c.slice(i, i + DISCORD_MESSAGE_LIMIT));
+    return hardSplit;
+  });
+}
+
+async function sendDiscordAlert(content) {
+  if (!DISCORD_WEBHOOK_URL) return { skipped: 'no_webhook_configured' };
+  const chunks = splitForDiscord(content);
+  for (let i = 0; i < chunks.length; i++) {
+    const prefix = chunks.length > 1 ? `(${i + 1}/${chunks.length}) ` : '';
+    await postDiscordMessage(prefix + chunks[i]);
+    if (i < chunks.length - 1) await new Promise(res => setTimeout(res, 500)); // stay comfortably under Discord's ~5-req/2s webhook rate limit
+  }
+  return { sent: true, messages: chunks.length };
 }
 
 // ── Account hash ──────────────────────────────────────────────────────────────
