@@ -3152,10 +3152,17 @@ function etSlotsEvery(startHHMM, endHHMM, stepMinutes) {
   }
   return out;
 }
+// Tightened from 5 to 2 min in the priority windows (per explicit user
+// request, "try it today") now that the loop's EDGAR-check portion is fast on
+// its own — the reason a tighter cadence didn't make sense before was that
+// the whole loop, including Finnhub sector sync, took ~100s/run, so most
+// sub-2-min triggers would've just been skipped by discoveryLoopRunning's
+// overlap guard anyway. Moving sector sync onto its own independent schedule
+// (see runUniverseSectorSync below) is what actually unblocks this.
 const DISCOVERY_ET_SLOTS = [
-  ...etSlotsEvery('06:00', '09:30', 5),   // premarket cluster
+  ...etSlotsEvery('06:00', '09:30', 2),   // premarket cluster
   ...etSlotsEvery('10:30', '15:30', 60),  // regular session, hourly
-  ...etSlotsEvery('16:00', '18:00', 5),   // post-close filing rush
+  ...etSlotsEvery('16:00', '18:00', 2),   // post-close filing rush
   '21:45',                                // late-filer sweep before EDGAR's 10pm ET cutoff
 ];
 let lastDiscoverySlotFired = null; // "YYYY-MM-DD THH:MM" — dedups within a slot
@@ -3442,14 +3449,13 @@ async function runDiscoveryLoop() {
     // ingest below always sees current volume rather than needing days to warm up.
     const universeVolumeResult = await refreshUniverseVolume()
       .catch(e => { scoutLogLine({ event: 'universe_volume_sync_failed', error: e.message }); return { error: e.message }; });
-    // Bounded batch per tick (~55s at Finnhub's throttle) — a full pass over
-    // ~7,700 symbols takes days of ticks to complete, not one call; sector_cache's
-    // own fetched_at/stale bookkeeping is what makes that resumable, see
-    // refreshUniverseSectorCache's comment in sectors.js. Restored per explicit
-    // user requirement — Technology sector is required again alongside
-    // sentiment/volume in sendConsolidatedMaterialAlert and recent-filings.
-    const universeSectorResult = await sectors.refreshUniverseSectorCache(db, FINNHUB_API_KEY, { limit: 50 })
-      .catch(e => { scoutLogLine({ event: 'universe_sector_sync_failed', error: e.message }); return { error: e.message }; });
+    // Sector sync intentionally NOT run here — see runUniverseSectorSync's own
+    // independent schedule below. It used to run in this loop, but at ~55s/
+    // call (Finnhub's throttle) it was the dominant cost of a ~100s/run loop,
+    // which meant tightening this loop's own cadence below ~2 min was
+    // pointless (discoveryLoopRunning's overlap guard would just skip most
+    // triggers). Decoupling it is what actually made a tighter EDGAR-check
+    // cadence meaningful, per explicit user request.
     const universeIngestResult = await ingestUniverseFilingsFromEdgarSearch().catch(e => {
       scoutLogLine({ event: 'universe_firehose_ingest_failed', error: e.message });
       return { fetched: 0, inserted: 0, error: e.message };
@@ -3459,8 +3465,8 @@ async function runDiscoveryLoop() {
     const alertResult = await sendConsolidatedMaterialAlert();
     const digestResult = await maybeSendDailyDigest();
     evictSecCache(); // per spec: run the eviction check after every discovery loop iteration
-    scoutLogLine({ event: 'discovery_loop_end', tickers: tickers.length, ...analysisResult, universe: { volumeSync: universeVolumeResult, sectorSync: universeSectorResult, ingest: universeIngestResult, ...universeAnalysisResult }, alerts: alertResult, digest: digestResult });
-    return { tickers: tickers.length, ...analysisResult, universe: { volumeSync: universeVolumeResult, sectorSync: universeSectorResult, ingest: universeIngestResult, ...universeAnalysisResult }, alerts: alertResult, digest: digestResult };
+    scoutLogLine({ event: 'discovery_loop_end', tickers: tickers.length, ...analysisResult, universe: { volumeSync: universeVolumeResult, ingest: universeIngestResult, ...universeAnalysisResult }, alerts: alertResult, digest: digestResult });
+    return { tickers: tickers.length, ...analysisResult, universe: { volumeSync: universeVolumeResult, ingest: universeIngestResult, ...universeAnalysisResult }, alerts: alertResult, digest: digestResult };
   } catch (e) {
     scoutLogLine({ event: 'discovery_loop_error', error: e.message });
     throw e;
@@ -3491,6 +3497,28 @@ setInterval(() => {
   scoutLogLine({ event: 'discovery_slot_fired', slot: slotKey });
   runDiscoveryLoop().catch(() => {});
 }, 60 * 1000);
+
+// Independent from runDiscoveryLoop/DISCOVERY_ET_SLOTS on purpose — Finnhub
+// classification isn't market-hours-dependent, and bundling it into the
+// EDGAR-check loop was what capped how tight that loop's own cadence could
+// usefully be (see DISCOVERY_ET_SLOTS' comment). Runs on a flat interval, not
+// ET-slot-matched, since there's no reason this needs to align with market
+// hours the way EDGAR checks do.
+let sectorSyncRunning = false;
+async function runUniverseSectorSync() {
+  if (sectorSyncRunning) return;
+  sectorSyncRunning = true;
+  try {
+    const result = await sectors.refreshUniverseSectorCache(db, FINNHUB_API_KEY, { limit: 50 });
+    scoutLogLine({ event: 'universe_sector_sync', ...result });
+  } catch (e) {
+    scoutLogLine({ event: 'universe_sector_sync_failed', error: e.message });
+  } finally {
+    sectorSyncRunning = false;
+  }
+}
+setTimeout(() => runUniverseSectorSync(), 90000); // staggered a little after the first discovery-loop boot run
+setInterval(() => runUniverseSectorSync(), 15 * 60 * 1000);
 
 // Single-ticker 8-K analysis — the osterm.html "search a new ticker" onboarding
 // flow's analysis step. Deliberately NOT the discovery loop: scoped to exactly one
