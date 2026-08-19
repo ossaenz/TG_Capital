@@ -1693,7 +1693,7 @@ async function syncTickerUniverse({ force = false } = {}) {
 // primary quality signal. NULL (not yet checked) still passes — treated as
 // "unknown," not "illiquid," so a ticker isn't silently excluded from the
 // firehose during the brief window before its first volume check completes;
-// ingestUniverseFilingsFromDailyIndex, the recent-filings dashboard endpoint,
+// ingestUniverseFilingsFromEdgarSearch, the recent-filings dashboard endpoint,
 // and sendConsolidatedMaterialAlert all apply this same floor.
 const UNIVERSE_MIN_AVG_VOLUME = 500000;
 const UNIVERSE_VOLUME_SYNC_INTERVAL_DAYS = 1; // volume moves daily, unlike exchange listing/sector
@@ -1735,92 +1735,84 @@ async function refreshUniverseVolume() {
   return { checked: symbols.length, updated };
 }
 
-// Every filing of any form type SEC received on `day` (a Date) — the daily-
-// index file, not a per-CIK loop. One request covers every filer, which is
-// the only way market-wide 8-K coverage is actually affordable (looping
-// scout_ticker_universe's ~7,700 tickers through the per-CIK submissions API
-// the watchlist path uses would take tens of minutes per pass). Returns null
-// if there's no index for that day yet (confirmed live: SEC's Archives path
-// returns 403, not 404, for a not-yet-published/nonexistent daily index —
-// both are treated as "no index," caller falls back further back).
-async function fetchEdgarDailyIndexText(day) {
-  const quarter = Math.floor(day.getUTCMonth() / 3) + 1;
-  const yyyymmdd = `${day.getUTCFullYear()}${String(day.getUTCMonth() + 1).padStart(2, '0')}${String(day.getUTCDate()).padStart(2, '0')}`;
-  const url = `https://www.sec.gov/Archives/edgar/daily-index/${day.getUTCFullYear()}/QTR${quarter}/form.${yyyymmdd}.idx`;
-  const r = await fetch(url, { headers: { 'User-Agent': SEC_USER_AGENT }, signal: AbortSignal.timeout(30000) });
-  if (r.status === 404 || r.status === 403) return null;
-  if (!r.ok) throw new Error(`EDGAR daily index fetch failed: ${r.status}`);
-  return r.text();
-}
-
-// The .idx header is two visually-stacked lines that do NOT share a column
-// frame with the data rows (confirmed against a real file — naive fixed-offset
-// slicing cut "20260814" into "2026081"/"4"). Anchoring on each field's actual
-// shape — 12-char form type, then name, numeric CIK, 8-digit date, file path —
-// is robust regardless of company-name length; same approach as
-// edgar_8k_price_filter.py's _parse_8k_rows.
-const EDGAR_IDX_ROW_RE = /^(.{12})(.*?)\s+(\d+)\s+(\d{8})\s+(\S+)\s*$/;
-function parseEightKIndexRows(indexText) {
-  const rows = [];
-  for (const line of indexText.split('\n')) {
-    const m = EDGAR_IDX_ROW_RE.exec(line);
-    if (!m) continue;
-    const formType = m[1].trim();
-    if (formType !== '8-K' && formType !== '8-K/A') continue;
-    // Matches the "${filedAt}T00:00:00Z" convention fetchSecFilingsForTicker
-    // already uses — filed_at is compared/sorted as a string elsewhere
-    // (analyzeAndStorePending8Ks's date-range filter, digest ORDER BY), so a
-    // format mismatch here would silently break those, not just display.
-    const raw = m[4]; // YYYYMMDD
-    const filedAt = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}T00:00:00Z`;
-    const cik = Number(m[3]);
-    // filing_url stays the combined full-submission .txt (m[5]) — fetchFilingText
-    // fetches this exact URL to get the actual document body for 8-K analysis, so
-    // it can't be swapped for a nicer-looking page that has no filing prose on it
-    // (e.g. EDGAR's filing-index page, which is just a document list). The .txt
-    // link IS what's ugly in an email though — see filingDisplayUrl(), used only
-    // at display time (email/dashboard), which derives a prettier link from this
-    // one without changing what actually gets fetched for analysis.
-    const accessionMatch = m[5].match(/([\d-]+)\.txt$/);
-    const accession = accessionMatch ? accessionMatch[1] : null;
-    rows.push({ form_type: formType, entity_name: m[2].trim(), cik, filed_at: filedAt, accession_number: accession, filing_url: `https://www.sec.gov/Archives/${m[5]}` });
+// Every 8-K filed market-wide in [startDate, endDate] via EDGAR's full-text
+// search API (efts.sec.gov) — replaces the daily-index bulk file this
+// firehose originally used. Per explicit user report ("why am I getting the
+// day before's filings"): the daily-index file for a given day is only
+// published AFTER that day's market close — confirmed live, still 403 at
+// 6:43am ET for the current day — so it's structurally always at least a day
+// behind, useless for same-day trading decisions. This API is genuinely
+// real-time (confirmed live: same-day filings appear within minutes of
+// being disseminated). 100 hits/page; a full day is ~450 8-Ks, so ~5 pages.
+async function fetchEightKHitsFromEdgarSearch(startDate, endDate) {
+  const fmt = d => d.toISOString().slice(0, 10);
+  const start = fmt(startDate), end = fmt(endDate);
+  const PAGE_SIZE = 100;
+  const MAX_PAGES = 20; // safety cap — 2,000 filings is far more than a couple of days ever produces
+  const hits = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const url = `https://efts.sec.gov/LATEST/search-index?q=%22%22&forms=8-K&startdt=${start}&enddt=${end}&from=${page * PAGE_SIZE}`;
+    const r = await fetch(url, { headers: { 'User-Agent': SEC_USER_AGENT }, signal: AbortSignal.timeout(30000) });
+    if (!r.ok) throw new Error(`EDGAR full-text search failed: ${r.status}`);
+    const data = await r.json();
+    const pageHits = data?.hits?.hits || [];
+    hits.push(...pageHits);
+    const total = data?.hits?.total?.value || 0;
+    if (hits.length >= total || pageHits.length === 0) break;
+    await new Promise(res => setTimeout(res, 200)); // courtesy delay between pages
   }
-  return rows;
+  return hits;
 }
 
-// Confirmed live (why did I get a .txt link in the 8-K email): the universe
-// firehose's filing_url is the combined full-submission .txt dump, needed
-// as-is by fetchFilingText for analysis, but a poor link for a human to click
-// — one giant raw text blob, not the filing's own formatted page. This turns
-// it into EDGAR's standard filing-index page instead, purely for display
-// (email bodies, the recent-filings dashboard endpoint) — never used for the
-// actual analysis fetch, which must keep hitting the real .txt. Per-ticker
-// (watchlist) filing_urls already point at a real per-document page and pass
-// through unchanged.
-function filingDisplayUrl(url) {
-  const m = String(url || '').match(/^(https:\/\/www\.sec\.gov\/Archives\/edgar\/data\/\d+)\/([\d-]+)\.txt$/);
-  return m ? `${m[1]}/${m[2]}-index.htm` : url;
+// The search index has one hit per DOCUMENT within a filing, not one per
+// filing — confirmed live: a single Datavault 8-K returned 5 hits (the
+// primary document plus 4 exhibits, all sharing one accession number). Only
+// file_type === form reliably identifies the primary document (exhibits show
+// file_type like "EX-10.2"); anything else is filtered out by the caller, not
+// deduped after the fact, so there's no risk of the *exhibit* winning the
+// INSERT OR IGNORE race and becoming what fetchFilingText analyzes instead of
+// the actual 8-K body.
+//
+// filing_url is derived from _id's "{accession}:{primary-doc-filename}" shape
+// and points at the real per-document page (confirmed live it resolves) —
+// unlike the old daily-index-sourced links, this is already fetchable for
+// analysis AND already the nice link a human would want, no separate
+// filingDisplayUrl() transform needed for filings ingested this way.
+function parseEdgarSearchHit(hit) {
+  const s = hit._source || {};
+  if (s.file_type !== s.form) return null; // exhibit, not the primary document
+  const cik = Number(s.ciks?.[0]);
+  const accession = s.adsh;
+  if (!cik || !accession || !s.file_date) return null;
+  const primaryDoc = String(hit._id || '').split(':')[1] || null;
+  if (!primaryDoc) return null;
+  const accessionNoDash = accession.replace(/-/g, '');
+  return {
+    form_type: s.form,
+    entity_name: (s.display_names?.[0] || '').replace(/\s*\([A-Z.,\s]+\)\s*\(CIK[^)]*\)\s*$/, '').trim(),
+    cik,
+    filed_at: `${s.file_date}T00:00:00Z`,
+    accession_number: accession,
+    filing_url: `https://www.sec.gov/Archives/edgar/data/${cik}/${accessionNoDash}/${primaryDoc}`,
+  };
 }
 
-// Firehose ingest: every 8-K filed market-wide today, walking back up to a
-// week if today's index isn't published yet — confirmed live that a single
-// day isn't enough (Monday's fallback of "yesterday" lands on Sunday, which
-// also has no index; needs to walk back to Friday). Matched against
-// scout_ticker_universe and stored into scout_sec_filings exactly like the
-// watchlist's per-ticker fetch does — same table, same downstream rendering
-// on Scout/osterm.html. Deliberately excludes tickers already on
+// Firehose ingest: queries a small trailing window (today + yesterday, not
+// just today) so a run right after midnight ET, or one that hit a transient
+// failure, still catches anything missed — INSERT OR IGNORE on
+// accession_number makes re-querying the same window on every tick a safe
+// no-op for filings already on file, not wasted duplicate work. Matched
+// against scout_ticker_universe and stored into scout_sec_filings exactly
+// like the watchlist's per-ticker fetch does — same table, same downstream
+// rendering on Scout/osterm.html. Deliberately excludes tickers already on
 // scout_watchlist: those keep going through fetchAndStoreSecFilingsForNewTicker
-// unchanged (it also pulls insider Form 4 data the daily index doesn't have).
-async function ingestUniverseFilingsFromDailyIndex() {
-  const MAX_LOOKBACK_DAYS = 7;
-  let text = null, daysBack = 0;
-  for (; daysBack <= MAX_LOOKBACK_DAYS; daysBack++) {
-    text = await fetchEdgarDailyIndexText(new Date(Date.now() - daysBack * 86400000));
-    if (text != null) break;
-  }
-  if (text == null) return { fetched: 0, inserted: 0, reason: 'no_index_available_in_lookback_window' };
+// unchanged (it also pulls insider Form 4 data this search doesn't return).
+async function ingestUniverseFilingsFromEdgarSearch() {
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 86400000);
+  const hits = await fetchEightKHitsFromEdgarSearch(yesterday, today);
+  const rows = hits.map(parseEdgarSearchHit).filter(Boolean);
 
-  const rows = parseEightKIndexRows(text);
   const universe = new Map(db.prepare(`
     SELECT cik, ticker FROM scout_ticker_universe
     WHERE ticker NOT IN (SELECT ticker FROM scout_watchlist)
@@ -1830,12 +1822,24 @@ async function ingestUniverseFilingsFromDailyIndex() {
   let inserted = 0;
   for (const row of rows) {
     const ticker = universe.get(row.cik);
-    if (!ticker || !row.accession_number) continue;
+    if (!ticker) continue;
     const info = stmtInsertSecFiling.run(ticker, row.accession_number, row.entity_name, row.form_type, row.filed_at, null, row.filing_url, null);
     if (info.changes) inserted++;
   }
-  scoutLogLine({ event: 'universe_firehose_ingest', daysBack, fetched: rows.length, inserted });
+  scoutLogLine({ event: 'universe_firehose_ingest', fetched: rows.length, inserted });
   return { fetched: rows.length, inserted };
+}
+
+// Confirmed live (why did I get a .txt link in the 8-K email): filings
+// ingested by the OLD daily-index mechanism stored the combined full-
+// submission .txt dump as filing_url — needed as-is by fetchFilingText for
+// analysis at the time, but a poor link for a human to click. Filings
+// ingested via ingestUniverseFilingsFromEdgarSearch already have a real
+// per-document filing_url and pass through this unchanged; this only rewrites
+// the pattern still sitting on older rows already in the database.
+function filingDisplayUrl(url) {
+  const m = String(url || '').match(/^(https:\/\/www\.sec\.gov\/Archives\/edgar\/data\/\d+)\/([\d-]+)\.txt$/);
+  return m ? `${m[1]}/${m[2]}-index.htm` : url;
 }
 
 async function fetchSecFilingsForTicker(ticker, startDateISO, endDateISO) {
@@ -3429,7 +3433,7 @@ async function runDiscoveryLoop() {
 
     // Ticker-universe firehose — every US, major-exchange-listed (no OTC)
     // company, not just the watchlist. Bulk daily-index fetch (not a per-
-    // ticker loop, see ingestUniverseFilingsFromDailyIndex), triaged with the
+    // ticker loop, see ingestUniverseFilingsFromEdgarSearch), triaged with the
     // cheap EIGHT_K_TRIAGE_MODEL. Sync is staleness-guarded internally so this
     // is a cheap no-op call on every loop except roughly once a week.
     await syncTickerUniverse().catch(e => scoutLogLine({ event: 'ticker_universe_sync_failed', error: e.message }));
@@ -3446,7 +3450,7 @@ async function runDiscoveryLoop() {
     // sentiment/volume in sendConsolidatedMaterialAlert and recent-filings.
     const universeSectorResult = await sectors.refreshUniverseSectorCache(db, FINNHUB_API_KEY, { limit: 50 })
       .catch(e => { scoutLogLine({ event: 'universe_sector_sync_failed', error: e.message }); return { error: e.message }; });
-    const universeIngestResult = await ingestUniverseFilingsFromDailyIndex().catch(e => {
+    const universeIngestResult = await ingestUniverseFilingsFromEdgarSearch().catch(e => {
       scoutLogLine({ event: 'universe_firehose_ingest_failed', error: e.message });
       return { fetched: 0, inserted: 0, error: e.message };
     });
