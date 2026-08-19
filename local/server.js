@@ -210,6 +210,14 @@ const GOOGLE_AUTH_URL      = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL     = 'https://oauth2.googleapis.com/token';
 const GMAIL_SCOPE          = 'https://www.googleapis.com/auth/gmail.send';
 
+// Discord — a plain incoming webhook, not OAuth (per explicit user requirement:
+// Google Chat was considered and ruled out since its webhook integration is a
+// Workspace-only feature, and re-scoping the existing Gmail OAuth client for
+// Chat's API would've needed a fresh re-authorization anyway). Optional: unset
+// just means sendDiscordAlert no-ops, same "degrade, don't fail" pattern as
+// gmailReady().
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || '';
+
 const DATA_DIR    = path.join(__dirname, 'data');
 const CERTS_DIR   = path.join(__dirname, 'certs');
 const WEBAPP_DIR  = path.join(__dirname, 'webapp');
@@ -763,6 +771,24 @@ async function sendGmailAlert(subject, bodyText) {
   });
   if (!r.ok) throw new Error(`Gmail send failed: ${await r.text()}`);
   return r.json();
+}
+
+// Discord caps a webhook message's content at 2000 chars — truncates with an
+// explicit marker rather than silently cutting off mid-sentence or erroring,
+// since the full text is always still in the paired Gmail alert.
+const DISCORD_MESSAGE_LIMIT = 2000;
+async function sendDiscordAlert(content) {
+  if (!DISCORD_WEBHOOK_URL) return { skipped: 'no_webhook_configured' };
+  const truncated = content.length > DISCORD_MESSAGE_LIMIT
+    ? content.slice(0, DISCORD_MESSAGE_LIMIT - 60) + '\n\n… truncated, see the full alert email for everything.'
+    : content;
+  const r = await fetch(DISCORD_WEBHOOK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: truncated }),
+  });
+  if (!r.ok) throw new Error(`Discord webhook failed: ${r.status} ${await r.text()}`);
+  return { sent: true };
 }
 
 // ── Account hash ──────────────────────────────────────────────────────────────
@@ -3343,6 +3369,15 @@ async function sendConsolidatedMaterialAlert() {
   const subject = `${bearishTickers.length ? '[SEC Alert ⚠ BEARISH] ' : '[SEC Alert] '}${pending.length} material filing(s) across ${tickers.length} ticker(s)`;
   try {
     await sendGmailAlert(subject, body);
+    // Best-effort, per explicit user requirement to also post here — a Discord
+    // failure is logged but never blocks the email path or the alert_sent_at
+    // stamping below; the email already went out, so retrying the whole alert
+    // over a Discord-only failure would just duplicate it.
+    try {
+      await sendDiscordAlert(`**${subject}**\n\n${body}`);
+    } catch (e) {
+      scoutLogLine({ event: 'consolidated_alert_discord_failed', error: e.message });
+    }
     const markSent = db.prepare(`UPDATE scout_sec_filings SET alert_sent_at = datetime('now') WHERE id = ?`);
     for (const f of pending) markSent.run(f.id);
     scoutLogLine({ event: 'consolidated_alert_sent', count: pending.length, tickers: tickers.length });
