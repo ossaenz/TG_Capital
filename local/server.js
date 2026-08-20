@@ -5425,10 +5425,17 @@ function generateScoutLookupReply({ message }) {
 // model still answered from stale RAG monthly-P&L chunks, misreading them as current
 // portfolio value and once fabricating an entirely wrong current date. Same reasoning
 // as isStrategyRequest/isShortExposureRequest above — this is a demonstrated
-// tool/grounding reliability gap, not a hypothetical one.
+// tool/grounding reliability gap, not a hypothetical one. Confirmed again live:
+// "tell me how much unrealized pnl i have" fell through every existing pattern
+// here (none of them covered "unrealized"), reached the model's own tool choice,
+// and it answered from RAG'd journal entries instead of calling get_positions —
+// generatePortfolioStatusReply already computes this exact figure correctly
+// (Open P&L, from the live snapshot), it just wasn't being triggered for this
+// phrasing. p(?:&|n)?l matches "pl"/"p&l"/"pnl" — the old p&?l only matched the
+// first two, missing the "pnl" spelling entirely across every pattern below.
 function isPortfolioStatusRequest(message) {
   const m = String(message || '');
-  return /\b(how\s+is\s+(my\s+|the\s+)?portfolio|portfolio\s+(doing|status)|how\s+am\s+i\s+doing\s+today|how('?s|\s+is)\s+my\s+account\s+(doing|today)|account\s+status|today'?s\s+p&?l|day'?s\s+p&?l|current\s+portfolio\s+(value|status)|net\s+liq(?:uidation)?\s+(value|today))\b/i.test(m);
+  return /\b(how\s+is\s+(my\s+|the\s+)?portfolio|portfolio\s+(doing|status)|how\s+am\s+i\s+doing\s+today|how('?s|\s+is)\s+my\s+account\s+(doing|today)|account\s+status|today'?s\s+p(?:&|n)?l|day'?s\s+p(?:&|n)?l|unrealized\s+p(?:&|n)?l|open\s+p(?:&|n)?l|open\s+position(?:s)?\s+p(?:&|n)?l|current\s+portfolio\s+(value|status)|net\s+liq(?:uidation)?\s+(value|today))\b/i.test(m);
 }
 
 // Deterministic, not model-chosen — same reasoning as the other short-circuits
