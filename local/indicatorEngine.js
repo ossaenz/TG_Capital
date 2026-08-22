@@ -46,11 +46,12 @@ function _volumeSpike(candles) {
 
 /**
  * candles: Schwab /pricehistory candles array (needs .close and .volume per bar).
+ * sentiment: optional ADANOS sentiment object { score: 0-100, label: string, confidence: 0-1 }
  * Returns a confluence read for one ticker — never fetches anything itself,
  * matching the dependency-injection pattern used elsewhere (tradeIdeas.js,
  * portfolioRisk.js): callers pass in data already fetched via schwabMarket.
  */
-function computeConfluence(symbol, candles) {
+function computeConfluence(symbol, candles, sentiment = null) {
   const closes = (candles || []).map(c => Number(c.close || 0)).filter(Boolean);
   if (closes.length < 36) {
     return { symbol, fires: false, signals: [], reason: 'Not enough price history (need 36+ daily bars for MACD)' };
@@ -93,8 +94,25 @@ function computeConfluence(symbol, candles) {
     alignedCount++;
   }
 
+  // Sentiment is also a confirmation layer: bullish sentiment with bullish technicals
+  // = higher conviction. Bearish sentiment + bullish technicals = caution flag but not
+  // a counter-signal (misalignment just lowers confidence, doesn't flip direction).
+  let sentimentAlignment = null;
+  if (sentiment && sentiment.score != null && direction) {
+    const sentimentLabel = sentiment.score > 70 ? 'bullish' : sentiment.score < 30 ? 'bearish' : 'neutral';
+    const isAligned = sentimentLabel === direction;
+    sentimentAlignment = { label: sentimentLabel, isAligned, confidence: sentiment.confidence };
+    if (isAligned && sentiment.confidence > 0.6) {
+      signals.push(`Sentiment ${sentimentLabel} (${Math.round(sentiment.score)}, conf: ${Math.round(sentiment.confidence * 100)}%)`);
+      alignedCount++;
+    } else if (!isAligned) {
+      signals.push(`⚠ Sentiment ${sentimentLabel} — misaligned with ${direction} technicals`);
+    }
+  }
+
   return {
     symbol, rsi14, macd, macdCross, adx, volumeSpike: volSpike,
+    sentiment: sentiment ? { score: sentiment.score, label: sentiment.label, alignment: sentimentAlignment } : null,
     direction, signals,
     fires: direction != null && alignedCount >= CONFLUENCE_MIN_SIGNALS,
   };

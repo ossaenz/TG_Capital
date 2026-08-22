@@ -25,7 +25,7 @@ function _defaultWatchlist(db, limit = 6) {
 
 async function _buildTickerDigest(symbol, helpers) {
   const {
-    schwabMarket, computeDashboard, ragSearch,
+    schwabMarket, computeDashboard, ragSearch, sentinel, db,
     trendDirection, supportResistance, ivRankProxy, normalizeIvPct,
     nearestByDelta, chainLiquidityScore, pickExpiry, flattenChain,
   } = helpers;
@@ -77,6 +77,13 @@ async function _buildTickerDigest(symbol, helpers) {
     } catch { return false; }
   }).slice(0, 3);
 
+  // Fetch latest sentiment from ADANOS (if available)
+  const latestSentiment = sentinel ? sentinel.getLatestSentiment(db, symbol) : null;
+  const sentimentHistory = sentinel ? sentinel.getSentimentHistory(db, symbol, 7) : [];
+  const sentimentTrend = sentimentHistory.length > 1
+    ? sentimentHistory[0].sentiment_score - sentimentHistory[sentimentHistory.length - 1].sentiment_score
+    : null;
+
   return {
     symbol, spot, trend, support, resistance, ivPct, ivRank,
     technicals: { rsi14, macd, atr14 },
@@ -93,22 +100,34 @@ async function _buildTickerDigest(symbol, helpers) {
       closedCount: own.stats.totalTrades, netPnL: own.stats.netPnL,
       winRate: own.stats.winRate, profitFactor: own.stats.profitFactor,
     } : null,
+    sentiment: latestSentiment ? {
+      score: latestSentiment.sentiment_score,
+      label: latestSentiment.sentiment_label,
+      confidence: latestSentiment.confidence,
+      trend: sentimentTrend ? (sentimentTrend > 5 ? 'improving' : sentimentTrend < -5 ? 'declining' : 'stable') : null,
+    } : null,
     ragNotes: (ragHits || []).map(h => (h.content || '').slice(0, 300)),
   };
 }
 
 const SYSTEM_PROMPT = [
   "You are Plutus, a trading research assistant helping the trader review candidate setups.",
-  "You will be given a JSON digest with precomputed technical data, option-chain candidates, and",
-  "the trader's own historical performance for a list of tickers. Every number in the digest is",
+  "You will be given a JSON digest with precomputed technical data, option-chain candidates, market sentiment (ADANOS),",
+  "and the trader's own historical performance for a list of tickers. Every number in the digest is",
   "ALREADY CALCULATED — do not recompute, restate a rounded/altered version, or invent any number",
   "not present in the digest. If a field is null, say the data wasn't available rather than guessing.",
+  "",
+  "Sentiment scoring (0-100): 0-30 = bearish, 31-70 = neutral, 71-100 = bullish. Trend shows momentum:",
+  "'improving' = rising sentiment, 'declining' = falling, 'stable' = flat. Confidence is 0-1.",
+  "Sentiment data is market-wide opinion from news/social signals; use it as context for conviction,",
+  "NOT as a signal to override technical setups. A bullish setup with bearish sentiment = caution needed.",
   "",
   "Your job: rank the tickers and write up the 2-3 most interesting candidates as a short markdown",
   "report. For each: name the setup (side/strike/expiry from candidateStrikes), the reasoning",
   "(trend/support-resistance/IV rank/RSI/MACD/ATR from technicals — atr14 is the average daily dollar",
-  "range, useful context for how far a strike is in ATR terms, not just percent), and how the trader's own history on",
-  "that ticker (ownHistory) supports or cautions against it — if ownHistory shows a losing track",
+  "range, useful context for how far a strike is in ATR terms, not just percent), sentiment alignment",
+  "(if sentiment field exists, note whether it's aligned with your setup directionally), and how the trader's own",
+  "history on that ticker (ownHistory) supports or cautions against it — if ownHistory shows a losing track",
   "record on that ticker, say so explicitly rather than ignoring it.",
   "",
   "This is decision support for the trader's own manual review — it is NOT financial advice and NOT",

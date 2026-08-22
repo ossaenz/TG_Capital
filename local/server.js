@@ -598,6 +598,10 @@ try { db.exec(`ALTER TABLE scout_sentiment ADD COLUMN price_at_fetch REAL`); } c
 try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_score ON scout_sentiment(sentiment_score)`); } catch {}
 try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_label ON scout_sentiment(sentiment_label)`); } catch {}
 
+// Add sentiment columns to confluence_alerts for signal tracking
+try { db.exec(`ALTER TABLE confluence_alerts ADD COLUMN sentiment_score REAL`); } catch {}
+try { db.exec(`ALTER TABLE confluence_alerts ADD COLUMN sentiment_label TEXT`); } catch {}
+
 // ── Query Vault: validated-SQL memory mapped to human intent, so repeat
 //    asks reuse a known-good query_trades SQL string instead of the model
 //    re-deriving it from scratch each time ───────────────────────────────────
@@ -2489,7 +2493,7 @@ app.get('/api/analytics/benchmark', async (req, res) => {
 // out once both call sites needed the identical object.
 function buildTradeIdeaHelpers() {
   return {
-    db, schwabMarket, fetchLiveAccountSnapshot, buildTradingStyleProfile,
+    db, sentinel, schwabMarket, fetchLiveAccountSnapshot, buildTradingStyleProfile,
     computeDashboard, ragSearch: (q, topN) => rag.search(db, q, OLLAMA_HOST, EMBED_MODEL, topN),
     trendDirection: _trendDirection, supportResistance: _supportResistance,
     ivRankProxy: _ivRankProxy, normalizeIvPct: _normalizeIvPct,
@@ -2826,7 +2830,9 @@ async function scanOneTicker(ticker) {
   } catch (e) {
     return { ticker, error: e.message };
   }
-  const confluence = indicatorEngine.computeConfluence(ticker, hData?.candles || []);
+  // Fetch latest sentiment for confluence scoring
+  const latestSentiment = sentinel.getLatestSentiment(db, ticker);
+  const confluence = indicatorEngine.computeConfluence(ticker, hData?.candles || [], latestSentiment);
   // Set regardless of whether it fired — this is the only record that a scan
   // actually completed for this ticker, since confluence_alerts only ever gets
   // a row when something fires.
@@ -2840,10 +2846,10 @@ async function scanOneTicker(ticker) {
   if (already) return { ticker, fired: false, reason: 'already_alerted_today' };
 
   const info = db.prepare(`
-    INSERT INTO confluence_alerts (ticker, direction, rsi14, macd_status, volume_ratio, signals_json)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(ticker, confluence.direction, confluence.rsi14, confluence.macdCross, confluence.volumeSpike?.ratio ?? null, JSON.stringify(confluence.signals));
-  return { id: info.lastInsertRowid, ticker, fired: true, direction: confluence.direction, signals: confluence.signals };
+    INSERT INTO confluence_alerts (ticker, direction, rsi14, macd_status, volume_ratio, signals_json, sentiment_score, sentiment_label)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(ticker, confluence.direction, confluence.rsi14, confluence.macdCross, confluence.volumeSpike?.ratio ?? null, JSON.stringify(confluence.signals), confluence.sentiment?.score ?? null, confluence.sentiment?.label ?? null);
+  return { id: info.lastInsertRowid, ticker, fired: true, direction: confluence.direction, signals: confluence.signals, sentiment: confluence.sentiment };
 }
 
 app.post('/api/scout/scan', async (req, res) => {
@@ -3605,13 +3611,32 @@ async function maybeSendDailyDigest() {
     ? `⚠ BEARISH WATCHLIST: ${bearishTickers.join(', ')}\n${'='.repeat(40)}\n\n`
     : '';
 
+  // Sector sentiment overview from ADANOS
+  let sectorSentimentBanner = '';
+  try {
+    const sectorData = sentinel.getSectorSentiment(db);
+    if (sectorData && sectorData.length > 0) {
+      const sorted = sectorData.sort((a, b) => (b.avg_score || 0) - (a.avg_score || 0));
+      const bullishSectors = sorted.filter(s => (s.avg_score || 0) > 70).map(s => `${s.sector} (${Math.round(s.avg_score)})`);
+      const bearishSectors = sorted.filter(s => (s.avg_score || 0) < 30).map(s => `${s.sector} (${Math.round(s.avg_score)})`);
+      const bannerLines = [];
+      if (bullishSectors.length) bannerLines.push(`📈 BULLISH: ${bullishSectors.join(', ')}`);
+      if (bearishSectors.length) bannerLines.push(`📉 BEARISH: ${bearishSectors.join(', ')}`);
+      if (bannerLines.length) {
+        sectorSentimentBanner = `MARKET SENTIMENT BY SECTOR\n${'─'.repeat(40)}\n${bannerLines.join('\n')}\n${'='.repeat(40)}\n\n`;
+      }
+    }
+  } catch (e) {
+    // Silent fail — sector sentiment is best-effort enhancement to the digest
+  }
+
   // Sentiment shown per-filing is the same real llama_sentiment field already
   // computed for every 8-K (material or not) — not a new LLM call, not a new
   // score. "Worth a closer look" is the honest version of a recommendation for
   // an otherwise-non-material digest: flagged only when sentiment leans off
   // neutral, since that's the one real signal available here that a routine
   // filing might deserve more attention than the digest format implies.
-  const body = bearishBanner + digestItems.map(f => {
+  const body = bearishBanner + sectorSentimentBanner + digestItems.map(f => {
     const keyItems = (JSON.parse(f.llama_key_items || '[]') || []).join(', ');
     const notable = f.llama_sentiment && f.llama_sentiment !== 'neutral';
     return [
