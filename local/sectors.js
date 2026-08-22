@@ -65,27 +65,32 @@ async function _classifySymbols(db, apiKey, symbols, limit) {
   if (limit) needsRefresh = needsRefresh.slice(0, limit);
 
   const upsert = db.prepare(`
-    INSERT INTO sector_cache (symbol, sector, industry, source, fetched_at, stale)
-    VALUES (@symbol, @sector, @industry, @source, datetime('now'), @stale)
+    INSERT INTO sector_cache (symbol, sector, industry, source, fetched_at, stale, market_cap)
+    VALUES (@symbol, @sector, @industry, @source, datetime('now'), @stale, @market_cap)
     ON CONFLICT(symbol) DO UPDATE SET
       sector = excluded.sector, industry = excluded.industry,
-      source = excluded.source, fetched_at = excluded.fetched_at, stale = excluded.stale
+      source = excluded.source, fetched_at = excluded.fetched_at, stale = excluded.stale,
+      market_cap = excluded.market_cap
   `);
 
   let updated = 0, failed = 0;
   for (const sym of needsRefresh) {
     if (INDEX_ETF_SYMBOLS.has(sym)) {
-      upsert.run({ symbol: sym, sector: 'Index/ETF', industry: null, source: 'static', stale: 0 });
+      upsert.run({ symbol: sym, sector: 'Index/ETF', industry: null, source: 'static', stale: 0, market_cap: null });
       updated++;
       continue;
     }
     try {
       const profile = await fetchFinnhubProfile(sym, apiKey);
       const industry = profile?.finnhubIndustry || null;
-      upsert.run({ symbol: sym, sector: normalizeSector(industry) || 'Unclassified', industry, source: 'finnhub', stale: industry ? 0 : 1 });
+      // Finnhub's marketCapitalization is already in millions of USD (confirmed
+      // against its own docs) — stored as-is, so callers compare directly against
+      // a millions-denominated threshold (see BLUE_CHIP_MIN_MARKET_CAP in server.js).
+      const marketCap = Number.isFinite(profile?.marketCapitalization) ? profile.marketCapitalization : null;
+      upsert.run({ symbol: sym, sector: normalizeSector(industry) || 'Unclassified', industry, source: 'finnhub', stale: industry ? 0 : 1, market_cap: marketCap });
       updated++;
     } catch (e) {
-      upsert.run({ symbol: sym, sector: 'Unclassified', industry: null, source: 'finnhub', stale: 1 });
+      upsert.run({ symbol: sym, sector: 'Unclassified', industry: null, source: 'finnhub', stale: 1, market_cap: null });
       failed++;
     }
     await sleep(1100); // Finnhub free tier: stay comfortably under 60/min

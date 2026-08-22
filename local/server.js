@@ -282,6 +282,13 @@ db.exec(`
     stale      INTEGER DEFAULT 0
   ) STRICT;
 `);
+// market_cap added after the table already existed in running installs — ALTER, not
+// part of the CREATE above, same convention as scout_ticker_universe's avg_volume.
+// Finnhub's /stock/profile2 already returns marketCapitalization in the same call
+// _classifySymbols makes for sector/industry — this just also persists it, so
+// "blue-chip" can be a dynamic market-cap threshold (see BLUE_CHIP_MIN_MARKET_CAP)
+// instead of a hand-maintained ticker list that drifts out of date.
+try { db.exec(`ALTER TABLE sector_cache ADD COLUMN market_cap REAL`); } catch {}
 
 // ── Performance Coach: risk-thermometer history (margin/leverage over time) ──
 db.exec(`
@@ -335,6 +342,15 @@ db.exec(`
 // scanned" from "scanned, nothing fired" without this. Set on every scan
 // regardless of outcome.
 try { db.exec(`ALTER TABLE scout_watchlist ADD COLUMN last_scanned_at TEXT`); } catch {}
+// Separate from last_scanned_at above (that one's the confluence/RSI scan, a
+// different process) — this tracks the SEC filing fetch specifically, so the
+// osterm.html per-ticker "Refresh SEC data" button can show an accurate
+// "last checked" time. Set in fetchAndStoreSecFilingsForNewTicker.
+try { db.exec(`ALTER TABLE scout_watchlist ADD COLUMN last_sec_refresh_at TEXT`); } catch {}
+// Persisted onboarding failure verdict — see fetchAndStoreSecFilingsForNewTicker and
+// onboardTickerInBackground for where this is set/cleared, and computeOnboardStatus
+// for where it's surfaced to the client.
+try { db.exec(`ALTER TABLE scout_watchlist ADD COLUMN onboard_failed_reason TEXT`); } catch {}
 
 // ── Multi-user groundwork (schema only — not enforced anywhere yet) ──────────
 // This app is single-user today: one Schwab account, one GMAIL_SEND_TO, no
@@ -777,13 +793,38 @@ async function sendGmailAlert(subject, bodyText) {
 // explicit marker rather than silently cutting off mid-sentence or erroring,
 // since the full text is always still in the paired Gmail alert.
 const DISCORD_MESSAGE_LIMIT = 2000;
+// Reserves room for sendDiscordAlert's own "(N/M) " prefix, which gets prepended
+// to every chunk AFTER splitForDiscord has already decided chunk boundaries —
+// without this, a chunk sized right up to the raw 2000-char limit overflows once
+// the prefix is added. Confirmed live: a 174-filing/160-ticker batch produced
+// enough chunks to hit exactly this ("Discord webhook failed: 400 Must be 2000 or
+// fewer in length"), which the small batches this was originally tested against
+// never triggered. Generous enough for any realistic message count.
+const DISCORD_CHUNK_LIMIT = DISCORD_MESSAGE_LIMIT - 20;
+// Retries on 429 specifically, honoring Discord's own retry_after — per explicit
+// user report: a 174-filing backlog (52 chunks) hit a real rate limit partway
+// through (chunk 45/52) and the whole send aborted, silently dropping the rest.
+// The fixed 500ms inter-message delay in sendDiscordAlert is fine for routine
+// small batches but not a burst this size; a bounded retry here is what actually
+// makes a large backlog land completely instead of stopping wherever the limit
+// happened to bite.
+const DISCORD_MAX_RETRIES = 4;
 async function postDiscordMessage(content) {
-  const r = await fetch(DISCORD_WEBHOOK_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
-  });
-  if (!r.ok) throw new Error(`Discord webhook failed: ${r.status} ${await r.text()}`);
+  for (let attempt = 0; attempt <= DISCORD_MAX_RETRIES; attempt++) {
+    const r = await fetch(DISCORD_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    if (r.ok) return;
+    if (r.status === 429 && attempt < DISCORD_MAX_RETRIES) {
+      const body = await r.json().catch(() => ({}));
+      const waitMs = Math.max(300, Math.round((body.retry_after || 1) * 1000)) + 100; // small buffer past what Discord asked for
+      await new Promise(res => setTimeout(res, waitMs));
+      continue;
+    }
+    throw new Error(`Discord webhook failed: ${r.status} ${await r.text()}`);
+  }
 }
 
 // Splits into multiple messages instead of truncating, per explicit user
@@ -794,13 +835,13 @@ async function postDiscordMessage(content) {
 // single ticker block bigger than the whole 2000-char limit — not expected in
 // practice — falls back to a hard character split.
 function splitForDiscord(content) {
-  if (content.length <= DISCORD_MESSAGE_LIMIT) return [content];
+  if (content.length <= DISCORD_MESSAGE_LIMIT) return [content]; // fits as a single message — no prefix ever added, so the full limit applies
   const blocks = content.split('\n\n\n');
   const chunks = [];
   let current = '';
   for (const block of blocks) {
     const candidate = current ? `${current}\n\n\n${block}` : block;
-    if (candidate.length > DISCORD_MESSAGE_LIMIT && current) {
+    if (candidate.length > DISCORD_CHUNK_LIMIT && current) {
       chunks.push(current);
       current = block;
     } else {
@@ -809,9 +850,9 @@ function splitForDiscord(content) {
   }
   if (current) chunks.push(current);
   return chunks.flatMap(c => {
-    if (c.length <= DISCORD_MESSAGE_LIMIT) return [c];
+    if (c.length <= DISCORD_CHUNK_LIMIT) return [c];
     const hardSplit = [];
-    for (let i = 0; i < c.length; i += DISCORD_MESSAGE_LIMIT) hardSplit.push(c.slice(i, i + DISCORD_MESSAGE_LIMIT));
+    for (let i = 0; i < c.length; i += DISCORD_CHUNK_LIMIT) hardSplit.push(c.slice(i, i + DISCORD_CHUNK_LIMIT));
     return hardSplit;
   });
 }
@@ -1875,10 +1916,14 @@ async function ingestUniverseFilingsFromEdgarSearch() {
   const hits = await fetchEightKHitsFromEdgarSearch(yesterday, today);
   const rows = hits.map(parseEdgarSearchHit).filter(Boolean);
 
+  // Pharma/biotech excluded right here, at ingest — per explicit user requirement,
+  // this is what actually cuts processing time: those tickers' 8-Ks never get a
+  // scout_sec_filings row, so they never reach fetchFilingText/LLM triage below.
   const universe = new Map(db.prepare(`
     SELECT cik, ticker FROM scout_ticker_universe
     WHERE ticker NOT IN (SELECT ticker FROM scout_watchlist)
       AND (avg_volume IS NULL OR avg_volume >= ?)
+      AND ticker NOT IN (SELECT symbol FROM sector_cache WHERE industry IN ${EXCLUDED_UNIVERSE_INDUSTRIES_SQL})
   `).all(UNIVERSE_MIN_AVG_VOLUME).map(r => [r.cik, r.ticker]));
 
   let inserted = 0;
@@ -2076,6 +2121,14 @@ async function fetchAndStoreInsiderFilings(ticker, insiderMeta) {
 // since it always re-fetches unconditionally — INSERT OR IGNORE on the unique
 // accession_number makes re-running it for a ticker that already has filings safe and
 // idempotent, only ever adding genuinely new ones since the last run.
+// onboard_failed_reason on scout_watchlist is this function's own persisted verdict —
+// per explicit user report (a ticker frozen forever on "Fetching SEC filings" with no
+// error shown): a ticker that's genuinely not an SEC filer (not in company_tickers.json)
+// previously failed silently, in-memory only, so computeOnboardStatus had no way to tell
+// "will never resolve" from "just started" and the UI spun on the same step forever, even
+// across page reloads. Writing the outcome here — success clears it, failure sets it —
+// means it's correct immediately on the very next status read, from any client, no polling
+// heuristic needed. Safe no-op UPDATE for tickers not (yet) in scout_watchlist.
 async function fetchAndStoreSecFilingsForNewTicker(ticker) {
   try {
     const end = new Date().toISOString().slice(0, 10);
@@ -2083,6 +2136,7 @@ async function fetchAndStoreSecFilingsForNewTicker(ticker) {
     const { found, filings, insiderFilings } = await fetchSecFilingsForTicker(ticker, start, end);
     if (!found) {
       scoutLogLine({ event: 'sec_fetch_on_add', ticker, result: 'not_found_in_sec_ticker_map' });
+      db.prepare(`UPDATE scout_watchlist SET onboard_failed_reason = ?, last_sec_refresh_at = datetime('now') WHERE ticker = ?`).run('not_found_in_sec_ticker_map', ticker);
       return { ok: false, ticker, reason: 'not_found_in_sec_ticker_map' };
     }
     let inserted = 0;
@@ -2094,9 +2148,11 @@ async function fetchAndStoreSecFilingsForNewTicker(ticker) {
     }
     const insiderResult = insiderFilings.length ? await fetchAndStoreInsiderFilings(ticker, insiderFilings) : { fetched: 0, inserted: 0 };
     scoutLogLine({ event: 'sec_fetch_on_add', ticker, fetched: filings.length, inserted, insiderFetched: insiderResult.fetched, insiderInserted: insiderResult.inserted });
+    db.prepare(`UPDATE scout_watchlist SET onboard_failed_reason = NULL, last_sec_refresh_at = datetime('now') WHERE ticker = ?`).run(ticker);
     return { ok: true, ticker, fetched: filings.length, inserted, insider: insiderResult };
   } catch (e) {
     scoutLogLine({ event: 'sec_fetch_on_add', ticker, error: e.message });
+    db.prepare(`UPDATE scout_watchlist SET onboard_failed_reason = ?, last_sec_refresh_at = datetime('now') WHERE ticker = ?`).run(String(e.message || 'unknown error').slice(0, 300), ticker);
     return { ok: false, ticker, reason: e.message };
   }
 }
@@ -2581,7 +2637,7 @@ app.get('/api/trade-ideas/:id', (req, res) => {
 // ── API: Proactive Scout — confluence-alert watchlist ─────────────────────────
 app.get('/api/scout/watchlist', (req, res) => {
   try {
-    const rows = db.prepare(`SELECT ticker, added_at, last_scanned_at FROM scout_watchlist ORDER BY ticker`).all();
+    const rows = db.prepare(`SELECT ticker, added_at, last_scanned_at, last_sec_refresh_at, onboard_failed_reason FROM scout_watchlist ORDER BY ticker`).all();
     res.json({ ok: true, watchlist: rows });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
@@ -2612,7 +2668,17 @@ app.post('/api/scout/sec-filings/refresh', async (req, res) => {
 
     const results = [];
     for (const t of tickers) {
-      results.push(await fetchAndStoreSecFilingsForNewTicker(t));
+      const fetchResult = await fetchAndStoreSecFilingsForNewTicker(t);
+      // Also analyze whatever's newly pending for this ticker, per explicit user
+      // request for a real per-ticker "refresh" button — without this, a manual
+      // refresh would fetch new 8-Ks but leave them unanalyzed until the next
+      // scheduled discovery-loop tick, so the Filings tab wouldn't actually show
+      // anything new yet. Not suppressAlerts: a genuinely new material filing
+      // found this way should alert exactly like the automatic pipeline does.
+      const analysisResult = fetchResult.ok
+        ? await analyzeAndStorePending8Ks({ ticker: t })
+        : { checked: 0, analyzed: 0, failed: 0 };
+      results.push({ ...fetchResult, analysis: analysisResult });
       await new Promise(r => setTimeout(r, 300)); // light courtesy delay between EDGAR calls
     }
     res.json({ ok: true, results });
@@ -2637,15 +2703,13 @@ app.get('/api/scout/edgar/recent-filings', (req, res) => {
   try {
     const days = Math.min(180, Math.max(1, parseInt(req.query.days, 10) || 30));
     const ticker = req.query.ticker ? String(req.query.ticker).trim().toUpperCase() : null;
-    // Watchlist filings as before, PLUS material, positive-sentiment,
-    // Technology-sector ticker-universe filings for liquid-enough-to-trade
-    // names (all four required together per explicit user requirement) —
-    // everything else the firehose ingests stays DB-only, visible by
-    // searching that specific ticker (which auto-onboards it onto the
-    // watchlist, see onboardOrResumeTicker in osterm.html) rather than in
-    // this glance feed. Mirrors sendConsolidatedMaterialAlert's own filter exactly, so
-    // "shows on the dashboard" and "would trigger an email" agree with each
-    // other for universe tickers.
+    // Watchlist filings as before, PLUS material, non-pharma/biotech ticker-universe
+    // filings for liquid-enough-to-trade names — everything else the firehose ingests
+    // stays DB-only, visible by searching that specific ticker (which auto-onboards
+    // it onto the watchlist, see onboardOrResumeTicker in osterm.html) rather than in
+    // this glance feed. Mirrors sendConsolidatedMaterialAlert's own filter exactly
+    // (no priority-bucket gate — see that function's comment for why it was dropped),
+    // so "shows on the dashboard" and "would trigger an email/Discord alert" agree.
     const rows = db.prepare(`
       SELECT ticker, form_type, filed_at, description, filing_url,
              llama_summary, llama_sentiment, llama_material_event,
@@ -2656,15 +2720,16 @@ app.get('/api/scout/edgar/recent-filings', (req, res) => {
           ticker IN (SELECT ticker FROM scout_watchlist)
           OR (
             llama_material_event = 1
-            AND llama_sentiment = 'positive'
-            AND ticker IN (SELECT symbol FROM sector_cache WHERE sector = 'Technology')
+            AND ticker NOT IN (SELECT symbol FROM sector_cache WHERE industry IN ${EXCLUDED_UNIVERSE_INDUSTRIES_SQL})
             AND ticker IN (SELECT ticker FROM scout_ticker_universe WHERE avg_volume IS NULL OR avg_volume >= ?)
           )
         )
         ${ticker ? 'AND ticker = ?' : ''}
       ORDER BY filed_at DESC
       LIMIT 200
-    `).all(...(ticker ? [`-${days} days`, UNIVERSE_MIN_AVG_VOLUME, ticker] : [`-${days} days`, UNIVERSE_MIN_AVG_VOLUME]));
+    `).all(...(ticker
+      ? [`-${days} days`, UNIVERSE_MIN_AVG_VOLUME, ticker]
+      : [`-${days} days`, UNIVERSE_MIN_AVG_VOLUME]));
     res.json({ ok: true, days, ticker, count: rows.length, filings: rows.map(f => ({ ...f, filing_url: filingDisplayUrl(f.filing_url) })) });
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
@@ -3278,8 +3343,12 @@ const EIGHT_K_ANALYSIS_MAX_AGE_DAYS = 7;
 // difference (thousands vs. dozens of filings/day) is exactly why this needs
 // its own cheaper model rather than reusing analyze8KWithLlama.
 async function analyzeAndStorePending8Ks({ ticker = null, maxAgeDays = EIGHT_K_ANALYSIS_MAX_AGE_DAYS, suppressAlerts = false, scope = 'watchlist' } = {}) {
+  // Pharma/biotech excluded here too (defensive redundancy for any row already
+  // ingested before the ingest-time exclusion above existed) — stops wasted LLM
+  // triage calls on legacy pending rows, not just newly-ingested ones.
   const scopeClause = scope === 'universe'
-    ? `AND ticker IN (SELECT ticker FROM scout_ticker_universe) AND ticker NOT IN (SELECT ticker FROM scout_watchlist)`
+    ? `AND ticker IN (SELECT ticker FROM scout_ticker_universe) AND ticker NOT IN (SELECT ticker FROM scout_watchlist)
+       AND ticker NOT IN (SELECT symbol FROM sector_cache WHERE industry IN ${EXCLUDED_UNIVERSE_INDUSTRIES_SQL})`
     : `AND ticker IN (SELECT ticker FROM scout_watchlist)`;
   const analyzeFn = scope === 'universe' ? triageEightKWithLlama : analyze8KWithLlama;
   const pending = db.prepare(`
@@ -3346,6 +3415,49 @@ let discoveryLoopRunning = false;
 function getAlertSettings() { return db.prepare(`SELECT * FROM scout_alert_settings WHERE id = 1`).get(); }
 function gmailReady() { return !!(loadGmailTokens()?.refresh_token && GMAIL_SEND_TO); }
 
+// Per explicit user requirement: pharma/biotech is a hard exclusion from the universe
+// firehose — applied at ingest (ingestUniverseFilingsFromEdgarSearch) and triage
+// (analyzeAndStorePending8Ks scope='universe') so excluded tickers never get fetched,
+// triaged, or LLM-analyzed at all, not just filtered out downstream — that's what
+// actually cuts processing time, not a display-layer filter. Matches sector_cache's
+// raw (un-normalized) `industry` field, not the normalized 'Healthcare' sector bucket,
+// so device-maker/provider tickers that also land in Healthcare aren't swept in by
+// accident. Scoped to the universe firehose only, same as the old Technology-only
+// bucket was — the user's own hand-curated scout_watchlist always gets fully analyzed
+// regardless of sector, unchanged.
+const EXCLUDED_UNIVERSE_INDUSTRIES_SQL = `('Biotechnology', 'Pharmaceuticals')`;
+function isPharmaBiotech(ticker) {
+  const row = db.prepare(`SELECT industry FROM sector_cache WHERE symbol = ?`).get(ticker);
+  return !!row && (row.industry === 'Biotechnology' || row.industry === 'Pharmaceuticals');
+}
+
+// $100B — a standard large-cap-and-up cutoff, dynamic against sector_cache.market_cap
+// (Finnhub's marketCapitalization, in millions of USD — see sectors.js) rather than a
+// hand-maintained ticker list, so it stays current as the universe gets classified
+// instead of drifting out of date the way a literal DJIA snapshot would.
+const BLUE_CHIP_MIN_MARKET_CAP = 100000; // in millions ($100B)
+
+// Priority classification for Discord notifications — per explicit user requirement:
+// Financial sector (banks especially), blue-chip (market cap), and Technology names
+// are prioritized. Returns null for anything that doesn't fall in a priority bucket
+// (may still qualify for the immediate alert via watchlist membership, or appear in
+// the plain email digest — this only governs what's tagged/highlighted for Discord).
+function priorityTag(ticker) {
+  const sc = db.prepare(`SELECT sector, industry, market_cap FROM sector_cache WHERE symbol = ?`).get(ticker);
+  const tags = [];
+  if (sc?.industry === 'Banking') tags.push('BANK');
+  else if (sc?.sector === 'Financials') tags.push('FINANCIAL');
+  if (sc?.market_cap != null && sc.market_cap >= BLUE_CHIP_MIN_MARKET_CAP) tags.push('BLUE CHIP');
+  if (sc?.sector === 'Technology') tags.push('TECH');
+  return tags.length ? tags.join(' · ') : null;
+}
+function priorityRank(tag) {
+  if (!tag) return 3;
+  if (tag.includes('BANK')) return 0;
+  if (tag.includes('FINANCIAL')) return 1;
+  return 2; // BLUE CHIP and/or TECH only
+}
+
 // One email covering every currently-unsent qualifying material 8-K, grouped
 // by ticker — per explicit user requirement, replacing the old one-email-per-
 // filing behavior (dispatchMaterialAlerts, removed) which was flooding the
@@ -3356,21 +3468,29 @@ async function sendConsolidatedMaterialAlert() {
   if (settings?.alerts_paused) return { sent: false, skipped: 'paused' };
   if (!gmailReady()) return { sent: false, skipped: 'gmail_not_configured' };
 
-  // Same filter as recent-filings' dashboard query — positive sentiment only
-  // (neutral/negative material events aren't dropped, they just don't get
-  // alert_sent_at stamped here, so they flow into the daily digest instead).
-  // Watchlist tickers always qualify; universe tickers additionally need
-  // Technology sector AND the same liquidity floor as everywhere else in the
-  // firehose — all three required together per explicit user requirement.
+  // Per explicit user requirement: no longer gated on llama_sentiment = 'positive' —
+  // any material 8-K is alert-worthy regardless of whether the model's sentiment read
+  // is positive, neutral, or mixed (regulatory news, macro-driven items, earnings/
+  // guidance, and M&A are all frequently neutral-toned even when highly actionable).
+  //
+  // Also no longer gated on a Financials/blue-chip/Technology priority bucket — that
+  // was tried per an earlier explicit request, but confirmed live to backfire: a
+  // genuinely material, positive-sentiment 8-K on a non-priority-sector ticker (e.g.
+  // RIG/Transocean's $300M drillship contract) was fully analyzed same-day yet sat
+  // with alert_sent_at NULL until the next day's digest, ~20 hours later — useless for
+  // trading the actual move, defeating the point of same-day monitoring for anything
+  // outside those three sectors. Priority bucket now only affects sort order/tagging
+  // (see priorityTag/priorityRank below), not eligibility. Watchlist tickers always
+  // qualify; universe tickers need: not pharma/biotech (hard exclusion — see
+  // isPharmaBiotech) and the existing liquidity floor — nothing else.
   const pending = db.prepare(`
     SELECT * FROM scout_sec_filings
     WHERE form_type = '8-K' AND llama_material_event = 1
       AND llama_analyzed_at IS NOT NULL AND alert_sent_at IS NULL
-      AND llama_sentiment = 'positive'
       AND (
         ticker IN (SELECT ticker FROM scout_watchlist)
         OR (
-          ticker IN (SELECT symbol FROM sector_cache WHERE sector = 'Technology')
+          ticker NOT IN (SELECT symbol FROM sector_cache WHERE industry IN ${EXCLUDED_UNIVERSE_INDUSTRIES_SQL})
           AND ticker IN (SELECT ticker FROM scout_ticker_universe WHERE avg_volume IS NULL OR avg_volume >= ?)
         )
       )
@@ -3380,7 +3500,15 @@ async function sendConsolidatedMaterialAlert() {
 
   const byTicker = {};
   for (const f of pending) (byTicker[f.ticker] = byTicker[f.ticker] || []).push(f);
-  const tickers = Object.keys(byTicker).sort();
+  // Priority-sorted, per explicit user requirement: banks first, then other
+  // Financials, then blue-chip/Technology, then everything else (plain watchlist
+  // tickers with no priority-bucket tag) — alphabetical within each tier.
+  const tagOf = {};
+  for (const t of Object.keys(byTicker)) tagOf[t] = priorityTag(t);
+  const tickers = Object.keys(byTicker).sort((a, b) => {
+    const r = priorityRank(tagOf[a]) - priorityRank(tagOf[b]);
+    return r !== 0 ? r : a.localeCompare(b);
+  });
   const bearishTickers = tickers.filter(t => byTicker[t].some(f => f.llama_bearish_signal));
 
   const bearishBanner = bearishTickers.length
@@ -3399,7 +3527,7 @@ async function sendConsolidatedMaterialAlert() {
         `  ${filingDisplayUrl(f.filing_url)}`,
       ].filter(x => x !== null).join('\n');
     }).join('\n\n');
-    return `${ticker} (${filings.length} filing${filings.length > 1 ? 's' : ''})\n${'-'.repeat(40)}\n${filingBlocks}`;
+    return `${ticker}${tagOf[ticker] ? `  [${tagOf[ticker]}]` : ''} (${filings.length} filing${filings.length > 1 ? 's' : ''})\n${'-'.repeat(40)}\n${filingBlocks}`;
   }).join('\n\n\n');
 
   const subject = `${bearishTickers.length ? '[SEC Alert ⚠ BEARISH] ' : '[SEC Alert] '}${pending.length} material filing(s) across ${tickers.length} ticker(s)`;
@@ -3439,15 +3567,13 @@ async function maybeSendDailyDigest() {
   const now = new Date();
   if (now.getHours() * 60 + now.getMinutes() < hh * 60 + mm) return { sent: false, skipped: 'not_yet_time' };
 
-  // Everything not already alert_sent_at-stamped — watchlist non-material
-  // filings (as before) PLUS any universe filing that didn't clear
-  // sendConsolidatedMaterialAlert's full bar (material + positive sentiment +
-  // Technology sector + liquidity) — a universe filing that fails any one of
-  // those never gets alert_sent_at stamped, so it lands here instead. This is
-  // the "essential notifications only" compromise for the firehose per
-  // explicit user requirement: universe material events still surface (tagged
-  // [MATERIAL] below, sorted first), just in the daily digest instead of an
-  // immediate email.
+  // Everything not already alert_sent_at-stamped — mainly non-material watchlist
+  // filings now, since sendConsolidatedMaterialAlert alerts immediately on any
+  // material event (no priority-bucket gate — see that function's comment). What
+  // still lands here: non-material items, and the rare universe filing that fails
+  // the pharma/biotech exclusion or liquidity floor. Material universe events tagged
+  // [MATERIAL] below are the leftover, not the common case, now that immediate
+  // alerts cover them same-day.
   const digestItems = db.prepare(`
     SELECT * FROM scout_sec_filings
     WHERE form_type = '8-K'
@@ -3486,8 +3612,41 @@ async function maybeSendDailyDigest() {
 
   try {
     await sendGmailAlert(`${bearishTickers.length ? '[SEC Digest ⚠ BEARISH] ' : '[SEC Digest] '}${digestItems.length} filing(s)`, body);
+
+    // Per explicit user requirement: the digest also posts to Discord, but as a
+    // curated highlight reel — not the full mixed watchlist+universe email dump —
+    // limited to items that land in a priority bucket (Financials/banks, blue-chip,
+    // Technology) and aren't pharma/biotech, same broadened (not positive-only)
+    // sentiment bar as the immediate alert. Best-effort: a Discord failure is
+    // logged but never blocks the email digest already sent above, or the
+    // last_digest_sent_date stamping below.
+    const highlightItems = digestItems.filter(f => !isPharmaBiotech(f.ticker) && priorityTag(f.ticker));
+    if (highlightItems.length) {
+      const tagOf = {};
+      for (const f of highlightItems) tagOf[f.ticker] = priorityTag(f.ticker);
+      const sorted = [...highlightItems].sort((a, b) => {
+        const r = priorityRank(tagOf[a.ticker]) - priorityRank(tagOf[b.ticker]);
+        return r !== 0 ? r : a.ticker.localeCompare(b.ticker);
+      });
+      const highlightBody = sorted.map(f => {
+        const keyItems = (JSON.parse(f.llama_key_items || '[]') || []).join(', ');
+        return [
+          `${f.ticker}  [${tagOf[f.ticker]}] — ${keyItems} — ${(f.filed_at || '').slice(0, 10)}${f.llama_material_event ? '  [MATERIAL]' : ''}${f.llama_bearish_signal ? '  [⚠ BEARISH]' : ''}`,
+          `  ${f.llama_summary || ''}`,
+          f.llama_sentiment ? `  Sentiment: ${f.llama_sentiment}` : null,
+          f.llama_catalyst ? `  Potential catalyst: ${f.llama_catalyst}` : null,
+          `  ${filingDisplayUrl(f.filing_url)}`,
+        ].filter(x => x !== null).join('\n');
+      }).join('\n\n');
+      try {
+        await sendDiscordAlert(`**[Daily Digest — Banks/Blue-Chip/Tech] ${highlightItems.length} item(s)**\n\n${highlightBody}`);
+      } catch (e) {
+        scoutLogLine({ event: 'digest_discord_failed', error: e.message });
+      }
+    }
+
     db.prepare(`UPDATE scout_alert_settings SET last_digest_sent_date = ? WHERE id = 1`).run(todayStr);
-    return { sent: true, count: digestItems.length };
+    return { sent: true, count: digestItems.length, discordHighlights: highlightItems.length };
   } catch (e) {
     scoutLogLine({ event: 'digest_failed', error: e.message });
     return { sent: false, error: e.message };
@@ -3613,7 +3772,8 @@ app.post('/api/scout/8k-analysis/run', async (req, res) => {
 // code had no way to resume — this function is what makes resuming possible).
 const ONBOARD_8K_ANALYSIS_WINDOW_DAYS = 180; // must match the maxAgeDays onboardTickerInBackground actually analyzes
 function computeOnboardStatus(ticker) {
-  const watchlisted = !!db.prepare(`SELECT 1 FROM scout_watchlist WHERE ticker = ?`).get(ticker);
+  const watchlistRow = db.prepare(`SELECT onboard_failed_reason FROM scout_watchlist WHERE ticker = ?`).get(ticker);
+  const watchlisted = !!watchlistRow;
   const filings = db.prepare(`SELECT COUNT(*) n FROM scout_sec_filings WHERE ticker = ?`).get(ticker).n;
   // Scoped to the same window the analysis step actually targets — a ticker can
   // have real 8-Ks older than that which are intentionally never analyzed (see
@@ -3635,6 +3795,11 @@ function computeOnboardStatus(ticker) {
   const hasTruthCheck = !!db.prepare(`SELECT 1 FROM scout_contradictions WHERE ticker = ? LIMIT 1`).get(ticker);
   return {
     watchlisted, filings, eightKs, analyzed8Ks, failed8Ks, hasTruthCheck,
+    // Persisted verdict from fetchAndStoreSecFilingsForNewTicker / onboardTickerInBackground
+    // — a real, non-null value here means onboarding will NOT resolve on its own (the
+    // ticker isn't an SEC filer, or a later step threw), so the client can show a
+    // definitive failure immediately instead of guessing from a polling timeout.
+    onboardFailedReason: watchlistRow?.onboard_failed_reason || null,
     complete: watchlisted && filings > 0 && (analyzed8Ks + failed8Ks) >= eightKs && hasTruthCheck,
   };
 }
@@ -3667,6 +3832,10 @@ async function onboardTickerInBackground(ticker) {
 
     scoutLogLine({ event: 'onboard_complete', ticker });
   } catch (e) {
+    // Anything past the fetch step (Truth Check, etc.) that throws is the other way
+    // a ticker used to get stuck forever with no visible reason — persisted here for
+    // the same reason fetchAndStoreSecFilingsForNewTicker persists its own failures.
+    db.prepare(`UPDATE scout_watchlist SET onboard_failed_reason = ? WHERE ticker = ?`).run(String(e.message || 'unknown error').slice(0, 300), ticker);
     scoutLogLine({ event: 'onboard_error', ticker, error: e.message });
   }
 }
@@ -6444,7 +6613,13 @@ ${top}`.trim();
   // led the model to fabricate fictitious data sources instead. Now these
   // only fire in an unambiguous market-price phrase, and ACCOUNT_INTENT below
   // is an explicit override that wins regardless of what else matches.
-  const MARKET_INTENT = /\b(news|headline|market|stock\s+price|share\s+price|current\s+price|market\s+price|spot\s+price|today'?s?\s+(market|news)|what('?s|\s+is)\s+(happening|going\s+on)|latest\s+news|recent\s+news|catalyst|earnings\s+today|analyst|upgrade|downgrade|economic\s+(calendar|data)|fed|fomc|cpi|jobs\s+report|gdp|sentiment|outlook|forecast|guidance|price\s+target|short\s+interest|insider\s+(buying|selling|trading)|13F|institutional\s+ownership)\b/i;
+  // markets? (not just market) — per explicit user report: "why are the stock
+  // markets down today?" fell through to RAG instead of a web search because
+  // \bmarket\b doesn't match the plural "markets" (no word boundary between "t"
+  // and "s"). Confirmed live: that exact phrasing tested false against the old
+  // regex. Also added a bare "down|up today" / "why is/are ... down/up" pattern
+  // since that's a very natural way to ask this without saying "market" at all.
+  const MARKET_INTENT = /\b(news|headline|markets?|stock\s+price|share\s+price|current\s+price|market\s+price|spot\s+price|today'?s?\s+(markets?|news)|what('?s|\s+is)\s+(happening|going\s+on)|latest\s+news|recent\s+news|catalyst|earnings\s+today|analyst|upgrade|downgrade|economic\s+(calendar|data)|fed|fomc|cpi|jobs\s+report|gdp|sentiment|outlook|forecast|guidance|price\s+target|short\s+interest|insider\s+(buying|selling|trading)|13F|institutional\s+ownership|why\s+(is|are|was|were).{0,20}\b(down|up|red|green|selling\s?off|rallying)\b)\b/i;
   const ACCOUNT_INTENT = /\bmy\s+(pnl|p\s?&\s?l|position|trade|account|portfolio|win\s?rate|performance|holding|option|stock|equity)/i;
   // A request for actual chain/greeks data (e.g. "give me IV, delta, and volume")
   // needs the real get_options_chain tool, not a web search — "catalyst"/"outlook"
