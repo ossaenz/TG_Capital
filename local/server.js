@@ -6748,6 +6748,7 @@ app.post('/api/ai/chat', async (req, res) => {
   let statsContext = 'No trade data yet — run a Schwab sync first.';
   let styleContext = 'Trading style profile unavailable.';
   let liveAccountContext = 'Live account snapshot unavailable in this response.';
+  let todayTradesContext = '';
   try {
     const dash = computeDashboard(null, null);
     if (dash) {
@@ -6766,6 +6767,35 @@ ${top}`.trim();
     }
     styleContext = buildTradingStyleProfile();
   } catch {}
+
+  // TODAY'S ACTIVITY — what the trader has actually done THIS CALENDAR DAY
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const todayTrades = db.prepare(`
+      SELECT symbol, action, quantity, price, amount, date_iso
+      FROM trades
+      WHERE date_iso >= ? AND date_iso < datetime(?, '+1 day')
+      ORDER BY date_iso DESC
+    `).all(today, today);
+
+    if (todayTrades.length > 0) {
+      const tradeLines = todayTrades.map(t => {
+        const action = t.action || 'Unknown';
+        const qty = t.quantity || 0;
+        const price = t.price ? `@$${t.price.toFixed(2)}` : '';
+        const pnl = t.amount ? `($${t.amount.toFixed(2)})` : '';
+        return `  ${(t.date_iso || '').slice(11, 19)} — ${action} ${qty} ${t.symbol} ${price} ${pnl}`.trim();
+      }).join('\n');
+
+      const todayPnl = todayTrades.reduce((sum, t) => sum + (t.amount || 0), 0);
+      todayTradesContext = `
+TODAY'S TRADES (${today}):
+${tradeLines}
+- Total P&L today: $${todayPnl.toFixed(2)}`.trim();
+    }
+  } catch (e) {
+    // Silent fail — if today's trades can't be fetched, Plutus still has the full summary
+  }
 
   try {
     const snap = await fetchLiveAccountSnapshot();
@@ -7067,7 +7097,9 @@ ${statsContext}
 
 ${styleContext}
 
-${liveAccountContext}`;
+${liveAccountContext}
+
+${todayTradesContext}`;
 
   // Assemble the user message — inject pre-fetched news or RAG context
   let userMessage = message;
@@ -7082,7 +7114,7 @@ ${liveAccountContext}`;
   // from stale RAG monthly-P&L chunks instead of this real-time data, because RAG
   // context sits right next to the question and the live snapshot didn't. Repeating a
   // condensed version here, in the user turn, puts it on equal footing.
-  const liveSnapshotReminder = `[CURRENT REAL-TIME ACCOUNT SNAPSHOT — as of ${todayStr}]\n${liveAccountContext}\nThis is the ONLY source for "today"/"current"/"right now" portfolio status. Any records or summaries below (RAG, journal, monthly aggregates) are HISTORICAL — never present them as today's status.\n\n---\n\n`;
+  const liveSnapshotReminder = `[CURRENT REAL-TIME ACCOUNT SNAPSHOT — as of ${todayStr}]\n${liveAccountContext}${todayTradesContext ? '\n\n' + todayTradesContext : ''}\nThis is the ONLY source for "today"/"current"/"right now" portfolio status. Any records or summaries below (RAG, journal, monthly aggregates) are HISTORICAL — never present them as today's status.\n\n---\n\n`;
   if (prefetchedNews) {
     userMessage = `${liveSnapshotReminder}[LIVE WEB RESULTS for "${message}"]:\n\n${prefetchedNews}\n\n---\n\nUsing the web results above, answer my question: ${message}`;
   } else if (ragContext) {
