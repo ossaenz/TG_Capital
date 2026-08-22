@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ticker Sentiment Analysis Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 20px;
+    }
+
+    header h1 {
+      font-size: 28px;
+      font-weight: 600;
+    }
+
+    .ticker-badge {
+      font-size: 24px;
+      font-weight: bold;
+      color: #4fc3f7;
+      margin-left: 10px;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      padding: 8px 16px;
+      background: #1e1e1e;
+      color: #e0e0e0;
+      border: 1px solid #333;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    button:hover {
+      background: #2a2a2a;
+      border-color: #555;
+    }
+
+    button.primary {
+      background: #4fc3f7;
+      color: #0f0f0f;
+      border-color: #4fc3f7;
+    }
+
+    button.primary:hover {
+      background: #29b6f6;
+      border-color: #29b6f6;
+    }
+
+    .tiles-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    .tile {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tile:hover {
+      background: #222;
+      border-color: #555;
+      transform: translateY(-2px);
+    }
+
+    .tile-title {
+      font-size: 14px;
+      color: #999;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .tile-content {
+      font-size: 28px;
+      font-weight: bold;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    .tile-label {
+      font-size: 12px;
+      color: #666;
+    }
+
+    .sentiment-bullish {
+      color: #4caf50;
+    }
+
+    .sentiment-neutral {
+      color: #ffc107;
+    }
+
+    .sentiment-bearish {
+      color: #f44336;
+    }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.2s;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .modal-content {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 12px;
+      padding: 30px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 80vh;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 15px;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: #999;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+    }
+
+    .modal-close:hover {
+      color: #e0e0e0;
+    }
+
+    .chart-container {
+      width: 100%;
+      height: 300px;
+      margin: 20px 0;
+      background: #0f0f0f;
+      border-radius: 4px;
+      padding: 10px;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+
+    .data-table th {
+      background: #0f0f0f;
+      padding: 10px;
+      text-align: left;
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #999;
+      border-bottom: 1px solid #333;
+    }
+
+    .data-table td {
+      padding: 10px;
+      border-bottom: 1px solid #222;
+    }
+
+    .data-table tr:hover {
+      background: #222;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+
+    .error {
+      background: #c62828;
+      color: #fff;
+      padding: 15px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+    }
+
+    .stat-box {
+      display: inline-block;
+      background: #0f0f0f;
+      padding: 10px 15px;
+      border-radius: 4px;
+      margin: 5px 5px 5px 0;
+      font-size: 13px;
+    }
+
+    .stat-label {
+      color: #999;
+      font-size: 11px;
+    }
+
+    .stat-value {
+      color: #4fc3f7;
+      font-weight: bold;
+      margin-top: 3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Sentiment Analysis <span class="ticker-badge" id="tickerDisplay">-</span></h1>
+      <div class="header-actions">
+        <button onclick="refreshAll()">🔄 Refresh</button>
+        <button onclick="goBack()">← Back</button>
+      </div>
+    </header>
+
+    <div id="error" class="error" style="display:none;"></div>
+    <div id="loading" class="loading">Loading sentiment data...</div>
+
+    <div id="content" style="display:none;">
+      <div class="tiles-grid">
+        <!-- Tile 1: Current Sentiment -->
+        <div class="tile" onclick="openModal('sentiment-modal')">
+          <div class="tile-title">Current Sentiment</div>
+          <div class="tile-content" id="tile-sentiment-score">-</div>
+          <div class="tile-label" id="tile-sentiment-label">Loading...</div>
+        </div>
+
+        <!-- Tile 2: Sentiment Trend -->
+        <div class="tile" onclick="openModal('trend-modal')">
+          <div class="tile-title">7-Day Trend</div>
+          <div class="tile-content" id="tile-trend">-</div>
+          <div class="tile-label">Historical momentum</div>
+        </div>
+
+        <!-- Tile 3: Sentiment Flip Alert -->
+        <div class="tile" onclick="openModal('flip-modal')">
+          <div class="tile-title">Sentiment Flip</div>
+          <div class="tile-content" id="tile-flip">-</div>
+          <div class="tile-label" id="tile-flip-time">None detected</div>
+        </div>
+
+        <!-- Tile 4: Quote Summary -->
+        <div class="tile" onclick="openModal('quote-modal')">
+          <div class="tile-title">Price & Volume</div>
+          <div class="tile-content" id="tile-price">-</div>
+          <div class="tile-label" id="tile-volume">Volume: -</div>
+        </div>
+
+        <!-- Tile 5: Trade History -->
+        <div class="tile" onclick="openModal('trades-modal')">
+          <div class="tile-title">Your Trades</div>
+          <div class="tile-content" id="tile-trades-count">-</div>
+          <div class="tile-label" id="tile-trades-pnl">P&L: -</div>
+        </div>
+
+        <!-- Tile 6: Positions Summary -->
+        <div class="tile" onclick="openModal('positions-modal')">
+          <div class="tile-title">Positions</div>
+          <div class="tile-content" id="tile-positions-count">-</div>
+          <div class="tile-label">Open & Closed</div>
+        </div>
+
+        <!-- Tile 7: Sentiment Confidence -->
+        <div class="tile" onclick="openModal('confidence-modal')">
+          <div class="tile-title">Sentiment Confidence</div>
+          <div class="tile-content" id="tile-confidence">-</div>
+          <div class="tile-label" id="tile-confidence-label">Last updated: -</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <div id="sentiment-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Sentiment Score</h2>
+        <button class="modal-close" onclick="closeModal('sentiment-modal')">×</button>
+      </div>
+      <div id="sentiment-details"></div>
+    </div>
+  </div>
+
+  <div id="trend-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Sentiment Trend</h2>
+        <button class="modal-close" onclick="closeModal('trend-modal')">×</button>
+      </div>
+      <div class="chart-container" id="trend-chart"></div>
+      <table class="data-table" id="trend-table">
+        <thead><tr><th>Date</th><th>Score</th><th>Label</th><th>Confidence</th></tr></thead>
+        <tbody id="trend-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="flip-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Sentiment Flip Detection</h2>
+        <button class="modal-close" onclick="closeModal('flip-modal')">×</button>
+      </div>
+      <div id="flip-details"></div>
+    </div>
+  </div>
+
+  <div id="quote-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Quote & Volume</h2>
+        <button class="modal-close" onclick="closeModal('quote-modal')">×</button>
+      </div>
+      <div id="quote-details"></div>
+    </div>
+  </div>
+
+  <div id="trades-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Trade History</h2>
+        <button class="modal-close" onclick="closeModal('trades-modal')">×</button>
+      </div>
+      <div id="trades-details"></div>
+    </div>
+  </div>
+
+  <div id="positions-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Positions</h2>
+        <button class="modal-close" onclick="closeModal('positions-modal')">×</button>
+      </div>
+      <div id="positions-details"></div>
+    </div>
+  </div>
+
+  <div id="confidence-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Sentiment Confidence</h2>
+        <button class="modal-close" onclick="closeModal('confidence-modal')">×</button>
+      </div>
+      <div id="confidence-details"></div>
+    </div>
+  </div>
+
+  <script>
+    let ticker = '';
+    let analysisData = null;
+
+    function getQueryParam(name) {
+      const params = new URLSearchParams(window.location.search);
+      return params.get(name);
+    }
+
+    function goBack() {
+      window.location.href = '/';
+    }
+
+    function openModal(id) {
+      document.getElementById(id).classList.add('active');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('error');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    async function loadData() {
+      ticker = getQueryParam('symbol') || 'SPY';
+      document.getElementById('tickerDisplay').textContent = ticker;
+
+      try {
+        const res = await fetch(`/api/ticker/${ticker}/analysis`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        analysisData = await res.json();
+
+        if (analysisData.error) {
+          showError(`No data for ${ticker}`);
+          return;
+        }
+
+        renderTiles();
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (err) {
+        showError(`Failed to load data: ${err.message}`);
+      }
+    }
+
+    function renderTiles() {
+      if (!analysisData) return;
+
+      const s = analysisData.sentiment?.latest;
+      const h = analysisData.sentiment?.history || [];
+      const f = analysisData.sentiment?.flip;
+      const q = analysisData.quote;
+      const t = analysisData.trades;
+      const p = analysisData.positions;
+
+      // Tile 1: Sentiment
+      if (s) {
+        const scoreEl = document.getElementById('tile-sentiment-score');
+        const labelEl = document.getElementById('tile-sentiment-label');
+        scoreEl.textContent = Math.round(s.sentiment_score || 0);
+        scoreEl.className = `tile-content sentiment-${s.sentiment_label}`;
+        labelEl.textContent = (s.sentiment_label || 'unknown').toUpperCase();
+      }
+
+      // Tile 2: Trend
+      if (h.length > 1) {
+        const diff = h[0].sentiment_score - h[h.length - 1].sentiment_score;
+        const trend = diff > 5 ? '📈 Up' : diff < -5 ? '📉 Down' : '➡️ Flat';
+        document.getElementById('tile-trend').textContent = trend;
+      }
+
+      // Tile 3: Flip
+      if (f) {
+        document.getElementById('tile-flip').textContent = `${f.was_label} → ${f.now_label}`;
+        document.getElementById('tile-flip').className = `tile-content sentiment-${f.now_label}`;
+        document.getElementById('tile-flip-time').textContent = new Date(f.now_time).toLocaleDateString();
+      }
+
+      // Tile 4: Quote
+      if (q) {
+        document.getElementById('tile-price').textContent = `$${q.price?.toFixed(2) || '-'}`;
+        document.getElementById('tile-volume').textContent = `Volume: ${(q.volume / 1e6).toFixed(1)}M`;
+      }
+
+      // Tile 5: Trades
+      if (t) {
+        document.getElementById('tile-trades-count').textContent = t.trade_count || '0';
+        document.getElementById('tile-trades-pnl').textContent = `P&L: $${(t.total_pnl || 0).toFixed(2)}`;
+      }
+
+      // Tile 6: Positions
+      if (p && p.length > 0) {
+        document.getElementById('tile-positions-count').textContent = p.length;
+      }
+
+      // Tile 7: Confidence
+      if (s) {
+        document.getElementById('tile-confidence').textContent = `${Math.round(s.confidence * 100)}%`;
+        document.getElementById('tile-confidence-label').textContent = `Last: ${new Date(s.fetched_at).toLocaleTimeString()}`;
+      }
+
+      // Populate modals
+      populateModals();
+    }
+
+    function populateModals() {
+      const s = analysisData.sentiment?.latest;
+      const h = analysisData.sentiment?.history || [];
+      const f = analysisData.sentiment?.flip;
+      const q = analysisData.quote;
+      const t = analysisData.trades;
+      const p = analysisData.positions || [];
+
+      // Sentiment details
+      if (s) {
+        document.getElementById('sentiment-details').innerHTML = `
+          <div class="stat-box">
+            <div class="stat-label">Score</div>
+            <div class="stat-value">${Math.round(s.sentiment_score)}/100</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Label</div>
+            <div class="stat-value sentiment-${s.sentiment_label}">${s.sentiment_label.toUpperCase()}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Confidence</div>
+            <div class="stat-value">${Math.round(s.confidence * 100)}%</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Fetched</div>
+            <div class="stat-value">${new Date(s.fetched_at).toLocaleString()}</div>
+          </div>
+        `;
+      }
+
+      // Trend details
+      if (h.length > 0) {
+        let tbody = '';
+        h.slice(0, 10).forEach(row => {
+          tbody += `
+            <tr>
+              <td>${new Date(row.fetched_at).toLocaleString()}</td>
+              <td>${Math.round(row.sentiment_score)}</td>
+              <td>${row.sentiment_label}</td>
+              <td>${Math.round(row.confidence * 100)}%</td>
+            </tr>
+          `;
+        });
+        document.getElementById('trend-body').innerHTML = tbody;
+      }
+
+      // Flip details
+      if (f) {
+        document.getElementById('flip-details').innerHTML = `
+          <p><strong>Bullish to Bearish</strong> or vice versa detected!</p>
+          <div class="stat-box">
+            <div class="stat-label">Was</div>
+            <div class="stat-value sentiment-${f.was_label}">${f.was_label.toUpperCase()} (${Math.round(f.was_score)})</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Now</div>
+            <div class="stat-value sentiment-${f.now_label}">${f.now_label.toUpperCase()} (${Math.round(f.now_score)})</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Changed</div>
+            <div class="stat-value">${new Date(f.now_time).toLocaleString()}</div>
+          </div>
+        `;
+      } else {
+        document.getElementById('flip-details').innerHTML = '<p>No recent sentiment flips detected.</p>';
+      }
+
+      // Quote details
+      if (q) {
+        document.getElementById('quote-details').innerHTML = `
+          <div class="stat-box">
+            <div class="stat-label">Price</div>
+            <div class="stat-value">$${q.price?.toFixed(2) || '-'}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Change</div>
+            <div class="stat-value">${q.change?.toFixed(2) || '0'} (${q.changePct?.toFixed(2) || '0'}%)</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Volume</div>
+            <div class="stat-value">${(q.volume / 1e6).toFixed(1)}M</div>
+          </div>
+        `;
+      }
+
+      // Trades details
+      if (t) {
+        document.getElementById('trades-details').innerHTML = `
+          <div class="stat-box">
+            <div class="stat-label">Total Trades</div>
+            <div class="stat-value">${t.trade_count || '0'}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Total P&L</div>
+            <div class="stat-value" style="color: ${t.total_pnl >= 0 ? '#4caf50' : '#f44336'}">$${(t.total_pnl || 0).toFixed(2)}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Avg per Trade</div>
+            <div class="stat-value">$${t.trade_count ? (t.total_pnl / t.trade_count).toFixed(2) : '0'}</div>
+          </div>
+        `;
+      }
+
+      // Positions details
+      if (p.length > 0) {
+        let tbody = '';
+        p.forEach(pos => {
+          tbody += `
+            <tr>
+              <td>${pos.symbol}</td>
+              <td>${pos.leg_count}</td>
+              <td style="color: ${pos.pnl >= 0 ? '#4caf50' : '#f44336'}">$${pos.pnl.toFixed(2)}</td>
+            </tr>
+          `;
+        });
+        document.getElementById('positions-details').innerHTML = `
+          <table class="data-table">
+            <thead><tr><th>Symbol</th><th>Legs</th><th>P&L</th></tr></thead>
+            <tbody>${tbody}</tbody>
+          </table>
+        `;
+      } else {
+        document.getElementById('positions-details').innerHTML = '<p>No positions found.</p>';
+      }
+
+      // Confidence details
+      if (s) {
+        document.getElementById('confidence-details').innerHTML = `
+          <p>Sentiment confidence score: <strong>${Math.round(s.confidence * 100)}%</strong></p>
+          <p>Higher confidence indicates more reliable sentiment data from ADANOS.</p>
+          <p>Last updated: <strong>${new Date(s.fetched_at).toLocaleString()}</strong></p>
+        `;
+      }
+    }
+
+    async function refreshAll() {
+      try {
+        const res = await fetch(`/api/ticker/${ticker}/sentiment/refresh`, { method: 'POST' });
+        if (res.ok) {
+          loadData();
+        } else {
+          showError('Failed to refresh sentiment data');
+        }
+      } catch (err) {
+        showError(`Refresh error: ${err.message}`);
+      }
+    }
+
+    // Click outside modals to close
+    window.addEventListener('click', (e) => {
+      if (e.target.classList.contains('modal')) {
+        e.target.classList.remove('active');
+      }
+    });
+
+    // Load on page load
+    loadData();
+  </script>
+</body>
+</html>

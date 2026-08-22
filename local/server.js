@@ -58,6 +58,7 @@ const indicators     = require('./indicators.js');
 const plutusTools    = require('./plutusTools.js');
 const lmSentiment    = require('./lmSentiment.js');
 const dilutionLexicon = require('./dilutionLexicon.js');
+const sentinel       = require('./sentinel.js');
 const crypto         = require('crypto');
 const { execSync }   = require('child_process');
 const Database       = require('better-sqlite3');
@@ -82,6 +83,7 @@ const OLLAMA_CHAT_TIMEOUT_MS = Math.max(30000, Number(process.env.OLLAMA_CHAT_TI
 const OLLAMA_API_KEY    = process.env.OLLAMA_API_KEY    || '';
 const PERPLEXITY_API_KEY = process.env.PERPLEXITY_API_KEY || '';
 const FINNHUB_API_KEY    = process.env.FINNHUB_API_KEY    || '';
+const ADANOS_API_KEY     = process.env.ADANOS_API_KEY     || '';
 const SCOUT_INGEST_TOKEN = process.env.SCOUT_INGEST_TOKEN || '';
 // Small-footprint local model for the Contradiction Engine's one-shot
 // SEC-text-vs-sentiment comparison — this doesn't need tool-calling (both
@@ -584,6 +586,17 @@ for (const col of [
 ]) {
   try { db.exec(`ALTER TABLE scout_contradictions ADD COLUMN ${col}`); } catch {}
 }
+
+// ── Proactive Scout: Sentiment data from ADANOS (ticker sentiment scores) ──────
+// Stores structured sentiment data (score 0-100, label, confidence) fetched from
+// ADANOS API, with historical tracking for trend analysis and alerts on flips.
+try { db.exec(`ALTER TABLE scout_sentiment ADD COLUMN sentiment_score REAL`); } catch {}
+try { db.exec(`ALTER TABLE scout_sentiment ADD COLUMN sentiment_label TEXT`); } catch {}
+try { db.exec(`ALTER TABLE scout_sentiment ADD COLUMN confidence REAL`); } catch {}
+try { db.exec(`ALTER TABLE scout_sentiment ADD COLUMN source TEXT DEFAULT 'unknown'`); } catch {}
+try { db.exec(`ALTER TABLE scout_sentiment ADD COLUMN price_at_fetch REAL`); } catch {}
+try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_score ON scout_sentiment(sentiment_score)`); } catch {}
+try { db.exec(`CREATE INDEX IF NOT EXISTS idx_sent_label ON scout_sentiment(sentiment_label)`); } catch {}
 
 // ── Query Vault: validated-SQL memory mapped to human intent, so repeat
 //    asks reuse a known-good query_trades SQL string instead of the model
@@ -3750,6 +3763,25 @@ async function runUniverseSectorSync() {
 setTimeout(() => runUniverseSectorSync(), 90000); // staggered a little after the first discovery-loop boot run
 setInterval(() => runUniverseSectorSync(), 15 * 60 * 1000);
 
+// ── Background: Refresh sentiment data from ADANOS for watchlist tickers ────────
+async function refreshWatchlistSentiment() {
+  if (!ADANOS_API_KEY) return;  // Silent no-op if not configured
+  try {
+    const tickers = db.prepare(`SELECT ticker FROM scout_watchlist`).all().map(r => r.ticker);
+    let updated = 0;
+    for (const ticker of tickers) {
+      const success = await sentinel.fetchAndStoreSentiment(db, ticker, ADANOS_API_KEY);
+      if (success) updated++;
+      await new Promise(r => setTimeout(r, 200)); // rate limit: 5 req/sec
+    }
+    console.log(`✓ Refreshed ${updated}/${tickers.length} watchlist tickers from ADANOS`);
+  } catch (err) {
+    console.warn(`⚠️  Sentiment refresh error:`, err.message);
+  }
+}
+setTimeout(() => refreshWatchlistSentiment(), 120000); // 2 min after boot
+setInterval(() => refreshWatchlistSentiment(), 5 * 60 * 1000); // every 5 min
+
 // Single-ticker 8-K analysis — the osterm.html "search a new ticker" onboarding
 // flow's analysis step. Deliberately NOT the discovery loop: scoped to exactly one
 // ticker (see analyzeAndStorePending8Ks's own comment), wider 180-day window since
@@ -4477,6 +4509,131 @@ app.get('/api/quote/:ticker', async (req, res) => {
         weburl: profile.weburl || null,
       } : null,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── API: Ticker sentiment dashboard (ADANOS integration) ──────────────────────
+app.get('/api/ticker/:symbol/sentiment', (req, res) => {
+  try {
+    const symbol = String(req.params.symbol || '').trim().toUpperCase();
+    if (!symbol) return res.status(400).json({ error: 'symbol is required' });
+    const latestSentiment = sentinel.getLatestSentiment(db, symbol);
+    res.json(latestSentiment || { symbol, error: 'no_sentiment_data' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/ticker/:symbol/sentiment/history', (req, res) => {
+  try {
+    const symbol = String(req.params.symbol || '').trim().toUpperCase();
+    const limit = Math.min(100, Math.max(5, parseInt(req.query.limit || '30', 10)));
+    if (!symbol) return res.status(400).json({ error: 'symbol is required' });
+    const history = sentinel.getSentimentHistory(db, symbol, limit);
+    res.json({ symbol, history });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/ticker/:symbol/analysis', async (req, res) => {
+  try {
+    const symbol = String(req.params.symbol || '').trim().toUpperCase();
+    if (!symbol) return res.status(400).json({ error: 'symbol is required' });
+
+    // Gather all 7 tile datasets
+    const latestSentiment = sentinel.getLatestSentiment(db, symbol);
+    const sentimentHistory = sentinel.getSentimentHistory(db, symbol, 30);
+    const flip = sentinel.detectSentimentFlip(db, symbol);
+    const quote = await (async () => {
+      try {
+        const data = await schwabMarket('/quotes', { symbols: symbol, fields: 'quote,fundamental' });
+        return data[symbol] || null;
+      } catch { return null; }
+    })();
+
+    // Get trades for this symbol from journal (for trade scoring)
+    const trades = db.prepare(`
+      SELECT SUM(amount) as total_pnl, COUNT(*) as trade_count, COUNT(DISTINCT symbol) as unique_symbols
+      FROM trades WHERE symbol = ? OR underlying = ?
+    `).get(symbol, symbol);
+
+    // Get positions (open/closed)
+    const positions = db.prepare(`
+      SELECT symbol, COUNT(*) as leg_count, SUM(amount) as pnl
+      FROM trades WHERE symbol = ? OR underlying = ?
+      GROUP BY symbol
+    `).all(symbol, symbol);
+
+    res.json({
+      symbol,
+      sentiment: {
+        latest: latestSentiment,
+        history: sentimentHistory,
+        flip: flip,  // null if no flip detected
+      },
+      quote: quote ? {
+        price: quote.quote?.lastPrice ?? null,
+        change: quote.quote?.netChange ?? 0,
+        changePct: quote.quote?.netPercentChange ?? 0,
+        volume: quote.quote?.totalVolume ?? null,
+      } : null,
+      trades: trades,
+      positions: positions,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/sentiment/heatmap', (req, res) => {
+  try {
+    const tickers = db.prepare(`SELECT ticker FROM scout_watchlist`).all().map(r => r.ticker);
+    const sentimentMap = sentinel.getWatchlistSentiment(db, tickers);
+    res.json({ heatmap: sentimentMap || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/sentiment/sector', (req, res) => {
+  try {
+    const sectorData = sentinel.getSectorSentiment(db);
+    res.json({ sectors: sectorData || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/sentiment/alerts', (req, res) => {
+  try {
+    // Find all recent sentiment flips across watchlist
+    const tickers = db.prepare(`SELECT ticker FROM scout_watchlist`).all().map(r => r.ticker);
+    const flips = tickers.map(t => sentinel.detectSentimentFlip(db, t)).filter(Boolean);
+    res.json({ alerts: flips || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ticker/:symbol/sentiment/refresh', async (req, res) => {
+  try {
+    if (!ADANOS_API_KEY) {
+      return res.status(400).json({ error: 'ADANOS_API_KEY not configured' });
+    }
+    const symbol = String(req.params.symbol || '').trim().toUpperCase();
+    if (!symbol) return res.status(400).json({ error: 'symbol is required' });
+
+    // Fetch fresh sentiment from ADANOS
+    const success = await sentinel.fetchAndStoreSentiment(db, symbol, ADANOS_API_KEY);
+    if (!success) {
+      return res.status(502).json({ error: 'ADANOS fetch failed' });
+    }
+
+    const latestSentiment = sentinel.getLatestSentiment(db, symbol);
+    res.json({ symbol, sentiment: latestSentiment });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -7589,6 +7746,14 @@ app.get('/scout', (req, res) => {
 app.get(['/osterm', '/osterm.html'], (req, res) => {
   const f = path.join(__dirname, 'osterm.html');
   if (!fs.existsSync(f)) return res.status(500).send('osterm.html not found in container.');
+  res.setHeader('Content-Type', 'text/html');
+  res.send(fs.readFileSync(f, 'utf8'));
+});
+
+// ── Ticker sentiment dashboard at /ticker?symbol=PLTR ────────────────────────
+app.get(['/ticker', '/ticker.html'], (req, res) => {
+  const f = path.join(__dirname, 'ticker-dashboard.html');
+  if (!fs.existsSync(f)) return res.status(500).send('ticker-dashboard.html not found in container.');
   res.setHeader('Content-Type', 'text/html');
   res.send(fs.readFileSync(f, 'utf8'));
 });

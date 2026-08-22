@@ -11,10 +11,11 @@ RUN npm ci --omit=dev
 
 # Copy server files
 COPY local/server.js local/sync-schwab.js local/local-enhance.js local/local-dashboard.html \
-     local/scout-dashboard.html local/osterm.html local/rag.js \
+     local/scout-dashboard.html local/osterm.html local/ticker-dashboard.html local/rag.js \
      local/sectors.js local/news.js local/tradingInsights.js local/riskMetrics.js local/portfolioRisk.js \
      local/indicators.js local/tradeIdeas.js local/indicatorEngine.js local/plutusTools.js \
-     local/positionEngine.js local/lmSentiment.js local/lmSentiment.json local/dilutionLexicon.js ./
+     local/positionEngine.js local/lmSentiment.js local/lmSentiment.json local/dilutionLexicon.js \
+     local/sentinel.js ./
 
 # Clone the webapp (read-only snapshot — originals are never touched)
 COPY index.html advanced-wash-sales.html auth-redirect.html faveIcon.png ./webapp/
