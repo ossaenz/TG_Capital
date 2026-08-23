@@ -6,7 +6,7 @@
 
 const https = require('https');
 
-const ADANOS_BASE = 'https://api.adanos.ai/v1';
+const ADANOS_BASE = 'https://api.adanos.org/sentiment/v1';
 
 /**
  * Fetch sentiment score from ADANOS API for a single ticker.
