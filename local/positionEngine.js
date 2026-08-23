@@ -105,7 +105,8 @@ function _groupContracts(trades) {
     const hasOpen = [...c.actions].some(a => OPENING_ACTIONS.has(a));
     const hasClose = [...c.actions].some(a => CLOSING_ACTIONS.has(a));
     const allExpired = [...c.actions].every(a => a === 'Expired');
-    const status = (hasOpen && hasClose) || allExpired ? 'closed' : hasOpen ? 'open' : 'unknown';
+    // Treat closing-only positions as closed (opening may be outside sync window)
+    const status = (hasOpen && hasClose) || allExpired ? 'closed' : hasClose && !hasOpen ? 'closed' : hasOpen ? 'open' : 'unknown';
     if (status === 'unknown') continue;
     const openAction = [...c.actions].find(a => OPENING_ACTIONS.has(a)) || null;
     const closeAction = [...c.actions].find(a => ACTIVE_CLOSE_ACTIONS.has(a)) || null;
@@ -166,11 +167,18 @@ function buildOptionChains(trades) {
   const bySymbol = new Map(contracts.map(c => [c.symbol, c]));
 
   const chains = [];
+  const visited = new Set();
+
+  // Build chains from heads
   for (const c of contracts) {
     if (c.prevSymbol) continue; // not a chain head
     const legs = [];
     let cur = c;
-    while (cur) { legs.push(cur); cur = cur.nextSymbol ? bySymbol.get(cur.nextSymbol) : null; }
+    while (cur) {
+      legs.push(cur);
+      visited.add(cur.symbol);
+      cur = cur.nextSymbol ? bySymbol.get(cur.nextSymbol) : null;
+    }
 
     const last = legs[legs.length - 1];
     const status = last.status;
@@ -197,6 +205,37 @@ function buildOptionChains(trades) {
       })),
     });
   }
+
+  // Include any contracts that were skipped (broken chain links or orphaned tails)
+  for (const c of contracts) {
+    if (visited.has(c.symbol)) continue; // already included
+    const legs = [c];
+    const last = c;
+    const status = c.status;
+    const netPnl = +(c.net_pnl || 0).toFixed(2);
+    const totalFees = +(c.total_fees || 0).toFixed(2);
+    chains.push({
+      asset_type: 'OPTION',
+      underlying: c.underlying,
+      status,
+      opened: c.opened,
+      closed: status === 'closed' ? c.closed : null,
+      hold_days: status === 'closed' ? _holdDays(c.opened, c.closed) : null,
+      net_pnl: netPnl,
+      total_fees: totalFees,
+      is_roll: false,
+      roll_count: 0,
+      has_incomplete_pricing: c.hasIncompletePricing,
+      past_expiry_unclosed: c.pastExpiryUnclosed,
+      legs: [{
+        symbol: c.symbol, expiry: c.expiry, opened: c.opened, closed: status === 'closed' ? c.closed : null,
+        status: c.status, legs: c.legs, net_pnl: c.net_pnl, total_fees: c.total_fees,
+        open_action: c.openAction, close_action: c.closeAction || (status === 'closed' ? [...c.actions].find(a => CLOSING_ACTIONS.has(a)) : null),
+        past_expiry_unclosed: c.pastExpiryUnclosed,
+      }],
+    });
+  }
+
   return chains;
 }
 
