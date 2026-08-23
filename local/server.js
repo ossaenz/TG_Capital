@@ -1142,25 +1142,24 @@ function computeDashboard(fromDate, toDate, ticker) {
     FROM trades ${optWhere} GROUP BY ticker ORDER BY net_pnl DESC LIMIT 10
   `).all(...params);
 
-  // ── Stock realized P&L (only tickers that have BOTH buys and sells) ─────────
+  // ── Stock realized P&L (FIFO lot matching) ────────────────────────────────
+  // Fetch all equity trades matching the date/ticker filters
   const eqConds  = [...conds, "asset_type = 'EQUITY'"];
   const eqWhere  = 'WHERE ' + eqConds.join(' AND ');
-  const eqBySymbol = db.prepare(`
-    SELECT symbol,
-           SUM(CASE WHEN action='Buy'  THEN amount ELSE 0 END) as buy_total,
-           SUM(CASE WHEN action='Sell' THEN amount ELSE 0 END) as sell_total,
-           COUNT(CASE WHEN action='Buy'  THEN 1 END) as buy_count,
-           COUNT(CASE WHEN action='Sell' THEN 1 END) as sell_count
-    FROM trades ${eqWhere} GROUP BY symbol
+  const eqTrades = db.prepare(`
+    SELECT date_iso as date, action, symbol, underlying, asset_type, quantity, price, fees, amount
+    FROM trades ${eqWhere} ORDER BY date_iso, id
   `).all(...params);
 
-  // Only count equity symbols where sales >= purchases (closed/partially closed)
+  // Use positionEngine's FIFO lot matching
+  const { buildEquityLots } = require('./positionEngine.js');
+  const eqPositions = buildEquityLots(eqTrades);
+
+  // Sum P&L from closed positions only (open positions have net_pnl=0)
   let stockPnL = 0;
-  for (const eq of eqBySymbol) {
-    if (eq.sell_count > 0) {
-      // Realized portion: ratio of sells to buys applied to net
-      const ratio = eq.buy_count > 0 ? Math.min(eq.sell_count / eq.buy_count, 1) : 1;
-      stockPnL += eq.sell_total + (eq.buy_total * ratio);
+  for (const pos of eqPositions) {
+    if (pos.status === 'closed' && pos.net_pnl != null) {
+      stockPnL += pos.net_pnl;
     }
   }
 
