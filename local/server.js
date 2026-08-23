@@ -4678,9 +4678,9 @@ app.get('/api/ticker/:symbol/technical', async (req, res) => {
       if (candles.length < 14) return res.json({ symbol, error: 'insufficient_data' });
 
       const closes = candles.map(c => Number(c.close || 0)).filter(Boolean);
-      const rsi14 = computeRSI(closes, 14);
-      const macd = computeMACD(closes);
-      const adx = computeADX(candles, 14);
+      const rsi14 = indicators.computeRSI(closes, 14);
+      const macd = indicators.computeMACD(closes);
+      const adx = indicators.computeADX(candles, 14);
 
       const volumes = candles.map(c => Number(c.volume || 0));
       const avgVol = volumes.slice(-20).reduce((a,b) => a+b, 0) / 20;
