@@ -933,9 +933,9 @@ function toAction(inst, positionEffect, amount, txnType, description) {
   const desc = (description || '').toLowerCase();
   if (txnType === 'RECEIVE_AND_DELIVER') {
     if (inst.assetType !== 'OPTION') return null;
-    if (desc.includes('expir'))    return 'Expired';
-    if (desc.includes('assigned')) return 'Assigned';
-    if (desc.includes('exercis'))  return 'Exercised';
+    if (desc.includes('expir'))     return 'Expired';
+    if (desc.includes('assignment') || desc.includes('assigned')) return 'Assigned';
+    if (desc.includes('exercis'))   return 'Exercised';
     return null;
   }
   if (inst.assetType === 'OPTION') {
@@ -999,18 +999,31 @@ async function runSync({ days, startDate, endDate } = {}) {
     const start = startDate ? new Date(startDate + 'T00:00:00Z')
                             : new Date(end.getTime() - (days || 90) * 86400000);
 
-    const fetchType = async (type) => {
-      const p   = new URLSearchParams({ startDate: start.toISOString(), endDate: end.toISOString(), types: type });
+    // Fetch all transaction types (TRADE, RECEIVE_AND_DELIVER, and any others that might contain assignments)
+    const fetchAll = async () => {
+      const p   = new URLSearchParams({ startDate: start.toISOString(), endDate: end.toISOString() });
       const res = await fetch(`${API_BASE}/accounts/${acct.hash}/transactions?${p}`, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const body = await res.json();
-      if (!res.ok) throw new Error(`API error (${type}): ${JSON.stringify(body)}`);
+      if (!res.ok) throw new Error(`API error (all types): ${JSON.stringify(body)}`);
       return body;
     };
 
-    const [trades, deliveries] = await Promise.all([fetchType('TRADE'), fetchType('RECEIVE_AND_DELIVER')]);
-    const rows  = [...trades, ...deliveries].map(convertTxn).filter(Boolean);
+    const allTxns = await fetchAll();
+    // Debug: log transaction types and descriptions for RECEIVE_AND_DELIVER
+    const typeFreq = {};
+    const radDescriptions = [];
+    for (const t of allTxns) {
+      typeFreq[t.type] = (typeFreq[t.type] || 0) + 1;
+      if (t.type === 'RECEIVE_AND_DELIVER') {
+        radDescriptions.push({ desc: t.description, inst: t.transferItems?.[0]?.instrument?.description });
+      }
+    }
+    console.log('📊 Transaction types returned by API:', JSON.stringify(typeFreq));
+    console.log('📋 RECEIVE_AND_DELIVER descriptions:', JSON.stringify(radDescriptions.slice(0, 5)));
+
+    const rows  = allTxns.map(convertTxn).filter(Boolean);
     const csv   = rowsToCSV(rows);
     fs.writeFileSync(CSV_FILE, csv, 'utf8');
 
