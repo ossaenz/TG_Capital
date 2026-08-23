@@ -144,10 +144,14 @@ function getWatchlistSentiment(db, tickers) {
 
   const placeholders = tickers.map(() => '?').join(',');
   const query = `
-    SELECT DISTINCT ON (ticker) ticker, sentiment_score, sentiment_label, confidence, fetched_at
+    SELECT ticker, sentiment_score, sentiment_label, confidence, fetched_at
     FROM scout_sentiment
     WHERE ticker IN (${placeholders}) AND source = 'adanos' AND sentiment_score IS NOT NULL
-    ORDER BY ticker, fetched_at DESC
+    AND fetched_at = (
+      SELECT MAX(fetched_at) FROM scout_sentiment ss2
+      WHERE ss2.ticker = scout_sentiment.ticker AND ss2.source = 'adanos'
+    )
+    ORDER BY ticker
   `;
 
   try {

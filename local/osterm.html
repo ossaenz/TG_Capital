@@ -583,7 +583,7 @@
       const externalBtn = e.target.closest('[data-goto-external]');
       if (externalBtn) {
         const target = externalBtn.getAttribute('data-goto-external');
-        if (target === 'ticker-dashboard') { window.open('/ticker-dashboard.html', '_blank'); return; }
+        if (target === 'ticker-dashboard') { window.open('/ticker', '_blank'); return; }
       }
       const closeOnboardingBtn = e.target.closest('[data-close-onboarding]');
       if (closeOnboardingBtn) { hideOnboarding(); return; }
