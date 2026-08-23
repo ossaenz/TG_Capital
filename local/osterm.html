@@ -209,7 +209,7 @@
     </header>
 
     <!-- ── MAIN — all view-panel-groups live here, visibility per the CSS above -->
-    <main id="main-content" class="flex-1 overflow-y-auto custom-scrollbar px-3 sm:px-6 py-4 pb-24 lg:pb-6">
+    <main id="main-content" class="flex-1 overflow-y-auto custom-scrollbar px-2 sm:px-3 md:px-6 py-3 sm:py-4 pb-24 lg:pb-6">
 
       <!-- Dashboard groups: Home, Watchlist, Ticker Detail — always-together on desktop -->
       <div id="dashboard-grid" class="flex flex-col gap-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-4">
@@ -229,13 +229,13 @@
         <span>⌂</span><span>Home</span>
       </button>
       <button class="nav-item flex-1 flex flex-col items-center gap-1 py-2.5 text-slate-500" data-goto-view="watchlist">
-        <span>☰</span><span>Watchlist</span>
+        <span>☰</span><span>List</span>
       </button>
-      <button class="nav-item flex-1 flex flex-col items-center gap-1 py-2.5 text-slate-500" data-goto-view="search">
-        <span>⌕</span><span>Search</span>
+      <button class="nav-item flex-1 flex flex-col items-center gap-1 py-2.5 text-slate-500" data-goto-external="ticker-dashboard">
+        <span>📊</span><span>Sentiment</span>
       </button>
       <button class="nav-item flex-1 flex flex-col items-center gap-1 py-2.5 text-slate-500" data-goto-view="settings">
-        <span>⚙</span><span>Settings</span>
+        <span>⚙</span><span>More</span>
       </button>
     </nav>
 
@@ -464,13 +464,13 @@
       // defensively in case this markup is ever nested differently.
       return `
         <div class="w-full flex items-center gap-0.5 rounded-md transition ${isSelected ? 'bg-terminal-accent/10 ring-1 ring-terminal-accent/30' : 'hover:bg-terminal-panelSoft/60'}">
-          <button class="flex-1 min-w-0 flex items-center justify-between gap-2 px-3 py-3 text-left" data-goto-ticker="${esc(ticker)}">
+          <button class="flex-1 min-w-0 flex items-center justify-between gap-2 px-2 sm:px-3 py-2.5 sm:py-3 text-left hover:bg-terminal-accent/5 transition" data-goto-ticker="${esc(ticker)}" title="View ${esc(ticker)} sentiment analysis">
             <span class="flex items-center gap-1.5 min-w-0">
               ${failureMsg ? `<span class="text-terminal-negative shrink-0" title="${esc(failureMsg)}">⚠</span>` : ''}
-              <span class="text-[12px] font-semibold text-slate-100 font-mono tracking-wide truncate">${esc(ticker)}</span>
+              <span class="text-xs sm:text-[12px] font-semibold text-slate-100 font-mono tracking-wide truncate">${esc(ticker)}</span>
             </span>
-            <div class="flex items-center gap-2 shrink-0">
-              <span class="text-[10px] text-slate-500 font-mono">${score != null ? score + '/100' : '—'}</span>
+            <div class="flex items-center gap-1 sm:gap-2 shrink-0">
+              <span class="text-[9px] sm:text-[10px] text-slate-500 font-mono whitespace-nowrap">${score != null ? score + '/100' : '—'}</span>
               ${SentimentPill({ status, intensity: scoreToIntensity(score) })}
             </div>
           </button>
@@ -580,6 +580,11 @@
       if (tabBtn) { setTickerSubTab(tabBtn.getAttribute('data-ticker-tab')); return; }
       const navBtn = e.target.closest('[data-goto-view]');
       if (navBtn) { location.hash = `#/${navBtn.getAttribute('data-goto-view') === 'home' ? '' : navBtn.getAttribute('data-goto-view')}`; return; }
+      const externalBtn = e.target.closest('[data-goto-external]');
+      if (externalBtn) {
+        const target = externalBtn.getAttribute('data-goto-external');
+        if (target === 'ticker-dashboard') { window.open('/ticker-dashboard.html', '_blank'); return; }
+      }
       const closeOnboardingBtn = e.target.closest('[data-close-onboarding]');
       if (closeOnboardingBtn) { hideOnboarding(); return; }
       const showOnboardingBtn = e.target.closest('[data-show-onboarding]');
