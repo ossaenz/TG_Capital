@@ -3788,14 +3788,20 @@ async function runUniverseSectorSync() {
 setTimeout(() => runUniverseSectorSync(), 90000); // staggered a little after the first discovery-loop boot run
 setInterval(() => runUniverseSectorSync(), 15 * 60 * 1000);
 
-// ── Background: Sentiment refresh disabled (using local crawler data instead) ────
+// ── Background: Crawl news sentiment + LM scoring from filings ────
+const { crawlAllWatchlist } = require('./sentiment-crawler.js');
+
 async function refreshWatchlistSentiment() {
-  // ADANOS API integration disabled - using local web crawler sentiment data
-  // Sentiment data is populated from your own crawlers (Loughran-McDonald + web sources)
-  return;
+  // Auto-populate scout_sentiment from news crawlers + Loughran-McDonald scoring
+  try {
+    await crawlAllWatchlist(db, FINNHUB_API_KEY);
+  } catch (err) {
+    console.warn('Sentiment crawl error:', err.message);
+  }
 }
-setTimeout(() => refreshWatchlistSentiment(), 120000); // 2 min after boot
-setInterval(() => refreshWatchlistSentiment(), 5 * 60 * 1000); // every 5 min
+
+setTimeout(() => refreshWatchlistSentiment(), 180000); // 3 min after boot
+setInterval(() => refreshWatchlistSentiment(), 60 * 60 * 1000); // every hour
 
 // Single-ticker 8-K analysis — the osterm.html "search a new ticker" onboarding
 // flow's analysis step. Deliberately NOT the discovery loop: scoped to exactly one
