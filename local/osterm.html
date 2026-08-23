@@ -567,7 +567,18 @@
         return;
       }
       const tickerBtn = e.target.closest('[data-goto-ticker]');
-      if (tickerBtn) { location.hash = `#/ticker/${tickerBtn.getAttribute('data-goto-ticker')}`; return; }
+      if (tickerBtn) {
+        const ticker = tickerBtn.getAttribute('data-goto-ticker');
+        // Middle-click or Ctrl+Click opens sentiment dashboard in new tab
+        if (e.button === 1 || e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          window.open(`/ticker?symbol=${ticker}`, '_blank');
+          return;
+        }
+        // Regular click navigates within osterm (hash-based routing)
+        location.hash = `#/ticker/${ticker}`;
+        return;
+      }
       const removeBtn = e.target.closest('[data-remove-ticker]');
       if (removeBtn) { e.stopPropagation(); removeTicker(removeBtn.getAttribute('data-remove-ticker')); return; }
       const refreshBtn = e.target.closest('[data-refresh-ticker]');
@@ -583,7 +594,11 @@
       const externalBtn = e.target.closest('[data-goto-external]');
       if (externalBtn) {
         const target = externalBtn.getAttribute('data-goto-external');
-        if (target === 'ticker-dashboard') { window.open('/ticker', '_blank'); return; }
+        if (target === 'ticker-dashboard') {
+          const ticker = Store.state.selectedTicker || 'SPY';
+          window.open(`/ticker?symbol=${ticker}`, '_blank');
+          return;
+        }
       }
       const closeOnboardingBtn = e.target.closest('[data-close-onboarding]');
       if (closeOnboardingBtn) { hideOnboarding(); return; }
