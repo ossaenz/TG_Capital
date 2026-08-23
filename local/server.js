@@ -3788,20 +3788,12 @@ async function runUniverseSectorSync() {
 setTimeout(() => runUniverseSectorSync(), 90000); // staggered a little after the first discovery-loop boot run
 setInterval(() => runUniverseSectorSync(), 15 * 60 * 1000);
 
-// ── Background: Refresh sentiment data from ADANOS for watchlist tickers ────────
+// ── Background: Sentiment refresh disabled (using local crawler data instead) ────
 async function refreshWatchlistSentiment() {
-  if (!ADANOS_API_KEY) return;  // Silent no-op if not configured
+  // ADANOS API integration disabled - using local web crawler sentiment data
+  // Sentiment data is populated from your own crawlers (Loughran-McDonald + web sources)
+  return;
   try {
-    const tickers = db.prepare(`SELECT ticker FROM scout_watchlist`).all().map(r => r.ticker);
-    let updated = 0;
-    for (const ticker of tickers) {
-      const success = await sentinel.fetchAndStoreSentiment(db, ticker, ADANOS_API_KEY);
-      if (success) updated++;
-      await new Promise(r => setTimeout(r, 200)); // rate limit: 5 req/sec
-    }
-    console.log(`✓ Refreshed ${updated}/${tickers.length} watchlist tickers from ADANOS`);
-  } catch (err) {
-    console.warn(`⚠️  Sentiment refresh error:`, err.message);
   }
 }
 setTimeout(() => refreshWatchlistSentiment(), 120000); // 2 min after boot
@@ -4645,20 +4637,16 @@ app.get('/api/sentiment/alerts', (req, res) => {
 
 app.post('/api/ticker/:symbol/sentiment/refresh', async (req, res) => {
   try {
-    if (!ADANOS_API_KEY) {
-      return res.status(400).json({ error: 'ADANOS_API_KEY not configured' });
-    }
     const symbol = String(req.params.symbol || '').trim().toUpperCase();
     if (!symbol) return res.status(400).json({ error: 'symbol is required' });
 
-    // Fetch fresh sentiment from ADANOS
-    const success = await sentinel.fetchAndStoreSentiment(db, symbol, ADANOS_API_KEY);
-    if (!success) {
-      return res.status(502).json({ error: 'ADANOS fetch failed' });
-    }
-
+    // Return current sentiment from database (populated by crawlers, not ADANOS)
     const latestSentiment = sentinel.getLatestSentiment(db, symbol);
-    res.json({ symbol, sentiment: latestSentiment });
+    res.json({
+      symbol,
+      sentiment: latestSentiment,
+      note: 'Using local crawler sentiment data. External ADANOS sync disabled.'
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
