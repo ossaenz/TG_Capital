@@ -239,15 +239,58 @@ function buildOptionChains(trades) {
   return chains;
 }
 
+const OPT_SYMBOL_RE = /^(\S+)\s+\d{2}\/\d{2}\/\d{4}\s+([\d.]+)\s+([CP])$/;
+
+/** A short PUT getting assigned always transacts at strike — Schwab's
+ *  transaction API frequently omits the resulting stock-purchase leg (only 5
+ *  of 68 in the account this was built against sent one), which otherwise
+ *  leaves those shares' later sale with no cost basis (see
+ *  has_incomplete_pricing below). Reconstruct the missing Buy lot from the
+ *  option symbol itself rather than the API's stock-delivery leg — exact,
+ *  not an estimate, since assignment price *is* the strike by definition.
+ *  Assigned CALLs are not synthesized here: those deliver shares *out*, and
+ *  without a prior Buy lot there is nothing for a sell-side synthesis to
+ *  consume, so equity-lot code can't recover that case at all. */
+function _impliedAssignmentBuyLots(trades) {
+  const lots = new Map(); // underlying -> [{ date, quantity, amount }]
+  for (const t of trades) {
+    if (t.asset_type !== 'OPTION' || t.action !== 'Assigned') continue;
+    const m = (t.symbol || '').match(OPT_SYMBOL_RE);
+    if (!m || m[3] !== 'P') continue;
+    const [, underlying, strikeStr] = m;
+    const strike = parseFloat(strikeStr);
+    const shares = (t.quantity || 1) * 100;
+    if (!lots.has(underlying)) lots.set(underlying, []);
+    lots.get(underlying).push({ date: t.date, quantity: shares, amount: -(strike * shares) });
+  }
+  return lots;
+}
+
 /** FIFO buy/sell lot matching for equities. See module docstring for scope
  *  (Buy/Sell only — splits/transfers/dividends are not lot-adjusted here). */
 function buildEquityLots(trades) {
+  const impliedBuys = _impliedAssignmentBuyLots(trades);
   const bySymbol = new Map();
   for (const t of trades) {
     if (t.asset_type !== 'EQUITY' || (t.action !== 'Buy' && t.action !== 'Sell')) continue;
     const key = t.underlying || t.symbol;
     if (!bySymbol.has(key)) bySymbol.set(key, []);
     bySymbol.get(key).push(t);
+  }
+  // Merge in implied assignment-buy lots so they interleave FIFO by date with real trades.
+  for (const [underlying, lots] of impliedBuys) {
+    if (!bySymbol.has(underlying)) bySymbol.set(underlying, []);
+    for (const lot of lots) {
+      bySymbol.get(underlying).push({
+        date: lot.date, action: 'Buy', symbol: underlying, underlying, asset_type: 'EQUITY',
+        quantity: lot.quantity, price: 0, fees: 0, amount: lot.amount, _implied: true,
+        // Forces this lot ahead of any real same-date trade in the tiebreak below,
+        // independent of whether the caller's query happened to SELECT id — an
+        // assignment is always the day's opening event, so it must be consumable
+        // by a same-day sell rather than landing after it in FIFO order.
+        id: -1,
+      });
+    }
   }
 
   const positions = [];

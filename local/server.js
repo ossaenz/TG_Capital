@@ -932,10 +932,18 @@ function parsePositionOptionInstrument(desc) {
 function toAction(inst, positionEffect, amount, txnType, description) {
   const desc = (description || '').toLowerCase();
   if (txnType === 'RECEIVE_AND_DELIVER') {
-    if (inst.assetType !== 'OPTION') return null;
-    if (desc.includes('expir'))     return 'Expired';
-    if (desc.includes('assignment') || desc.includes('assigned')) return 'Assigned';
-    if (desc.includes('exercis'))   return 'Exercised';
+    if (inst.assetType === 'OPTION') {
+      if (desc.includes('expir'))     return 'Expired';
+      if (desc.includes('assignment') || desc.includes('assigned')) return 'Assigned';
+      if (desc.includes('exercis'))   return 'Exercised';
+      return null;
+    }
+    // Stock legs of assignments/exercises: put assigned → shares received (Buy),
+    // call assigned → shares delivered (Sell). Without these rows, FIFO equity
+    // matching has no cost basis and the realized P&L silently vanishes.
+    if (inst.assetType === 'EQUITY' && (desc.includes('assignment') || desc.includes('assigned') || desc.includes('exercis'))) {
+      return amount > 0 ? 'Buy' : 'Sell';
+    }
     return null;
   }
   if (inst.assetType === 'OPTION') {
@@ -1011,18 +1019,6 @@ async function runSync({ days, startDate, endDate } = {}) {
     };
 
     const allTxns = await fetchAll();
-    // Debug: log transaction types and descriptions for RECEIVE_AND_DELIVER
-    const typeFreq = {};
-    const radDescriptions = [];
-    for (const t of allTxns) {
-      typeFreq[t.type] = (typeFreq[t.type] || 0) + 1;
-      if (t.type === 'RECEIVE_AND_DELIVER') {
-        radDescriptions.push({ desc: t.description, inst: t.transferItems?.[0]?.instrument?.description });
-      }
-    }
-    console.log('📊 Transaction types returned by API:', JSON.stringify(typeFreq));
-    console.log('📋 RECEIVE_AND_DELIVER descriptions:', JSON.stringify(radDescriptions.slice(0, 5)));
-
     const rows  = allTxns.map(convertTxn).filter(Boolean);
     const csv   = rowsToCSV(rows);
     fs.writeFileSync(CSV_FILE, csv, 'utf8');
@@ -1037,6 +1033,8 @@ async function runSync({ days, startDate, endDate } = {}) {
       parseFloat(r.Amount) || 0,
       r._timeIso || null,
     ]));
+    const dbCountAfter = db.prepare('SELECT COUNT(*) as n FROM trades WHERE asset_type = \'EQUITY\'').get().n;
+    console.log(`🔍 EQUITY rows in DB: ${dbCountBefore} → ${dbCountAfter} (+${dbCountAfter - dbCountBefore})`);
 
     // Self-documenting audit trail — auto-journal any position with new legs.
     // Fire-and-forget so a slow Ollama/market-data round trip never blocks sync.
@@ -1156,12 +1154,15 @@ function computeDashboard(fromDate, toDate, ticker) {
   `).all(...params);
 
   // ── Stock realized P&L (FIFO lot matching) ────────────────────────────────
-  // Fetch all equity trades matching the date/ticker filters
-  const eqConds  = [...conds, "asset_type = 'EQUITY'"];
-  const eqWhere  = 'WHERE ' + eqConds.join(' AND ');
+  // Fetch equity trades PLUS assigned-option rows in range: buildEquityLots
+  // reconstructs missing stock-purchase legs from assigned PUTs' own strike
+  // price (Schwab's transaction API frequently omits the actual delivery
+  // leg), which needs the option row alongside the equity ones to work.
+  const eqOrAssignConds = [...conds, "(asset_type = 'EQUITY' OR (asset_type = 'OPTION' AND action = 'Assigned'))"];
+  const eqOrAssignWhere = 'WHERE ' + eqOrAssignConds.join(' AND ');
   const eqTrades = db.prepare(`
-    SELECT date_iso as date, action, symbol, underlying, asset_type, quantity, price, fees, amount
-    FROM trades ${eqWhere} ORDER BY date_iso, id
+    SELECT id, date_iso as date, action, symbol, underlying, asset_type, quantity, price, fees, amount
+    FROM trades ${eqOrAssignWhere} ORDER BY date_iso, id
   `).all(...params);
 
   // Use positionEngine's FIFO lot matching
