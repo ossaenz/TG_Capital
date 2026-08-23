@@ -351,6 +351,13 @@
           <div class="tile-content" id="tile-chart-status">📊</div>
           <div class="tile-label">Visual trend</div>
         </div>
+
+        <!-- Tile 12: Fair Value / Intrinsic Value -->
+        <div class="tile" onclick="openModal('valuation-modal')">
+          <div class="tile-title">Fair Value</div>
+          <div class="tile-content" id="tile-fair-value">-</div>
+          <div class="tile-label" id="tile-valuation-status">Loading...</div>
+        </div>
       </div>
     </div>
   </div>
@@ -472,6 +479,16 @@
     </div>
   </div>
 
+  <div id="valuation-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Fair Value Analysis</h2>
+        <button class="modal-close" onclick="closeModal('valuation-modal')">×</button>
+      </div>
+      <div id="valuation-details"></div>
+    </div>
+  </div>
+
   <script>
     let ticker = '';
     let analysisData = null;
@@ -499,18 +516,19 @@
       el.style.display = 'block';
     }
 
-    let techData = null, signalsData = null, sectorData = null;
+    let techData = null, signalsData = null, sectorData = null, valuationData = null;
 
     async function loadData() {
       ticker = getQueryParam('symbol') || 'SPY';
       document.getElementById('tickerDisplay').textContent = ticker;
 
       try {
-        const [analyRes, techRes, sigRes, secRes] = await Promise.all([
+        const [analyRes, techRes, sigRes, secRes, valRes] = await Promise.all([
           fetch(`/api/ticker/${ticker}/analysis`),
           fetch(`/api/ticker/${ticker}/technical`),
           fetch(`/api/ticker/${ticker}/signals`),
-          fetch(`/api/ticker/${ticker}/sector-sentiment`)
+          fetch(`/api/ticker/${ticker}/sector-sentiment`),
+          fetch(`/api/ticker/${ticker}/valuation`)
         ]);
 
         if (!analyRes.ok) throw new Error(`HTTP ${analyRes.status}`);
@@ -520,6 +538,7 @@
         if (techRes.ok) techData = await techRes.json();
         if (sigRes.ok) signalsData = await sigRes.json();
         if (secRes.ok) sectorData = await secRes.json();
+        if (valRes.ok) valuationData = await valRes.json();
 
         renderTiles();
         document.getElementById('loading').style.display = 'none';
@@ -601,6 +620,18 @@
       if (sectorData) {
         document.getElementById('tile-sector-diff').textContent = sectorData.comparison;
         document.getElementById('tile-sector-strength').textContent = sectorData.relative_strength.toUpperCase();
+      }
+
+      // Tile 12: Fair Value
+      if (valuationData && valuationData.valuation) {
+        const v = valuationData.valuation;
+        const q = analysisData.quote;
+        if (v.fairValue && q?.price) {
+          const margin = ((v.fairValue - q.price) / q.price * 100).toFixed(1);
+          document.getElementById('tile-fair-value').textContent = `$${v.fairValue.toFixed(2)}`;
+          document.getElementById('tile-valuation-status').textContent = v.assessment + ` (${margin}%)`;
+          document.getElementById('tile-fair-value').style.color = margin > 5 ? '#4caf50' : margin < -5 ? '#f44336' : '#ffc107';
+        }
       }
 
       // Populate modals
@@ -767,6 +798,47 @@
         document.getElementById('sec-avg').textContent = Math.round(sectorData.sector_avg) || '-';
         document.getElementById('sec-diff').textContent = sectorData.comparison;
         document.getElementById('sec-strength').textContent = sectorData.relative_strength.toUpperCase();
+      }
+
+      // Valuation details
+      if (valuationData && valuationData.valuation) {
+        const v = valuationData.valuation;
+        const q = analysisData.quote;
+        const methodsHtml = v.methods && v.methods.length ? v.methods.map(m =>
+          `<div class="stat-box">
+            <div class="stat-label">${m.name}</div>
+            <div class="stat-value">$${m.value.toFixed(2)}</div>
+          </div>`
+        ).join('') : '<p>Insufficient data for valuation.</p>';
+
+        document.getElementById('valuation-details').innerHTML = `
+          <div class="stat-box">
+            <div class="stat-label">Current Price</div>
+            <div class="stat-value">$${q?.price?.toFixed(2) || '-'}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Fair Value</div>
+            <div class="stat-value" style="color: ${v.margin > 5 ? '#4caf50' : v.margin < -5 ? '#f44336' : '#ffc107'}">$${v.fairValue?.toFixed(2) || '-'}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Upside/Downside</div>
+            <div class="stat-value" style="color: ${v.margin > 5 ? '#4caf50' : v.margin < -5 ? '#f44336' : '#ffc107'}">${v.margin > 0 ? '+' : ''}${v.margin?.toFixed(1) || '-'}%</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Assessment</div>
+            <div class="stat-value">${v.assessment || '-'}</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Confidence</div>
+            <div class="stat-value">${v.confidence || 0}% (${v.methodCount || 0} methods)</div>
+          </div>
+          <hr style="border: 1px solid #333; margin: 15px 0;">
+          <h3 style="margin: 10px 0; color: #999;">Valuation Methods</h3>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+            ${methodsHtml}
+          </div>
+          <p style="margin-top: 15px; font-size: 12px; color: #666;">Fair value is estimated using multiple methods: Graham Number, P/E analysis, P/B ratio, Dividend Discount Model, and Free Cash Flow DCF. Higher confidence indicates more reliable estimates.</p>
+        `;
       }
     }
 

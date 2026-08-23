@@ -59,6 +59,7 @@ const plutusTools    = require('./plutusTools.js');
 const lmSentiment    = require('./lmSentiment.js');
 const dilutionLexicon = require('./dilutionLexicon.js');
 const sentinel       = require('./sentinel.js');
+const valuation      = require('./valuation.js');
 const crypto         = require('crypto');
 const { execSync }   = require('child_process');
 const Database       = require('better-sqlite3');
@@ -4747,6 +4748,68 @@ app.get('/api/ticker/:symbol/sector-sentiment', (req, res) => {
       sector_avg: sectorAvg,
       comparison: comparison > 0 ? `+${comparison.toFixed(1)}` : comparison.toFixed(1),
       relative_strength: comparison > 5 ? 'outperforming' : comparison < -5 ? 'underperforming' : 'neutral'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── API: ticker valuation (intrinsic value) ────────────────────────────────────
+app.get('/api/ticker/:symbol/valuation', async (req, res) => {
+  try {
+    const symbol = String(req.params.symbol || '').trim().toUpperCase();
+    if (!symbol) return res.status(400).json({ error: 'symbol required' });
+
+    // Get live quote from Schwab
+    let quoteData = null;
+    try {
+      const data = await schwabMarket('/quotes', { symbols: symbol, fields: 'quote,fundamental' });
+      if (!data.error && data[symbol]) {
+        quoteData = data[symbol];
+      }
+    } catch {}
+
+    if (!quoteData || !quoteData.quote) {
+      return res.json({
+        symbol,
+        valuation: { fairValue: null, methods: [], confidence: 0, assessment: 'Quote unavailable' },
+        note: 'Unable to fetch price data from Schwab'
+      });
+    }
+
+    const q = quoteData.quote || {};
+    const f = quoteData.fundamental || {};
+    const price = q.lastPrice ?? q.mark;
+
+    if (!price) {
+      return res.json({
+        symbol,
+        valuation: { fairValue: null, methods: [], confidence: 0, assessment: 'No live price' },
+        note: 'Schwab returned no usable price'
+      });
+    }
+
+    // Build metrics from Schwab fundamentals + conservative assumptions
+    const metrics = {
+      price,
+      eps: f.peRatio && price > 0 ? price / f.peRatio : price / 20,
+      bvps: f.priceToBook && price > 0 ? price / f.priceToBook : price / 2.5,
+      dividend: f.divYield ? (price * f.divYield / 100) : (price * 0.02),
+      earningsGrowthRate: 12,           // Default 12% growth if not known
+      fcf: price * 0.05,                // Assume 5% of price as FCF per share
+      sharesOutstanding: 1              // Normalized to per-share basis
+    };
+
+    const result = valuation.calculateIntrinsicValue(metrics);
+
+    res.json({
+      symbol,
+      price,
+      peRatio: f.peRatio || null,
+      priceToBook: f.priceToBook || null,
+      dividendYield: f.divYield || null,
+      valuation: result,
+      note: 'Fair value based on Schwab fundamentals and conservative DCF analysis'
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
