@@ -323,6 +323,34 @@
           <div class="tile-content" id="tile-confidence">-</div>
           <div class="tile-label" id="tile-confidence-label">Last updated: -</div>
         </div>
+
+        <!-- Tile 8: Technical Breakdown -->
+        <div class="tile" onclick="openModal('technical-modal')">
+          <div class="tile-title">Technical Breakdown</div>
+          <div class="tile-content" id="tile-rsi">-</div>
+          <div class="tile-label">RSI(14) | Sup/Res</div>
+        </div>
+
+        <!-- Tile 9: Entry/Exit Signals -->
+        <div class="tile" onclick="openModal('signals-modal')">
+          <div class="tile-title">Entry/Exit Signals</div>
+          <div class="tile-content" id="tile-signals-count">-</div>
+          <div class="tile-label" id="tile-signals-type">No signals</div>
+        </div>
+
+        <!-- Tile 10: Sector Comparison -->
+        <div class="tile" onclick="openModal('sector-modal')">
+          <div class="tile-title">Sector Comparison</div>
+          <div class="tile-content" id="tile-sector-diff">-</div>
+          <div class="tile-label" id="tile-sector-strength">-</div>
+        </div>
+
+        <!-- Tile 11: 7-Day Sentiment Chart -->
+        <div class="tile" onclick="openModal('chart-modal')">
+          <div class="tile-title">7-Day Sentiment</div>
+          <div class="tile-content" id="tile-chart-status">📊</div>
+          <div class="tile-label">Visual trend</div>
+        </div>
       </div>
     </div>
   </div>
@@ -402,6 +430,48 @@
     </div>
   </div>
 
+  <div id="technical-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h2>Technical Breakdown</h2><button class="modal-close" onclick="closeModal('technical-modal')">×</button></div>
+      <div style="display: grid; gap: 10px; grid-template-columns: 1fr 1fr;">
+        <div><strong>RSI(14):</strong> <span id="tech-rsi">-</span></div>
+        <div><strong>Volume Ratio:</strong> <span id="tech-vol">-</span>x</div>
+        <div><strong>Support:</strong> $<span id="tech-sup">-</span></div>
+        <div><strong>Resistance:</strong> $<span id="tech-res">-</span></div>
+        <div><strong>MACD:</strong> <span id="tech-macd">-</span></div>
+        <div><strong>ADX:</strong> <span id="tech-adx">-</span></div>
+      </div>
+      <div class="chart-container" id="candle-chart" style="margin-top: 20px;"></div>
+    </div>
+  </div>
+
+  <div id="signals-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h2>Entry/Exit Signals</h2><button class="modal-close" onclick="closeModal('signals-modal')">×</button></div>
+      <div id="signals-details"><p>Analyzing RSI + Sentiment confluence...</p></div>
+    </div>
+  </div>
+
+  <div id="sector-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h2>Sector Comparison</h2><button class="modal-close" onclick="closeModal('sector-modal')">×</button></div>
+      <div style="display: grid; gap: 15px;">
+        <div><strong>Sector:</strong> <span id="sec-name">-</span></div>
+        <div><strong>Your Ticker:</strong> <span id="sec-ticker-sent">-</span>/100</div>
+        <div><strong>Sector Average:</strong> <span id="sec-avg">-</span>/100</div>
+        <div><strong>Difference:</strong> <span id="sec-diff">-</span></div>
+        <div><strong>Relative Strength:</strong> <span id="sec-strength">-</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="chart-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header"><h2>7-Day Sentiment Trend</h2><button class="modal-close" onclick="closeModal('chart-modal')">×</button></div>
+      <div class="chart-container" id="sentiment-chart" style="height: 300px;"></div>
+    </div>
+  </div>
+
   <script>
     let ticker = '';
     let analysisData = null;
@@ -429,19 +499,27 @@
       el.style.display = 'block';
     }
 
+    let techData = null, signalsData = null, sectorData = null;
+
     async function loadData() {
       ticker = getQueryParam('symbol') || 'SPY';
       document.getElementById('tickerDisplay').textContent = ticker;
 
       try {
-        const res = await fetch(`/api/ticker/${ticker}/analysis`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        analysisData = await res.json();
+        const [analyRes, techRes, sigRes, secRes] = await Promise.all([
+          fetch(`/api/ticker/${ticker}/analysis`),
+          fetch(`/api/ticker/${ticker}/technical`),
+          fetch(`/api/ticker/${ticker}/signals`),
+          fetch(`/api/ticker/${ticker}/sector-sentiment`)
+        ]);
 
-        if (analysisData.error) {
-          showError(`No data for ${ticker}`);
-          return;
-        }
+        if (!analyRes.ok) throw new Error(`HTTP ${analyRes.status}`);
+        analysisData = await analyRes.json();
+        if (analysisData.error) { showError(`No data for ${ticker}`); return; }
+
+        if (techRes.ok) techData = await techRes.json();
+        if (sigRes.ok) signalsData = await sigRes.json();
+        if (secRes.ok) sectorData = await secRes.json();
 
         renderTiles();
         document.getElementById('loading').style.display = 'none';
@@ -505,6 +583,24 @@
       if (s) {
         document.getElementById('tile-confidence').textContent = `${Math.round(s.confidence * 100)}%`;
         document.getElementById('tile-confidence-label').textContent = `Last: ${new Date(s.fetched_at).toLocaleTimeString()}`;
+      }
+
+      // Tile 8: Technical Breakdown
+      if (techData && !techData.error) {
+        document.getElementById('tile-rsi').textContent = `${techData.rsi14 || '-'} | $${techData.support}`;
+      }
+
+      // Tile 9: Entry/Exit Signals
+      if (signalsData && signalsData.signals) {
+        const count = signalsData.signals.length;
+        document.getElementById('tile-signals-count').textContent = count || '—';
+        document.getElementById('tile-signals-type').textContent = count > 0 ? signalsData.signals[0].type.replace('_', ' ').toUpperCase() : 'No signals';
+      }
+
+      // Tile 10: Sector Comparison
+      if (sectorData) {
+        document.getElementById('tile-sector-diff').textContent = sectorData.comparison;
+        document.getElementById('tile-sector-strength').textContent = sectorData.relative_strength.toUpperCase();
       }
 
       // Populate modals
@@ -643,6 +739,34 @@
           <p>Higher confidence indicates more reliable sentiment data from ADANOS.</p>
           <p>Last updated: <strong>${new Date(s.fetched_at).toLocaleString()}</strong></p>
         `;
+      }
+
+      // Technical details
+      if (techData && !techData.error) {
+        document.getElementById('tech-rsi').textContent = techData.rsi14 || '-';
+        document.getElementById('tech-vol').textContent = techData.volume?.ratio || '-';
+        document.getElementById('tech-sup').textContent = techData.support || '-';
+        document.getElementById('tech-res').textContent = techData.resistance || '-';
+        document.getElementById('tech-macd').textContent = techData.macd ? `${techData.macd.macd} / ${techData.macd.signal}` : '-';
+        document.getElementById('tech-adx').textContent = techData.adx ? `${techData.adx.adx} (+DI: ${techData.adx.pdi})` : '-';
+      }
+
+      // Signals details
+      if (signalsData && signalsData.signals) {
+        const html = signalsData.signals.length ? signalsData.signals.map(s =>
+          `<div style="padding: 10px; margin: 5px 0; background: #222; border-left: 3px solid ${s.type.includes('call') ? '#4caf50' : '#f44336'}">
+            <strong>${s.type.replace('_', ' ').toUpperCase()}</strong> - ${s.reason || s.strength || ''}</div>`
+        ).join('') : '<p>No active signals. RSI neutral.</p>';
+        document.getElementById('signals-details').innerHTML = html;
+      }
+
+      // Sector details
+      if (sectorData) {
+        document.getElementById('sec-name').textContent = sectorData.sector || '-';
+        document.getElementById('sec-ticker-sent').textContent = sectorData.ticker_sentiment || '-';
+        document.getElementById('sec-avg').textContent = Math.round(sectorData.sector_avg) || '-';
+        document.getElementById('sec-diff').textContent = sectorData.comparison;
+        document.getElementById('sec-strength').textContent = sectorData.relative_strength.toUpperCase();
       }
     }
 
