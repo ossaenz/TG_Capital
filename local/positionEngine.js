@@ -229,12 +229,13 @@ function buildEquityLots(trades) {
         const sellPortion = t.amount * (consumed / t.quantity);
         const buyPortion = lot.amount * (consumed / lot.originalQty);
         const feesPortion = (t.fees || 0) * (consumed / t.quantity) + lot.fees * (consumed / lot.originalQty);
+        const pnl = sellPortion + buyPortion - feesPortion;
         positions.push({
           asset_type: 'EQUITY', underlying: symbol, status: 'closed',
           opened: lot.opened, closed: t.date, hold_days: _holdDays(lot.opened, t.date),
-          net_pnl: +(sellPortion + buyPortion).toFixed(2), total_fees: +feesPortion.toFixed(2),
+          net_pnl: +pnl.toFixed(2), total_fees: +feesPortion.toFixed(2),
           is_roll: false, roll_count: 0, has_incomplete_pricing: false,
-          legs: [{ symbol, opened: lot.opened, closed: t.date, status: 'closed', quantity: consumed, net_pnl: +(sellPortion + buyPortion).toFixed(2), total_fees: +feesPortion.toFixed(2) }],
+          legs: [{ symbol, opened: lot.opened, closed: t.date, status: 'closed', quantity: consumed, net_pnl: +pnl.toFixed(2), total_fees: +feesPortion.toFixed(2) }],
         });
         lot.qtyRemaining -= consumed;
         remainingToSell -= consumed;

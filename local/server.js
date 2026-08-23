@@ -4435,8 +4435,8 @@ async function fetchLiveAccountSnapshot() {
     shortQty:    p.shortQuantity  || 0,
     avgPrice:    p.averagePrice   || p.averageShortPrice || 0,
     marketValue: p.marketValue    || 0,
-    dayPnl:      p.currentDayProfitLoss || 0,
-    openPnl:     (p.longOpenProfitLoss || 0) + (p.shortOpenProfitLoss || 0),
+    dayPnl:      -(p.currentDayProfitLoss || 0),
+    openPnl:     -((p.longOpenProfitLoss || 0) + (p.shortOpenProfitLoss || 0)),
     };
   });
 
