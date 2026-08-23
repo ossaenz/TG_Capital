@@ -4664,6 +4664,103 @@ app.post('/api/ticker/:symbol/sentiment/refresh', async (req, res) => {
   }
 });
 
+// Technical indicators for ticker dashboard
+app.get('/api/ticker/:symbol/technical', async (req, res) => {
+  try {
+    const symbol = String(req.params.symbol || '').trim().toUpperCase();
+    if (!symbol) return res.status(400).json({ error: 'symbol required' });
+
+    try {
+      const quote = await schwabMarket('/quotes', { symbols: symbol, fields: 'quote' });
+      const history = await schwabMarket('/pricehistory', { symbol, periodType: 'month', period: 1, frequencyType: 'daily', frequency: 1 });
+      const candles = history?.candles || [];
+
+      if (candles.length < 14) return res.json({ symbol, error: 'insufficient_data' });
+
+      const closes = candles.map(c => Number(c.close || 0)).filter(Boolean);
+      const rsi14 = computeRSI(closes, 14);
+      const macd = computeMACD(closes);
+      const adx = computeADX(candles, 14);
+
+      const volumes = candles.map(c => Number(c.volume || 0));
+      const avgVol = volumes.slice(-20).reduce((a,b) => a+b, 0) / 20;
+      const latestVol = volumes[volumes.length - 1];
+      const volRatio = avgVol > 0 ? (latestVol / avgVol).toFixed(2) : 0;
+
+      const highs = candles.map(c => Number(c.high || 0));
+      const lows = candles.map(c => Number(c.low || 0));
+      const resistance = Math.max(...highs.slice(-20));
+      const support = Math.min(...lows.slice(-20));
+      const price = quote?.[symbol]?.quote?.lastPrice || 0;
+
+      res.json({
+        symbol, price,
+        rsi14: rsi14 ? Math.round(rsi14) : null,
+        macd: macd ? { macd: macd.macd.toFixed(2), signal: macd.signal.toFixed(2), histogram: (macd.macd - macd.signal).toFixed(2) } : null,
+        adx: adx ? { adx: Math.round(adx.adx), pdi: Math.round(adx.pdi), mdi: Math.round(adx.mdi) } : null,
+        volume: { latest: latestVol, ratio: volRatio },
+        support: support.toFixed(2), resistance: resistance.toFixed(2),
+        candles: candles.slice(-30).map(c => ({ open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume, datetime: c.datetime }))
+      });
+    } catch (e) {
+      res.json({ symbol, error: e.message });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Entry/Exit signals
+app.get('/api/ticker/:symbol/signals', async (req, res) => {
+  try {
+    const symbol = String(req.params.symbol || '').trim().toUpperCase();
+    if (!symbol) return res.status(400).json({ error: 'symbol required' });
+
+    const tech = await fetch(`http://localhost:${PORT}/api/ticker/${symbol}/technical`).then(r => r.json()).catch(() => ({}));
+    const sentiment = sentinel.getLatestSentiment(db, symbol);
+
+    const signals = [];
+    const rsi = tech.rsi14;
+    const sentiment_score = sentiment?.sentiment_score || 50;
+
+    if (rsi && rsi < 30 && sentiment_score > 60) signals.push({ type: 'entry_call', strength: 'strong', reason: 'Oversold + bullish sentiment' });
+    if (rsi && rsi < 35 && sentiment_score > 55) signals.push({ type: 'entry_call', strength: 'moderate', reason: 'Oversold + positive sentiment' });
+    if (rsi && rsi > 70 && sentiment_score < 40) signals.push({ type: 'entry_put', strength: 'strong', reason: 'Overbought + bearish sentiment' });
+    if (rsi && rsi > 65 && sentiment_score < 45) signals.push({ type: 'entry_put', strength: 'moderate', reason: 'Overbought + negative sentiment' });
+    if (rsi && rsi > 70) signals.push({ type: 'exit_call', reason: 'RSI overbought' });
+    if (rsi && rsi < 30) signals.push({ type: 'exit_put', reason: 'RSI oversold' });
+
+    res.json({ symbol, sentiment_score, rsi, signals });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Sector comparison
+app.get('/api/ticker/:symbol/sector-sentiment', (req, res) => {
+  try {
+    const symbol = String(req.params.symbol || '').trim().toUpperCase();
+    if (!symbol) return res.status(400).json({ error: 'symbol required' });
+
+    const tickerSent = sentinel.getLatestSentiment(db, symbol);
+    const sectorData = sentinel.getSectorSentiment(db);
+    const ticker_sector = db.prepare('SELECT sector FROM sector_cache WHERE symbol = ?').get(symbol);
+    const sector = ticker_sector?.sector || 'Unknown';
+    const sectorAvg = sectorData.find(s => s.sector === sector)?.avg_score || 50;
+    const comparison = tickerSent?.sentiment_score ? (tickerSent.sentiment_score - sectorAvg) : 0;
+
+    res.json({
+      symbol, sector,
+      ticker_sentiment: tickerSent?.sentiment_score || null,
+      sector_avg: sectorAvg,
+      comparison: comparison > 0 ? `+${comparison.toFixed(1)}` : comparison.toFixed(1),
+      relative_strength: comparison > 5 ? 'outperforming' : comparison < -5 ? 'underperforming' : 'neutral'
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── API: live positions (kept for compatibility) ───────────────────────────────
 app.get('/api/positions', async (req, res) => {
   try {
