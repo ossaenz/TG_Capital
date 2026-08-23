@@ -3793,8 +3793,6 @@ async function refreshWatchlistSentiment() {
   // ADANOS API integration disabled - using local web crawler sentiment data
   // Sentiment data is populated from your own crawlers (Loughran-McDonald + web sources)
   return;
-  try {
-  }
 }
 setTimeout(() => refreshWatchlistSentiment(), 120000); // 2 min after boot
 setInterval(() => refreshWatchlistSentiment(), 5 * 60 * 1000); // every 5 min
