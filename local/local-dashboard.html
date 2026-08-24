@@ -655,6 +655,11 @@
     <div class="kpi-value neg" id="kpi-fees">—</div>
     <div class="kpi-sub" id="kpi-trades-sub">options commissions</div>
   </div>
+  <div class="kpi">
+    <div class="kpi-label">Total Overall P&amp;L (Realized + Unrealized)</div>
+    <div class="kpi-value" id="kpi-overall">—</div>
+    <div class="kpi-sub" id="kpi-overall-sub">realized + live open P&amp;L</div>
+  </div>
 </div>
 
 <!-- ── Main ── -->
@@ -1499,10 +1504,15 @@ function buildTopSymbols(symbols) {
 function renderDashboard(data, syncStatus) {
   const s = data.stats;
 
-  // KPI bar — options P&L is the primary metric (realized premium income)
-  setKpi('kpi-pnl',     fmt(s.netPnL),     cc(s.netPnL));
+  // KPI bar — options P&L is the primary metric (realized premium income).
+  // netPnL/stockPnL are aliases of optionsPremiumRealized/stockPnLRealized —
+  // kept as separate, explicitly-named fields (not derived from each other)
+  // so premium-only and stock-only tracking can't drift apart silently.
+  setKpi('kpi-pnl',     fmt(s.optionsPremiumRealized ?? s.netPnL),     cc(s.optionsPremiumRealized ?? s.netPnL));
   $('kpi-pnl-sub').textContent = `gain ${fmt(s.totalGain,0)} | loss ${fmt(s.totalLoss,0)}`;
-  setKpi('kpi-stock',   fmt(s.stockPnL),   cc(s.stockPnL));
+  setKpi('kpi-stock',   fmt(s.stockPnLRealized ?? s.stockPnL),   cc(s.stockPnLRealized ?? s.stockPnL));
+  lastRealizedPnL = s.totalRealizedPnL ?? s.totalPnL;
+  updateOverallTile();
   setKpi('kpi-winrate', pctFmt(s.winRate), s.winRate >= 50 ? 'pos' : 'neg');
   $('kpi-winrate-sub').textContent = `${s.winCount}W / ${s.lossCount}L of ${s.totalTrades}`;
   setKpi('kpi-pf',      s.profitFactor.toFixed(2), s.profitFactor >= 1 ? 'pos' : 'neg');
@@ -2132,6 +2142,28 @@ function renderLive(d) {
   set('lb-open', fmt(s.totalOpenPnl),     cc(s.totalOpenPnl));
   set('lb-pos',  s.positionCount + ' open', '');
   renderPositions();
+  updateOverallTile();
+}
+
+// "Total Overall P&L" = totalRealizedPnL (from /api/dashboard's synced trade
+// history: closed option premium + closed equity FIFO) + totalOpenPnl (from
+// /api/account's live Schwab position snapshot: unrealized mark-to-market on
+// still-open positions). Two independently-fetched, independently-refreshed
+// sources — this only renders once both have loaded at least once.
+let lastRealizedPnL = null;
+function updateOverallTile() {
+  const el = $('kpi-overall'), subEl = $('kpi-overall-sub');
+  if (!el) return;
+  if (lastRealizedPnL === null || liveData?.summary == null) {
+    el.textContent = '—';
+    if (subEl) subEl.textContent = 'waiting on realized + live data';
+    return;
+  }
+  const unrealized = liveData.summary.totalOpenPnl;
+  const overall = lastRealizedPnL + unrealized;
+  el.textContent = fmt(overall);
+  el.className = 'kpi-value ' + cc(overall);
+  if (subEl) subEl.textContent = `realized ${fmt(lastRealizedPnL, 0)} + unrealized ${fmt(unrealized, 0)}`;
 }
 
 function renderPositions() {

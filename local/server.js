@@ -1113,22 +1113,20 @@ function computeDashboard(fromDate, toDate, ticker) {
   let cum = 0;
   const curve = pnlCurve.map(r => ({ date: r.date_iso, cum: +(cum += r.daily_pnl).toFixed(2) }));
 
-  // ── Options positions (group by contract symbol — each is a unique contract) ─
-  const positions = db.prepare(`
-    SELECT symbol, underlying, asset_type,
-           SUM(amount) as net_pnl, SUM(fees) as total_fees,
-           COUNT(*) as legs, MIN(date_iso) as opened, MAX(date_iso) as closed,
-           GROUP_CONCAT(DISTINCT action) as actions
-    FROM trades ${optWhere} GROUP BY symbol
+  // ── Options positions — via positionEngine's buildOptionChains, so same-day
+  // roll pairs (BTC+STO same underlying/right) are linked into one logical
+  // trade and no contract silently drops out (see positionEngine.js's chain
+  // head/orphan handling). A raw SQL GROUP BY symbol here would double-count
+  // rolled legs as separate trades and previously could lose contracts whose
+  // chain link was broken; this is the single source of truth for both the
+  // dashboard KPI tiles and get_positions/compute_metrics used by Plutus. ─
+  const { buildOptionChains } = require('./positionEngine.js');
+  const optTrades = db.prepare(`
+    SELECT id, date_iso as date, action, symbol, underlying, asset_type, quantity, price, fees, amount
+    FROM trades ${optWhere} ORDER BY date_iso, id
   `).all(...params);
-
-  const closingActs = new Set(['Buy to Close','Sell to Close','Expired','Assigned','Exercised']);
-  const openingActs = new Set(['Sell to Open','Buy to Open']);
-  const hasClose    = p => p.actions.split(',').some(a => closingActs.has(a.trim()));
-  const hasOpen     = p => p.actions.split(',').some(a => openingActs.has(a.trim()));
-  const allExpired  = p => p.actions.split(',').every(a => a.trim() === 'Expired');
-
-  const allClosed = positions.filter(p => (hasClose(p) && hasOpen(p)) || allExpired(p));
+  const optChains = buildOptionChains(optTrades);
+  const allClosed = optChains.filter(c => c.status === 'closed');
   let totalGain = 0, totalLoss = 0, winCount = 0, lossCount = 0;
   const distBuckets = {};
 
@@ -1193,9 +1191,19 @@ function computeDashboard(fromDate, toDate, ticker) {
   return {
     total: filteredTotal, optionsTotal, dbTotal, curve, topSymbols, distribution, breakdown, byAction,
     stats: {
-      netPnL:  totalGain + totalLoss,          // options P&L only
-      stockPnL,                                 // realized equity P&L (approx)
+      netPnL:  totalGain + totalLoss,          // options P&L only (kept for back-compat)
+      stockPnL,                                 // realized equity P&L (kept for back-compat)
       totalPnL: (totalGain + totalLoss) + stockPnL,
+      // Explicit two-system split the dashboard tiles bind to:
+      //  1. optionsPremiumRealized — collected premium on CLOSED contracts only.
+      //  2. totalRealizedPnL — optionsPremiumRealized + stockPnLRealized (no unrealized).
+      // "Total Overall P&L" (realized + unrealized) is computed client-side by
+      // adding this to /api/account's live totalOpenPnl — see loadLive() in
+      // local-dashboard.html — since unrealized P&L needs a live Schwab quote,
+      // not anything derivable from synced transaction history.
+      optionsPremiumRealized: totalGain + totalLoss,
+      stockPnLRealized: stockPnL,
+      totalRealizedPnL: (totalGain + totalLoss) + stockPnL,
       totalGain, totalLoss, winCount, lossCount, totalTrades, winRate, profitRate,
       avgGain:  winCount  > 0 ? totalGain / winCount  : 0,
       avgLoss:  lossCount > 0 ? totalLoss / lossCount : 0,

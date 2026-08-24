@@ -308,10 +308,13 @@ function buildEquityLots(trades) {
       while (remainingToSell > 0 && openLots.length) {
         const lot = openLots[0];
         const consumed = Math.min(remainingToSell, lot.qtyRemaining);
+        // Schwab's `amount` is already net of fees (verified: e.g. 100sh * $131
+        // - $0.29 fee = $13,099.71 = amount exactly), so `fees` here is tracked
+        // for display only — subtracting it again from pnl would double-count it.
         const sellPortion = t.amount * (consumed / t.quantity);
         const buyPortion = lot.amount * (consumed / lot.originalQty);
         const feesPortion = (t.fees || 0) * (consumed / t.quantity) + lot.fees * (consumed / lot.originalQty);
-        const pnl = sellPortion + buyPortion - feesPortion;
+        const pnl = sellPortion + buyPortion;
         positions.push({
           asset_type: 'EQUITY', underlying: symbol, status: 'closed',
           opened: lot.opened, closed: t.date, hold_days: _holdDays(lot.opened, t.date),
