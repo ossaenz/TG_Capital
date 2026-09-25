@@ -9,9 +9,52 @@ let currentTradeEntry = null;    // { trade, closeEntry, openEntry }
 const JOURNAL_OPEN_ACTIONS  = ['Sell to Open', 'Buy to Open', 'Buy'];
 const JOURNAL_CLOSE_ACTIONS = ['Buy to Close', 'Sell to Close', 'Expired', 'Assigned', 'Exercised', 'Sell'];
 
+const JOURNAL_STRATEGIES = ['Iron Condor', 'Vertical Call Spread', 'Vertical Put Spread', 'Covered Call',
+  'Cash-Secured Put', 'Long Call', 'Long Put', 'Strangle', 'Straddle', 'Wheel Strategy', 'Stock Buy', 'Stock Sale',
+  'Stock Assigned (Put)', 'Stock Called Away (Call)'];
+
+// Journal entries don't copy optionType/instrument from their transaction at import, so look it up.
+function _entryTxn(entry) {
+  if (!entry?.transactionId) return null;
+  return (db.transactions || []).find(t => t.id === entry.transactionId) || null;
+}
+function _entryOptionType(entry) {
+  return (entry.optionType || _entryTxn(entry)?.optionType || '').toLowerCase();
+}
+
+// A stock Buy/Sell that is really the share leg of a put assignment / call being called away:
+// an Assigned/Exercised option row on the same underlying within a few days, at a strike equal to
+// the share price (when both are known), or a transaction description that says so.
+function _detectAssignmentStrategy(entry) {
+  if (entry.action !== 'Buy' && entry.action !== 'Sell') return null;
+  const txn = entry.transactionId ? _entryTxn(entry) : entry;
+  if ((entry.instrument || txn?.instrument) === 'option') return null;
+  const isBuy = entry.action === 'Buy';
+  const result = isBuy ? 'Stock Assigned (Put)' : 'Stock Called Away (Call)';
+
+  const desc = txn?.description || '';
+  if (isBuy ? /assign/i.test(desc) : /assign|exercis|called away/i.test(desc)) return result;
+
+  const und = entry.underlying || entry.symbol;
+  if (!und || !entry.date) return null;
+  const entryTime = new Date(entry.date).getTime();
+  const price = Number(entry.price);
+  const wantType = isBuy ? 'put' : 'call';
+  const hit = (db.transactions || []).some(t => {
+    if (t.action !== 'Assigned' && t.action !== 'Exercised') return false;
+    if ((t.underlying || t.symbol) !== und || !t.date) return false;
+    if (Math.abs(new Date(t.date).getTime() - entryTime) > 3 * 86400000) return false;
+    const type = t.optionType || (t.action === 'Exercised' ? 'call' : null);
+    if (type && type !== wantType) return false;
+    if (t.strike != null && Number.isFinite(price) && price > 0 && Math.abs(Number(t.strike) - price) > 0.01) return false;
+    return true;
+  });
+  return hit ? result : null;
+}
+
 function inferStrategy(entry) {
   const action = entry.action || '';
-  const opt = (entry.optionType || '').toLowerCase();
+  const opt = entry.transactionId ? _entryOptionType(entry) : (entry.optionType || '').toLowerCase();
   switch (action) {
     case 'Sell to Open':   return opt === 'put' ? 'Cash-Secured Put'  : opt === 'call' ? 'Covered Call' : null;
     case 'Buy to Close':   return opt === 'put' ? 'Cash-Secured Put'  : opt === 'call' ? 'Covered Call' : null;
@@ -20,8 +63,8 @@ function inferStrategy(entry) {
     case 'Sell to Close':  return opt === 'put' ? 'Long Put'          : opt === 'call' ? 'Long Call'    : null;
     case 'Assigned':       return opt === 'call' ? 'Covered Call' : 'Wheel Strategy';
     case 'Exercised':      return 'Covered Call';
-    case 'Buy':            return 'Stock Buy';
-    case 'Sell':           return 'Stock Sale';
+    case 'Buy':            return _detectAssignmentStrategy(entry) || 'Stock Buy';
+    case 'Sell':           return _detectAssignmentStrategy(entry) || 'Stock Sale';
     default:               return null;
   }
 }
@@ -68,6 +111,10 @@ function renderJournal() {
   for (const e of db.journalEntries) {
     if (!e.strategy) {
       const s = inferStrategy(e);
+      if (s) { e.strategy = s; backfilled++; }
+    } else if (e.strategy === 'Stock Buy' || e.strategy === 'Stock Sale') {
+      // Earlier imports labelled assignment / called-away share legs as plain buys/sales.
+      const s = _detectAssignmentStrategy(e);
       if (s) { e.strategy = s; backfilled++; }
     }
     if (!e.notes) {
@@ -158,6 +205,11 @@ function _renderJournalEntries() {
 
     const strikeStr = entry.strike != null ? '$' + Number(entry.strike).toFixed(2) : null;
 
+    const otherLegs = _legGroupMembers(entry).filter(e => e !== entry);
+    const pairedHtml = otherLegs.length
+      ? `<div style="margin-top:8px;font-size:11px;color:var(--accent);">🔗 Paired with ${otherLegs.map(l => _legLabel(l).split(' · ').slice(1, 3).join(' ')).join(', ')}</div>`
+      : '';
+
     return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:16px;cursor:pointer;transition:all 0.2s;" onclick="openJournalEntry('${entry.id}')" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
         <div style="font-family:var(--mono);font-weight:700;font-size:14px;color:var(--accent);">${symbol}</div>
@@ -175,6 +227,7 @@ function _renderJournalEntries() {
       <div style="font-size:11px;color:var(--text2);line-height:1.4;max-height:60px;overflow:hidden;text-overflow:ellipsis;">
         ${entry.notes || '<em style="opacity:0.6;">No notes yet — click to add</em>'}
       </div>
+      ${pairedHtml}
       ${entry.screenshots && entry.screenshots.length > 0 ? `<div style="margin-top:8px;font-size:11px;color:var(--accent);">📸 ${entry.screenshots.length} screenshot(s)</div>` : ''}
     </div>`;
   }).join('');
@@ -372,7 +425,7 @@ function openTradeEntry(idx) {
   `;
 
   // Strategy selector
-  const predefined = ['Iron Condor','Vertical Call Spread','Vertical Put Spread','Covered Call','Cash-Secured Put','Long Call','Long Put','Strangle','Straddle','Wheel Strategy','Stock Buy','Stock Sale'];
+  const predefined = JOURNAL_STRATEGIES;
   const stratShow = closeEntry?.strategy || openEntry?.strategy || strategy || '';
   const tStratEl  = document.getElementById('tradeStrategy');
   const tCustomEl = document.getElementById('tradeStrategyCustom');
@@ -493,7 +546,7 @@ function openJournalEntry(entryId) {
   const customInput = document.getElementById('journalStrategyCustom');
 
   const strategyToShow = currentJournalEntry.strategy || inferStrategy(currentJournalEntry) || '';
-  const predefined = ['Iron Condor', 'Vertical Call Spread', 'Vertical Put Spread', 'Covered Call', 'Cash-Secured Put', 'Long Call', 'Long Put', 'Strangle', 'Straddle', 'Wheel Strategy', 'Stock Buy', 'Stock Sale'];
+  const predefined = JOURNAL_STRATEGIES;
   if (strategyToShow && predefined.includes(strategyToShow)) {
     strategySelect.value = strategyToShow;
     customInput.style.display = 'none';
@@ -506,7 +559,9 @@ function openJournalEntry(entryId) {
     customInput.style.display = 'none';
   }
 
+  journalLegDraft = _legGroupMembers(currentJournalEntry).filter(e => e !== currentJournalEntry).map(e => e.id);
   updateJournalSummary();
+  renderJournalLegRows();
   renderJournalEntryPositionSection();
   renderJournalScreenshots();
   fetchAndRenderPriceChart();
@@ -667,10 +722,120 @@ function _renderEntryPositionSummary() {
   el.innerHTML = lotLines + avgLine + pnlLine;
 }
 
+// ════════════════════════════════════════════════════════
+// PAIRED LEGS — group the legs of a multi-leg position (vertical, condor,
+// strangle, stock + covered call…). Members share entry.legGroupId; saving
+// also copies the chosen strategy to every leg in the group.
+// ════════════════════════════════════════════════════════
+let journalLegDraft = []; // entry ids selected in the open modal, applied on Save
+
+function _legGroupMembers(entry) {
+  if (!entry?.legGroupId) return [entry].filter(Boolean);
+  return db.journalEntries.filter(e => e.legGroupId === entry.legGroupId);
+}
+
+function _legLabel(e) {
+  const abbr = { 'Buy to Open': 'BTO', 'Sell to Open': 'STO', 'Buy to Close': 'BTC', 'Sell to Close': 'STC' }[e.action] || e.action;
+  const opt = _entryOptionType(e);
+  const contract = e.strike != null
+    ? `$${Number(e.strike).toFixed(2)} ${opt ? opt[0].toUpperCase() : ''}${e.expiry ? ' exp ' + e.expiry : ''}`
+    : 'shares';
+  return `${e.date || '—'} · ${abbr} · ${e.underlying || e.symbol} ${contract} · qty ${e.quantity} @ $${(e.price || 0).toFixed(2)}`;
+}
+
+// Same-underlying entries, closest date first (legs of one spread are normally on the same day).
+function _legCandidates(entry) {
+  const und = entry.underlying || entry.symbol;
+  const t0 = new Date(entry.date || 0).getTime();
+  return db.journalEntries
+    .filter(e => e !== entry && (e.underlying || e.symbol) === und)
+    .sort((a, b) => Math.abs(new Date(a.date || 0) - t0) - Math.abs(new Date(b.date || 0) - t0)
+      || (a.date || '').localeCompare(b.date || ''));
+}
+
+function renderJournalLegRows() {
+  if (!currentJournalEntry) return;
+  const candidates = _legCandidates(currentJournalEntry);
+  const rows = document.getElementById('journalLegRows');
+  const hint = document.getElementById('journalLegHint');
+  const addBtn = document.getElementById('journalLegAddBtn');
+
+  rows.innerHTML = journalLegDraft.map((id, i) => {
+    const options = candidates.map(c =>
+      `<option value="${c.id}" ${c.id === id ? 'selected' : ''} ${c.id !== id && journalLegDraft.includes(c.id) ? 'disabled' : ''}>${_legLabel(c)}</option>`
+    ).join('');
+    return `
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+        <select onchange="onJournalLegPick(${i}, this.value)" style="flex:1;min-width:0;font-size:11px;padding:4px 6px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text0);">${options}</select>
+        <button onclick="removeJournalLegRow(${i})" type="button" title="Unpair this leg" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:14px;line-height:1;padding:0 4px;">&times;</button>
+      </div>`;
+  }).join('');
+
+  addBtn.style.display = journalLegDraft.length < candidates.length ? '' : 'none';
+  if (!candidates.length) {
+    hint.innerHTML = `<em style="opacity:0.6;">No other ${currentJournalEntry.underlying || currentJournalEntry.symbol} entries to pair with.</em>`;
+  } else if (!journalLegDraft.length) {
+    hint.innerHTML = '<em style="opacity:0.6;">Single leg. Use “+ Pair Leg” to link the other side of a spread or multi-leg position.</em>';
+  } else {
+    hint.textContent = 'On save, all paired legs get this entry\'s strategy.';
+  }
+}
+
+function addJournalLegRow() {
+  if (!currentJournalEntry) return;
+  const next = _legCandidates(currentJournalEntry).find(c => !journalLegDraft.includes(c.id));
+  if (!next) return;
+  journalLegDraft.push(next.id);
+  renderJournalLegRows();
+}
+
+function onJournalLegPick(idx, value) {
+  if (!value) return;
+  journalLegDraft[idx] = value;
+  renderJournalLegRows();
+}
+
+function removeJournalLegRow(idx) {
+  journalLegDraft.splice(idx, 1);
+  renderJournalLegRows();
+}
+
+function _applyJournalLegs() {
+  const entry = currentJournalEntry;
+  const selected = [...new Set(journalLegDraft)]
+    .map(id => db.journalEntries.find(e => e.id === id))
+    .filter(Boolean);
+  const members = [entry, ...selected];
+  const touchedGroups = new Set(members.map(e => e.legGroupId).filter(Boolean));
+
+  // Legs removed from this entry's group leave it.
+  for (const e of _legGroupMembers(entry)) {
+    if (!members.includes(e)) e.legGroupId = null;
+  }
+
+  if (selected.length) {
+    const gid = entry.legGroupId || ('legs_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+    for (const e of members) {
+      e.legGroupId = gid;
+      if (entry.strategy) e.strategy = entry.strategy;
+      e.updatedAt = entry.updatedAt;
+    }
+  } else {
+    entry.legGroupId = null;
+  }
+
+  // A leg pulled out of another group can leave that group with a single member — dissolve it.
+  for (const gid of touchedGroups) {
+    const left = db.journalEntries.filter(e => e.legGroupId === gid);
+    if (left.length === 1) left[0].legGroupId = null;
+  }
+}
+
 function closeJournalModal() {
   document.getElementById('journalModal').style.display = 'none';
   document.removeEventListener('paste', handleJournalPaste);
   currentJournalEntry = null;
+  journalLegDraft = [];
 }
 
 function updateJournalSummary() {
@@ -678,7 +843,7 @@ function updateJournalSummary() {
   const e = currentJournalEntry;
   const symbol = e.underlying || e.symbol;
   const strikeExp = e.strike
-    ? ` ${(e.optionType || '').toUpperCase()} $${Number(e.strike).toFixed(2)}${e.expiry ? ' exp ' + e.expiry : ''}`
+    ? ` ${_entryOptionType(e).toUpperCase()} $${Number(e.strike).toFixed(2)}${e.expiry ? ' exp ' + e.expiry : ''}`
     : '';
   const summary = `
     <div style="margin-bottom:12px;"><strong>${symbol}${strikeExp}</strong></div>
@@ -765,6 +930,7 @@ function saveJournalEntry() {
   }
 
   currentJournalEntry.updatedAt = new Date().toISOString();
+  _applyJournalLegs();
   saveDB(db);
   addLog('Journal entry saved', 'success');
   closeJournalModal();
@@ -1043,6 +1209,7 @@ function renderJournalReport() {
         <th style="padding:10px;text-align:left;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Strategy</th>
         <th style="padding:10px;text-align:left;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Action</th>
         <th style="padding:10px;text-align:left;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Notes</th>
+        <th style="padding:10px;text-align:left;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;">Evidence</th>
       </tr></thead>
       <tbody>`;
 
@@ -1057,6 +1224,7 @@ function renderJournalReport() {
       <td style="padding:10px;color:var(--text1);">${strategy}</td>
       <td style="padding:10px;color:var(--text1);font-size:11px;">${entry.action}</td>
       <td style="padding:10px;color:var(--text2);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;">${notePreview || '—'}</td>
+      <td style="padding:10px;">${_jrThumbsHtml(entry)}</td>
     </tr>`;
   });
 
@@ -1065,80 +1233,105 @@ function renderJournalReport() {
   document.getElementById('journalReportContainer').innerHTML = html;
 }
 
+function _jrThumbsHtml(entry) {
+  const shots = entry.screenshots || [];
+  if (!shots.length) return '<span style="color:var(--text2);">—</span>';
+  const id = String(entry.id).replace(/'/g, "\\'");
+  return '<div style="display:flex;gap:4px;flex-wrap:wrap;">' + shots.map((img, idx) =>
+    `<img src="${img}" onclick="jrOpenScreenshot('${id}', ${idx})" title="Click to enlarge" style="width:48px;height:36px;object-fit:cover;border-radius:3px;border:1px solid var(--border);cursor:zoom-in;">`
+  ).join('') + '</div>';
+}
+
+// Full-size viewer. An overlay instead of window.open — browsers block
+// top-level navigation to data: URLs, which is how screenshots are stored.
+function jrOpenScreenshot(entryId, idx) {
+  const entry = db.journalEntries.find(e => e.id === entryId);
+  const src = entry?.screenshots?.[idx];
+  if (!src) return;
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:10000;cursor:zoom-out;padding:16px;';
+  const img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:100%;max-height:100%;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,0.5);';
+  overlay.appendChild(img);
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = ev => { if (ev.key === 'Escape') close(); };
+  overlay.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(overlay);
+}
+
+// CSV for CPA / tax software: one flat table (single header row, one row per
+// entry, no section titles or blank lines), RFC 4180 quoting, CRLF line endings,
+// UTF-8 BOM so Excel opens it correctly, MM/DD/YYYY dates, plain numbers (no $ or
+// %), and formula-injection guarding on text cells.
+function _jrCsvCell(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : '';
+  let s = String(v).replace(/\r\n|\r|\n/g, ' ').replace(/\t/g, ' ').trim();
+  if (/^[=+\-@]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
+function _jrCsvDate(iso) {
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : (iso || '');
+}
+
 function jrExportCSV() {
   const dateStart = document.getElementById('jrDateStart')?.value || '';
   const dateEnd = document.getElementById('jrDateEnd')?.value || '';
 
-  let filtered = db.journalEntries.filter(e => {
+  const filtered = db.journalEntries.filter(e => {
     const date = e.date || e.createdAt;
     if (dateStart && date < dateStart) return false;
     if (dateEnd && date > dateEnd) return false;
     return true;
-  });
+  }).sort((a, b) => (a.date || a.createdAt || '').localeCompare(b.date || b.createdAt || ''));
 
-  let csv = 'TGCapital Trading Journal Report\n';
-  csv += `Generated: ${new Date().toISOString()}\n`;
-  if (dateStart || dateEnd) csv += `Period: ${dateStart} to ${dateEnd}\n`;
-  csv += '\n';
+  const txnById = new Map((db.transactions || []).map(t => [t.id, t]));
 
-  // KPIs
-  csv += 'DOCUMENTATION OVERVIEW\n';
-  csv += `Total Trades Documented,${filtered.length}\n`;
-  csv += `With Strategy,${filtered.filter(e => e.strategy).length}\n`;
-  csv += `With Trade Notes,${filtered.filter(e => e.notes).length}\n`;
-  csv += `With Evidence (Screenshots),${filtered.filter(e => e.screenshots && e.screenshots.length > 0).length}\n`;
-  csv += '\n';
+  const header = ['Date', 'Symbol', 'Underlying', 'Description', 'Instrument', 'Action',
+    'Quantity', 'Price', 'Fees', 'Amount', 'Option Type', 'Strike', 'Expiration',
+    'Strategy', 'Paired Legs', 'Leg Group', 'Notes', 'Screenshots', 'Transaction ID'];
+  const rows = [header.map(_jrCsvCell).join(',')];
 
-  // By Strategy
-  csv += 'TRADES BY STRATEGY\n';
-  csv += 'Strategy,Count,With Notes %,With Evidence %\n';
-  const byStrategy = {};
-  for (const entry of filtered) {
-    const strategy = entry.strategy || 'Unassigned';
-    if (!byStrategy[strategy]) byStrategy[strategy] = { count: 0, entries: [] };
-    byStrategy[strategy].count++;
-    byStrategy[strategy].entries.push(entry);
+  for (const e of filtered) {
+    const t = txnById.get(e.transactionId) || {};
+    rows.push([
+      _jrCsvDate(e.date || e.createdAt),
+      e.symbol || t.symbol || '',
+      e.underlying || t.underlying || '',
+      t.description || '',
+      e.instrument || t.instrument || '',
+      e.action || '',
+      e.quantity ?? t.quantity ?? null,
+      e.price ?? t.price ?? null,
+      t.fees ?? null,
+      t.amount ?? null,
+      t.optionType || '',
+      e.strike ?? t.strike ?? null,
+      _jrCsvDate(e.expiry || t.expiry),
+      e.strategy || '',
+      _legGroupMembers(e).filter(l => l !== e).map(_legLabel).join('; '),
+      e.legGroupId || '',
+      e.notes || '',
+      (e.screenshots || []).length,
+      e.transactionId || e.id || '',
+    ].map(_jrCsvCell).join(','));
   }
-  Object.keys(byStrategy).sort((a, b) => byStrategy[b].count - byStrategy[a].count).forEach(strategy => {
-    const data = byStrategy[strategy];
-    const notesCount = data.entries.filter(e => e.notes).length;
-    const screenshotCount = data.entries.filter(e => e.screenshots && e.screenshots.length > 0).length;
-    csv += `"${strategy}",${data.count},${((notesCount/data.count)*100).toFixed(0)},${((screenshotCount/data.count)*100).toFixed(0)}\n`;
-  });
-  csv += '\n';
 
-  // By Ticker
-  csv += 'TRADES BY TICKER\n';
-  csv += 'Ticker,Count,Documented %\n';
-  const byTicker = {};
-  for (const entry of filtered) {
-    const ticker = entry.underlying || entry.symbol;
-    if (!byTicker[ticker]) byTicker[ticker] = { count: 0, entries: [] };
-    byTicker[ticker].count++;
-    byTicker[ticker].entries.push(entry);
-  }
-  Object.keys(byTicker).sort((a, b) => byTicker[b].count - byTicker[a].count).forEach(ticker => {
-    const data = byTicker[ticker];
-    const documented = data.entries.filter(e => e.strategy || e.notes).length;
-    csv += `"${ticker}",${data.count},${((documented/data.count)*100).toFixed(0)}\n`;
-  });
-  csv += '\n';
-
-  // Detailed Timeline
-  csv += 'TRADE DOCUMENTATION TIMELINE\n';
-  csv += 'Date,Ticker,Strategy,Action,Qty,Price,Notes\n';
-  filtered.sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt)).forEach(entry => {
-    const ticker = entry.underlying || entry.symbol;
-    const strategy = entry.strategy || '';
-    csv += `"${entry.date}","${ticker}","${strategy}","${entry.action}",${entry.quantity},${entry.price},"${(entry.notes || '').replace(/"/g, '""')}"\n`;
-  });
-
-  const filename = `TGCapital_JournalReport_${dateStart || 'all'}_to_${dateEnd || 'all'}.csv`;
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const csv = '\uFEFF' + rows.join('\r\n') + '\r\n';
+  const filename = `TGCapital_Journal_${dateStart || 'all'}_to_${dateEnd || 'all'}.csv`;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.setAttribute('href', URL.createObjectURL(blob));
-  link.setAttribute('download', filename);
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
   link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // ════════════════════════════════════════════════════════

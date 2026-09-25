@@ -700,6 +700,8 @@
         <option value="Wheel Strategy">Wheel Strategy</option>
         <option value="Stock Buy">Stock Buy</option>
         <option value="Stock Sale">Stock Sale</option>
+        <option value="Stock Assigned (Put)">Stock Assigned (Put)</option>
+        <option value="Stock Called Away (Call)">Stock Called Away (Call)</option>
         <option value="Unassigned">Unassigned</option>
       </select>
     </div>
@@ -812,9 +814,19 @@
             <option value="Wheel Strategy">Wheel Strategy</option>
             <option value="Stock Buy">Stock Buy</option>
             <option value="Stock Sale">Stock Sale</option>
+            <option value="Stock Assigned (Put)">Stock Assigned (Put)</option>
+            <option value="Stock Called Away (Call)">Stock Called Away (Call)</option>
             <option value="Other">Other (Custom)</option>
           </select>
           <input type="text" id="journalStrategyCustom" placeholder="Enter custom strategy name..." style="width:100%;padding:8px;margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text0);font-size:12px;display:none;" />
+        </div>
+        <div id="journalLegsCard" style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <label style="font-size:10px;color:var(--text2);font-weight:700;text-transform:uppercase;">Paired Legs</label>
+            <button id="journalLegAddBtn" onclick="addJournalLegRow()" type="button" style="font-size:11px;padding:2px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--text0);cursor:pointer;">+ Pair Leg</button>
+          </div>
+          <div id="journalLegRows"></div>
+          <div id="journalLegHint" style="font-size:11px;color:var(--text2);line-height:1.5;"></div>
         </div>
         <div style="margin-bottom:16px;">
           <label style="display:block;font-size:10px;color:var(--text2);font-weight:700;margin-bottom:8px;text-transform:uppercase;">Trade Notes</label>
@@ -878,6 +890,8 @@
             <option value="Wheel Strategy">Wheel Strategy</option>
             <option value="Stock Buy">Stock Buy</option>
             <option value="Stock Sale">Stock Sale</option>
+            <option value="Stock Assigned (Put)">Stock Assigned (Put)</option>
+            <option value="Stock Called Away (Call)">Stock Called Away (Call)</option>
             <option value="Other">Other (Custom)</option>
           </select>
           <input type="text" id="tradeStrategyCustom" placeholder="Enter custom strategy name…" style="width:100%;padding:8px;margin-top:8px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text0);font-size:12px;display:none;box-sizing:border-box;" />
