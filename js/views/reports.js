@@ -208,7 +208,9 @@ function _renderReportsWithState() {
   const detailRows = sortedTrades.map(t => {
     const pnlCls  = (t.netPnl || 0) >= 0 ? 'var(--green)' : 'var(--red)';
     const grossCls= (t.grossPnl || 0) >= 0 ? 'var(--green)' : 'var(--red)';
-    const outcomeLabel = t.via === 'expired' ? 'Expired' : t.via === 'assigned' ? 'Assigned' : t.via === 'sold' ? 'Sold' : 'BTC';
+    const outcomeLabel = t.via === 'expired' ? 'Expired'
+      : t.via === 'assigned' ? (t.basisDeferred ? 'Assigned (→ basis)' : 'Assigned')
+      : t.via === 'sold' ? 'Sold' : 'BTC';
     const instLabel    = t.instrument === 'option' ? (t.optionType === 'put' ? 'PUT' : 'CALL') : (t.instrument || '').toUpperCase();
     const openPriceStr = t.instrument === 'option'
       ? (t.openPrice ? '$' + t.openPrice.toFixed(2) : '—')

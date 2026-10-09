@@ -172,6 +172,37 @@ function buildPositions() {
       const grossPnl = openCredit;
       const totalFees = openFeesAlloc;
 
+      // ── PUT ASSIGNMENT: defer the premium into the stock's cost basis ──
+      // A short put being assigned isn't itself a taxable event — IRS Pub 550 has the
+      // premium reduce the cost basis of the shares received, realized only when those
+      // shares are later sold. Booking it as income here (the old behavior) gets the
+      // lifetime dollar total right but the TAX YEAR wrong whenever the assignment and
+      // the eventual sale fall on opposite sides of Dec 31.
+      //
+      // The matching stock "Buy" always lands as its own transaction, same date, at a
+      // price equal to the strike (confirmed against this app's own exports) — but
+      // nothing links the two records explicitly, so that's the signal used to find it.
+      // ACTION_ORDER sorts that Buy before this Assigned row on the same date, so the lot
+      // already exists in stockLots by the time we get here. If it can't be found (shares
+      // already sold same-day, data doesn't include it, etc.) we fall back to the old
+      // immediate-income behavior rather than silently losing the premium.
+      let basisDeferred = false;
+      if (t.optionType === 'put') {
+        const underlyingKey = t.underlying || t.symbol;
+        const candidateLots = (stockLots[underlyingKey] || []).filter(l =>
+          l.qty > 0 && l.txn.action === 'Buy' && l.txn.date === t.date &&
+          Math.abs(l.openPrice - (t.strike || 0)) < 0.01
+        );
+        const candidateQty = candidateLots.reduce((s, l) => s + l.qty, 0);
+        const expectedShares = matchedTotal * 100; // standard contract multiplier
+        if (candidateLots.length && Math.abs(candidateQty - expectedShares) < 0.5) {
+          for (const lot of candidateLots) {
+            lot.costBasis -= openCredit * (lot.qty / candidateQty);
+          }
+          basisDeferred = true;
+        }
+      }
+
       closedTrades.push({
         symbol: t.symbol, underlying: t.underlying,
         instrument: 'option', optionType: t.optionType,
@@ -179,11 +210,13 @@ function buildPositions() {
         openDate: openDateFirst, closeDate: t.date,
         qty: matchedTotal,
         openPrice: avgOpenPrice,
-        openCredit, openFees: openFeesAlloc,
+        openCredit, openFees: openFeesAlloc,       // premium collected — kept for display even when deferred
         closePrice: t.strike || 0,
         closeCost: 0, closeFees: 0,
-        grossPnl, fees: totalFees,
-        netPnl: grossPnl,                  // Amount already net of fees
+        grossPnl: basisDeferred ? 0 : grossPnl,
+        fees: totalFees,
+        netPnl: basisDeferred ? 0 : grossPnl,      // deferred: realized later, via the stock sale's netPnl instead
+        basisDeferred,
         via: t.optionType === 'call' ? 'exercised' : 'assigned', closeAction: 'Assigned', closeTxn: t,
       });
     }

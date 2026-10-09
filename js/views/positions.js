@@ -181,7 +181,9 @@ function renderClosedPositions() {
       closeAction2  = 'ASSIGNED';
       closePriceStr = t.strike != null ? `<span style="color:var(--amber)">$${t.strike.toFixed(2)} strike</span>` : '—';
       closeAmtStr   = '<span style="color:var(--amber)">Stock received</span>';
-      viaBadge      = '<span class="badge badge-assigned">ASSIGNED</span>';
+      viaBadge      = t.basisDeferred
+        ? '<span class="badge badge-assigned">ASSIGNED</span><br><span style="font-size:9px;color:var(--text2);">premium → cost basis</span>'
+        : '<span class="badge badge-assigned">ASSIGNED</span>';
     } else if (t.via === 'exercised') {
       closeAction2  = 'CALLED AWAY';
       closePriceStr = t.strike != null ? `<span style="color:var(--green)">$${t.strike.toFixed(2)} strike</span>` : '—';
@@ -222,7 +224,9 @@ function renderClosedPositions() {
     if (t.via === 'expired') {
       mathLine = `<span style="color:var(--text2);font-size:11px">Premium ${fmt$(t.openCredit)} &minus; fees ${fmt$(t.fees)} = </span>`;
     } else if (t.via === 'assigned') {
-      mathLine = `<span style="color:var(--text2);font-size:11px">Premium ${fmt$(t.openCredit)} &minus; fees ${fmt$(t.fees)} = </span>`;
+      mathLine = t.basisDeferred
+        ? `<span style="color:var(--text2);font-size:11px">Premium ${fmt$(t.openCredit)} rolled into stock cost basis — no gain/loss recognized until sold. Realized today: </span>`
+        : `<span style="color:var(--text2);font-size:11px">Premium ${fmt$(t.openCredit)} &minus; fees ${fmt$(t.fees)} = </span>`;
     } else if (t.via === 'exercised') {
       mathLine = `<span style="color:var(--text2);font-size:11px">Premium ${fmt$(t.openCredit)} &minus; fees ${fmt$(t.fees)} = </span>`;
     } else if (t.via === 'sold') {

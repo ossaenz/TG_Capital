@@ -82,13 +82,18 @@ function _autoNoteForOutcome(entry) {
   const opt = (trade.optionType || '').toUpperCase();
   const contracts = trade.qty || 0;
   const shares = contracts * 100;
-  const premium = `$${Math.abs(trade.netPnl || 0).toFixed(2)}`;
+  // netPnl is the realized figure (0 for a put assignment whose premium was deferred into
+  // the stock's cost basis) — openCredit is always the actual premium collected, so the note
+  // text uses that, not netPnl.
+  const premium = `$${Math.abs(trade.openCredit || 0).toFixed(2)}`;
 
   if (trade.via === 'expired') {
     return `Auto-note: ${sym} $${trade.strike} ${opt} (exp ${trade.expiry}) expired worthless — kept full premium of ${premium} on ${contracts} contract${contracts !== 1 ? 's' : ''}.`;
   }
   if (trade.via === 'assigned') {
-    return `Auto-note: ${sym} $${trade.strike} put assigned — bought ${shares} share${shares !== 1 ? 's' : ''} of ${sym} at $${trade.strike}. Kept premium of ${premium} on the option leg.`;
+    return trade.basisDeferred
+      ? `Auto-note: ${sym} $${trade.strike} put assigned — bought ${shares} share${shares !== 1 ? 's' : ''} of ${sym} at $${trade.strike}. Premium of ${premium} rolled into the stock's cost basis (not recognized as income now — it reduces the gain/loss when the shares are sold).`
+      : `Auto-note: ${sym} $${trade.strike} put assigned — bought ${shares} share${shares !== 1 ? 's' : ''} of ${sym} at $${trade.strike}. Kept premium of ${premium} on the option leg.`;
   }
   // via === 'exercised' — covered call assigned/called away
   return `Auto-note: ${sym} $${trade.strike} call assigned — ${shares} share${shares !== 1 ? 's' : ''} of ${sym} called away at $${trade.strike}. Kept premium of ${premium} on the option leg.`;
@@ -390,7 +395,8 @@ function openTradeEntry(idx) {
     : `${trade.qty} share${trade.qty !== 1 ? 's' : ''} · ${viaLabel}`;
   document.getElementById('tradeModalSubtitle').textContent = optDetail;
   document.getElementById('tradeModalPnl').innerHTML =
-    `<span style="color:${pnlColor};font-family:var(--mono);font-size:18px;font-weight:700;">${pnlSign}$${Math.abs(pnl).toFixed(2)}</span>`;
+    `<span style="color:${pnlColor};font-family:var(--mono);font-size:18px;font-weight:700;">${pnlSign}$${Math.abs(pnl).toFixed(2)}</span>` +
+    (trade.basisDeferred ? `<div style="font-size:10px;color:var(--text2);text-align:right;margin-top:2px;">premium $${(trade.openCredit||0).toFixed(2)} → stock cost basis</div>` : '');
 
   document.getElementById('tradeTimeline').innerHTML = `
     <div style="font-size:10px;color:var(--text2);text-transform:uppercase;font-weight:700;letter-spacing:0.1em;margin-bottom:14px;">Trade Timeline</div>

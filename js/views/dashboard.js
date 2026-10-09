@@ -289,7 +289,7 @@ function renderDashboard() {
       const viaBadge = t.via === 'expired'
         ? '<span class="badge badge-expired">EXPIRED</span>'
         : t.via === 'assigned'
-        ? '<span class="badge badge-assigned">ASSIGNED</span>'
+        ? (t.basisDeferred ? '<span class="badge badge-assigned">ASSIGNED</span><br><span style="font-size:9px;color:var(--text2);">→ cost basis</span>' : '<span class="badge badge-assigned">ASSIGNED</span>')
         : t.via === 'sold'
         ? '<span class="badge badge-stock">SOLD</span>'
         : statusBadge('closed');
