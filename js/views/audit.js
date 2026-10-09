@@ -165,11 +165,32 @@ function _renderUnmatchedCloses() {
     return;
   }
   card.style.display = '';
-  document.getElementById('unmatchedCount').textContent = `${unmatchedCloses.length} excluded`;
 
-  tbody.innerHTML = [...unmatchedCloses]
-    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-    .map(u => `<tr>
+  // Follow the same batch / date / search filters as the ledger below.
+  const batchFilter = document.getElementById('auditBatchFilter').value;
+  const search = (document.getElementById('auditSearch').value || '').toLowerCase();
+  const dateStart = document.getElementById('auditDateStart').value;
+  const dateEnd = document.getElementById('auditDateEnd').value;
+
+  const rows = unmatchedCloses.filter(u => {
+    if (batchFilter && u.txn?.batchId !== batchFilter) return false;
+    const d = u.date || '';
+    if (dateStart && d < dateStart) return false;
+    if (dateEnd && d > dateEnd) return false;
+    if (search && !(u.symbol + ' ' + u.action + ' ' + (u.txn?.description || '')).toLowerCase().includes(search)) return false;
+    return true;
+  }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  document.getElementById('unmatchedCount').textContent = rows.length === unmatchedCloses.length
+    ? `${unmatchedCloses.length} excluded`
+    : `${rows.length} of ${unmatchedCloses.length} excluded`;
+
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No unmatched closes match the current filters.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(u => `<tr>
       <td>${u.date || '—'}</td>
       <td style="font-family:var(--mono);">${u.symbol || '—'}</td>
       <td>${u.underlying || '—'}</td>
