@@ -1304,6 +1304,28 @@
     </div>
     <button class="btn btn-sm" id="auditDeleteBtn" onclick="deleteSelectedBatch()" style="align-self:flex-end;background:var(--red);color:#fff;border:none;display:none;">Delete Batch</button>
   </div>
+
+  <div class="card" id="unmatchedCard" style="margin-bottom:16px;display:none;">
+    <div class="card-header">
+      <span class="card-title">⚠ Unmatched Closes — Gaps in the Ledger</span>
+      <span id="unmatchedCount" style="font-family:var(--mono);font-size:12px;color:var(--text2)"></span>
+    </div>
+    <div style="padding:10px 16px;font-size:12px;color:var(--text2);line-height:1.6;border-bottom:1px solid var(--border);">
+      Each row closes, expires, or gets assigned with no matching opening trade in your imported history —
+      usually because the position was opened before your earliest import. These are <strong style="color:var(--text1)">excluded</strong>
+      from every P&amp;L total, trade count, and wash-sale check elsewhere in the app, rather than being shown with
+      a fabricated $0 or an incomplete loss. Import the missing history (or ignore if these predate trading
+      you're tracking here) to recover them.
+    </div>
+    <div class="tbl-wrap"><table id="unmatchedTable">
+      <thead><tr>
+        <th>Date</th><th>Symbol</th><th>Underlying</th><th>Action</th>
+        <th class="r">Qty</th><th class="r">Close Amount</th><th>Why Excluded</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </div>
+
   <div class="card">
     <div class="card-header"><span class="card-title">Audit Trail — All Raw Records</span><span id="auditCount" style="font-family:var(--mono);font-size:12px;color:var(--text2)"></span></div>
     <div class="tbl-wrap"><table id="auditTable">

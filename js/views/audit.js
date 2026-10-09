@@ -1,4 +1,6 @@
 function renderAudit() {
+  _renderUnmatchedCloses();
+
   const batchFilter = document.getElementById('auditBatchFilter').value;
   const search = (document.getElementById('auditSearch').value || '').toLowerCase();
   const dateStart = document.getElementById('auditDateStart').value;
@@ -151,3 +153,29 @@ function deleteSelectedBatch() {
   alert(`Deleted ${beforeCount - db.transactions.length} transactions from batch.`);
 }
 
+
+function _renderUnmatchedCloses() {
+  const card = document.getElementById('unmatchedCard');
+  const tbody = document.querySelector('#unmatchedTable tbody');
+  if (!card || !tbody) return;
+
+  const { unmatchedCloses } = buildPositions();
+  if (!unmatchedCloses || unmatchedCloses.length === 0) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+  document.getElementById('unmatchedCount').textContent = `${unmatchedCloses.length} excluded`;
+
+  tbody.innerHTML = [...unmatchedCloses]
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    .map(u => `<tr>
+      <td>${u.date || '—'}</td>
+      <td style="font-family:var(--mono);">${u.symbol || '—'}</td>
+      <td>${u.underlying || '—'}</td>
+      <td>${u.action || '—'}</td>
+      <td class="r">${u.qty || 0}</td>
+      <td class="r">${u.amount != null ? '$' + u.amount.toFixed(2) : '—'}</td>
+      <td style="color:var(--text2);font-size:11px;">${u.reason}</td>
+    </tr>`).join('');
+}

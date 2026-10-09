@@ -18,6 +18,22 @@ function buildPositions() {
   const openLots  = {};  // optionSymbol → [{txn, qty, openAmount, openFees, openPrice}]
   const stockLots = {};  // ticker       → [{txn, qty, costBasis, openFees, openPrice}]
   const closedTrades = [];
+  // Closes whose opening leg isn't in the ledger (carry-in positions opened before the
+  // imported window). Booking these as trades invents a qty-0 round-trip showing only the
+  // close amount — a fake loss for a BTC, or $0.00 for an expiry/assignment that really
+  // kept premium. They're surfaced instead so the gap is visible rather than silently wrong.
+  const unmatchedCloses = [];
+
+  function recordUnmatched(t, reason) {
+    unmatchedCloses.push({
+      symbol: t.symbol, underlying: t.underlying || t.symbol,
+      instrument: t.instrument, optionType: t.optionType,
+      strike: t.strike, expiry: t.expiry,
+      date: t.date, action: t.action, qty: Math.abs(t.quantity || 0),
+      amount: t.amount || 0, fees: t.fees || 0,
+      reason, txn: t,
+    });
+  }
 
   for (const t of sorted) {
     const isOption = t.instrument === 'option';
@@ -56,6 +72,8 @@ function buildPositions() {
         remaining    -= matched;
         if (lot.qty <= 0) lots.shift();
       }
+
+      if (matchedTotal <= 0) { recordUnmatched(t, 'no open lot for this close'); continue; }
 
       const avgOpenPrice = matchedTotal > 0 ? openPriceWtd / matchedTotal : 0;
       // grossPnl = openCredit + closeAmount. Both figures from Schwab's Amount column,
@@ -104,6 +122,8 @@ function buildPositions() {
         if (lot.qty <= 0) lots.shift();
       }
 
+      if (matchedTotal <= 0) { recordUnmatched(t, 'no open lot for this expiry'); continue; }
+
       const avgOpenPrice = matchedTotal > 0 ? openPriceWtd / matchedTotal : 0;
       const grossPnl = openCredit;
       const totalFees = openFeesAlloc;
@@ -145,6 +165,8 @@ function buildPositions() {
         remaining    -= matched;
         if (lot.qty <= 0) lots.shift();
       }
+
+      if (matchedTotal <= 0) { recordUnmatched(t, 'no open lot for this assignment'); continue; }
 
       const avgOpenPrice = matchedTotal > 0 ? openPriceWtd / matchedTotal : 0;
       const grossPnl = openCredit;
@@ -202,7 +224,7 @@ function buildPositions() {
         if (lot.qty <= 0) lots.shift();
       }
 
-      if (matchedTotal <= 0) continue; // no matching open lot — skip (carry-in position)
+      if (matchedTotal <= 0) { recordUnmatched(t, 'no open lot for this called-away call'); continue; }
 
       const avgOpenPrice = matchedTotal > 0 ? openPriceWtd / matchedTotal : 0;
 
@@ -269,10 +291,7 @@ function buildPositions() {
 
       // Only record stock P&L if we have a matched buy lot.
       // Skip if unmatched (carry-in holdings from before loaded data).
-      if (matchedTotal <= 0) {
-        console.log(`SKIP unmatched: ${t.symbol} sell on ${t.date} qty=${t.quantity}`);
-        continue;
-      }
+      if (matchedTotal <= 0) { recordUnmatched(t, 'no buy lot for this sale'); continue; }
 
       const avgOpenPrice = matchedTotal > 0 ? openPriceWtd / matchedTotal : 0;
       const sellQty = Math.abs(t.quantity || 0) || matchedTotal;
@@ -335,7 +354,7 @@ function buildPositions() {
     }
   }
 
-  return { openPositions, closedTrades };
+  return { openPositions, closedTrades, unmatchedCloses };
 }
 
 // ════════════════════════════════════════════════════════
@@ -348,19 +367,24 @@ function detectWashSales(txnsToCheck) {
   const flags = [];
   const seenPairs = new Set();  // Dedupe by (underlying, lossDate)
 
-  // Collect loss events (BTC where amount < 0 AND more than premium received, or Sell stock at loss)
-  const losses = sorted.filter(t => {
-    if (!t.date) return false;
-    if (['Buy to Close'].includes(t.action)) {
-      // It's a loss if the cost to close > 0 (net negative P&L on the round-trip)
-      // Simple heuristic: BTC amount is negative (we paid to close)
-      return (t.amount || 0) < -1;
-    }
-    if (t.action === 'Sell' && t.instrument !== 'option') {
-      return (t.amount || 0) < 0;
-    }
-    return false;
-  });
+  // A wash sale needs a REALIZED LOSS, which is the round-trip result (open premium +
+  // close cost), not the cost of the closing leg on its own. Judging by the close amount
+  // alone flags every buy-to-close that cost more than a dollar, including profitable
+  // ones, and can never flag a stock sale (sale proceeds are always positive).
+  //
+  // P&L always comes from the FULL ledger, never the filtered subset, so a date-filtered
+  // view doesn't mistake an open leg it can't see for a loss.
+  const { closedTrades } = buildPositions();
+  const netByCloseTxn = new Map();
+  for (const ct of closedTrades) {
+    if (!ct.closeTxn) continue;
+    // Assignment / called-away convert the option into a stock position instead of
+    // realizing a securities loss, so they aren't wash-sale loss events.
+    if (ct.via === 'assigned' || ct.via === 'exercised') continue;
+    netByCloseTxn.set(ct.closeTxn.id, (netByCloseTxn.get(ct.closeTxn.id) || 0) + (ct.netPnl || 0));
+  }
+
+  const losses = sorted.filter(t => t.date && (netByCloseTxn.get(t.id) ?? 0) < 0);
 
   // For each loss, look for repurchase of substantially identical security within 30 days before or after
   for (const loss of losses) {
@@ -388,7 +412,7 @@ function detectWashSales(txnsToCheck) {
       flags.push({
         symbol: lossUnderlying,
         lossDate: loss.date,
-        lossAmount: loss.amount,
+        lossAmount: netByCloseTxn.get(loss.id) ?? loss.amount,
         repDate: rep.date,
         daysApart: days,
         repAction: rep.action,
